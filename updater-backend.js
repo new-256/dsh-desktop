@@ -253,12 +253,26 @@ async function latestNodeVersion() {
   if (!picked) throw new Error(`未找到 Node v${PINNED_NODE_MAJOR}.x`);
   return picked;
 }
-function minNodeForDsh() {
-  // Read DSH's engines.node range (e.g. ">=22.15.0"); derive highest mentioned version.
-  const m = readJson(P().dshPkg, null);
+/**
+ * Synchronously evaluate the Node runtime requirement without network requests.
+ * Note: Upstream @deepseek-ai/dsh currently publishes NO `engines` field at all
+ * (verified against registry.npmmirror.com for 0.1.1-rc.2), so in practice
+ * FALLBACK_MIN_NODE is what governs; the engines parsing remains as future-proofing.
+ */
+function nodeRequirement() {
+  const p = P();
+  const current = nodeVersion(p.nodeExe);
+  const m = readJson(p.dshPkg, null);
   const range = m && m.engines && typeof m.engines.node === 'string' ? m.engines.node : '';
   const nums = [...range.matchAll(/(\d+)\.(\d+)\.(\d+)/g)].map((x) => `${x[1]}.${x[2]}.${x[3]}`);
-  return highestSemver([...nums, FALLBACK_MIN_NODE]);
+  const source = nums.length > 0 ? 'engines' : 'fallback';
+  const required = highestSemver([...nums, FALLBACK_MIN_NODE]);
+  const ok = nodeMeetsRequirement(current, required);
+  return { current, required, ok, source };
+}
+
+function minNodeForDsh() {
+  return nodeRequirement().required;
 }
 function nodeMeetsRequirement(version, minVer) { return !!version && compareSemver(version, minVer) >= 0; }
 
@@ -339,12 +353,43 @@ function repairProfileJunctions(home) {
   return repaired;
 }
 
+function stagedVersions() {
+  const p = P();
+  let dsh = null;
+  let node = null;
+  try {
+    const dshPkgPath = path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'package.json');
+    if (fs.existsSync(dshPkgPath)) {
+      const m = readJson(dshPkgPath, null);
+      if (m && typeof m.version === 'string') dsh = m.version;
+    }
+  } catch {}
+  try {
+    const nodeExePath = path.join(p.nodeNew, 'node.exe');
+    if (fs.existsSync(nodeExePath)) {
+      node = nodeVersion(nodeExePath);
+    }
+  } catch {}
+  return { dsh, node };
+}
+
 // --------------------------------------------------------------------------
 // STAGED updates — install/download to staging only; never touch running files.
 // --------------------------------------------------------------------------
 async function stageDsh(callbacks = {}) {
   const p = P();
   const say = (m) => callbacks.onLog && callbacks.onLog(m);
+  const staged = stagedVersions().dsh;
+  if (staged) {
+    try {
+      const latest = await latestDshVersion();
+      if (compareSemver(staged, latest) >= 0) {
+        log(`dsh version ${staged} is already staged (latest=${latest}); reusing`);
+        say(`最新 DSH 后端 (${staged}) 已在暂存区，无需重复下载。`);
+        return { version: staged, reused: true };
+      }
+    } catch {}
+  }
   if (!fs.existsSync(p.nodeExe) || !fs.existsSync(p.npmCli)) throw new Error('缺少 node/npm，无法更新后端。');
   rimraf(p.dshNew); mkdirp(p.dshNew);
   writeJson(path.join(p.dshNew, 'package.json'), { name: 'dsh-active-backend', version: '0.0.0', private: true, dependencies: { '@deepseek-ai/dsh': 'latest' } });
@@ -358,7 +403,7 @@ async function stageDsh(callbacks = {}) {
   if (!fs.existsSync(newBin)) { rimraf(p.dshNew); throw new Error('后端暂存安装后未找到 dsh，已放弃（当前版本不受影响）。'); }
   const ver = readJson(path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'package.json'), {}).version || null;
   log('staged dsh', ver);
-  return { version: ver };
+  return { version: ver, reused: false };
 }
 
 async function stageNode(callbacks = {}) {
@@ -366,6 +411,12 @@ async function stageNode(callbacks = {}) {
   const say = (m) => callbacks.onLog && callbacks.onLog(m);
   const progress = (f) => callbacks.onProgress && callbacks.onProgress(f);
   const latest = await latestNodeVersion();
+  const staged = stagedVersions().node;
+  if (staged && compareSemver(staged, latest) >= 0) {
+    log(`node version ${staged} is already staged (latest=${latest}); reusing`);
+    say(`最新 Node 运行时 (${staged}) 已在暂存区，无需重复下载。`);
+    return { version: staged, reused: true };
+  }
   const zipName = `node-v${latest}-win-x64.zip`;
   const url = `${NODE_DIST_BASE}/v${latest}/${zipName}`;
   const zip = path.join(p.downloadDir, zipName);
@@ -383,7 +434,7 @@ async function stageNode(callbacks = {}) {
   rimraf(extracted);
   try { fs.unlinkSync(zip); } catch {}
   log('staged node', latest);
-  return { version: latest };
+  return { version: latest, reused: false };
 }
 
 // Apply anything staged. Runs BEFORE the backend is spawned (so nothing is locked).
@@ -440,7 +491,8 @@ function applyStaged() {
 
 /**
  * Make sure the active Node meets DSH's requirement before booting the backend.
- * If not: apply a staged compliant node, or download (stage) one and apply it.
+ * NOTE: This is the ONLY place allowed to pull Node from network when required.
+ * If requirement is already met, it returns false immediately with zero network requests.
  * Returns true when the runtime was changed.
  */
 async function ensureNodeMeetsRequirement(callbacks = {}) {
@@ -460,22 +512,59 @@ async function ensureNodeMeetsRequirement(callbacks = {}) {
   return true;
 }
 
+/**
+ * Escalate a backend spawn failure by attempting to stage and apply the newest pinned-major Node.
+ * Used when backend spawn failed even though version gate passed.
+ * Returns true when the runtime actually changed, false when nothing could be improved.
+ * Must never throw for network errors — logs through callbacks.onLog and returns false.
+ */
+async function repairNodeForBackendFailure(callbacks = {}) {
+  const p = P();
+  const oldVer = nodeVersion(p.nodeExe);
+  const say = (m) => callbacks.onLog && callbacks.onLog(m);
+  try {
+    say('尝试升级拉取 Node 运行时以修复后端启动异常…');
+    await stageNode(callbacks);
+    applyStaged();
+    const newVer = nodeVersion(p.nodeExe);
+    if (newVer && newVer !== oldVer) {
+      log(`repairNodeForBackendFailure successfully updated Node from ${oldVer} to ${newVer}`);
+      return true;
+    }
+  } catch (e) {
+    say('修复 Node 运行时失败: ' + (e && e.message));
+  }
+  return false;
+}
+
 // --------------------------------------------------------------------------
 // background check (silent) — stages newer versions; applied on next launch
 // --------------------------------------------------------------------------
-async function checkForUpdates() {
+async function checkForUpdates(options = {}) {
+  const { includeNode = false } = options;
   ensureSeeded();
   const cur = currentVersions();
-  const result = { current: cur, latest: { npm: cur.npm }, updates: [], errors: [] };
+  const staged = stagedVersions();
+  const result = { current: cur, latest: { npm: cur.npm }, updates: [], pending: [], errors: [] };
   const tasks = [
-    { key: 'dsh', fn: latestDshVersion },
-    { key: 'node', fn: latestNodeVersion }
+    { key: 'dsh', fn: latestDshVersion }
   ];
+  if (includeNode) {
+    tasks.push({ key: 'node', fn: latestNodeVersion });
+  }
   await Promise.all(tasks.map(async (t) => {
     try {
       const latest = await t.fn();
       result.latest[t.key] = latest;
-      if (!cur[t.key] || compareSemver(latest, cur[t.key]) > 0) result.updates.push({ component: t.key, current: cur[t.key] || null, latest });
+      const currentVer = cur[t.key] || null;
+      if (!currentVer || compareSemver(latest, currentVer) > 0) {
+        const stagedVer = staged[t.key];
+        if (stagedVer && compareSemver(stagedVer, latest) >= 0) {
+          result.pending.push({ component: t.key, current: currentVer, latest, staged: stagedVer });
+        } else {
+          result.updates.push({ component: t.key, current: currentVer, latest });
+        }
+      }
     } catch (e) { result.errors.push({ component: t.key, error: e.message }); }
   }));
   return result;
@@ -484,10 +573,10 @@ async function checkForUpdates() {
 module.exports = {
   P, activeRoot, dshHome,
   ensureSeeded, applyStaged, ensureNodeMeetsRequirement,
-  repairProfileJunctions,
+  repairProfileJunctions, repairNodeForBackendFailure, nodeRequirement,
   // main.js spawns the backend with this dedicated/isolated environment.
   buildDedicatedEnv, enableCorepack,
-  currentVersions, checkForUpdates,
+  currentVersions, stagedVersions, checkForUpdates,
   stageDsh, stageNode,
   latestDshVersion, latestNodeVersion, minNodeForDsh, nodeMeetsRequirement,
   compareSemver

@@ -5,9 +5,9 @@
 - 🐋 **独立窗口**：Electron 窗口加载本地 DSH Web GUI，无需浏览器；系统 WebView2 运行时会被探测（诊断用）。
 - 📦 **可安装 exe**：electron-builder + NSIS，自动建桌面/开始菜单快捷方式；安装/卸载前自动结束残留进程，杜绝“无法关闭”。
 - 🧩 **自带环境**：安装目录内含 **独立 Node v24 + npm + 完整 dsh 后端**，目标机器无需预装任何东西。
-- 🩺 **启动自检自愈**：先查 Node 是否满足 dsh 版本要求（不足则自动准备合规 Node）；自动修复 profile 目录的 junction 异常（即 `is not a symlink` 那类错误）；后端启动失败自动清理重试。
+- 🩺 **启动自检自愈**：无网络 Node 门禁自检（满足即直通启动，不满足自动拉取）；自动修复 profile 目录的 junction 异常；后端启动失败阶梯式自愈（清 profile -> 修复 Node）。
 - 🏠 **独立数据目录**：使用自己的 `DSH_HOME`，与你命令行的 `~/.dsh` 完全隔离，互不抢锁/互不污染。
-- 🔄 **静默更新、重启生效**：后台检测并下载新版 dsh 后端与 Node 补丁到暂存区，**下次启动时自动应用**，绝不在使用中改动正在运行的文件。
+- 🔄 **静默更新、重启生效**：后台高频检测 dsh 后端（每 6 小时及启动时），静默下载到暂存区，**下次启动时自动应用**；Node 仅在不满足要求或故障时按需拉取，绝不在使用中改动正在运行的文件。
 - 🐳 **鲸鱼娘图标**。
 
 ## 启动顺序（可靠性核心）
@@ -17,24 +17,26 @@
 1. **Seed**：首次把安装目录的出厂 Node/npm/dsh 复制到用户可写目录
    `%APPDATA%\DSH Desktop\backend\`（无需管理员权限）。
 2. **应用暂存更新**：若上次后台下载了新版（`dsh.new` / `node.new`），此时后端尚未启动、无文件占用，统一切换。
-3. **修复 junction**：清理 `DSH_HOME/profiles/node_modules` 下任何“真实目录”（dsh 要求这些是 junction，
+3. **Node 门禁检查**：本地无网络极速检查当前 Node 是否满足 dsh 要求（当前 upstream 未声明 `engines`，内置最低 `22.15.0` 兜底）。满足时直接通过（0 延迟 0 网络请求）；仅当不满足时才拉取/准备合规 Node。
+4. **修复 junction**：清理 `DSH_HOME/profiles/node_modules` 下任何“真实目录”（dsh 要求这些是 junction，
    真实目录会导致 `exists and is not a symlink` 直接崩溃）。
-4. **Node 版本检查**：读取 dsh 的 `engines.node` 要求；当前 Node 不满足时，自动应用/下载合规 Node
-   （锁定主版本 24 的最新补丁，保证 node-pty 等原生模块 ABI 兼容）。
 5. **启动后端**：用独立 `DSH_HOME=%APPDATA%\DSH Desktop\dsh-home` 启动 dsh web；
-   若因 profile 状态失败，**自动清空 profiles 目录再重试一次**。
-6. **开窗口**，随后后台进行：外壳更新检查（electron-updater）+ 后端/Node 静默更新。
+   若因 profile 状态失败，**自动清空 profiles 目录重试**；若再次失败，阶梯式**拉取最新 Node 运行时修复并重试**。
+6. **开窗口**，随后后台进行：dsh 静默更新检测（启动后 20 秒及每 6 小时）；外壳更新检查（默认禁用，配置 `DSH_SHELL_UPDATE_URL` 时启用）。
 
 ## 两套更新
 
 | 层 | 内容 | 方式 | 何时生效 |
 |---|---|---|---|
-| **外壳** | Electron 程序、启动/修复逻辑 | electron-updater 整包（需配置发布服务器） | 下载后提示重启 |
-| **后端环境** | dsh 后端、Node、npm | 应用内**静默**下载到暂存区 | **下次启动自动应用** |
+| **外壳** | Electron 程序、启动/修复逻辑 | electron-updater（需配置 `DSH_SHELL_UPDATE_URL` 或发布源，默认禁用） | 下载后提示重启 |
+| **dsh 后端** | dsh 后端 (`@deepseek-ai/dsh`) | 应用内高频**静默**下载到暂存区（每 6 小时及启动检测） | **下次启动自动应用** |
+| **Node 运行时** | Node.exe、npm 匹配包 | 仅当不满足 dsh 版本门禁或后端启动失败时**按需**拉取 | **下次启动/修复时应用** |
 
 - 后端/Node/npm 运行在用户可写目录，更新**不需要管理员权限**。
-- **Node** 只在主版本 24 内追最新补丁（ABI 兼容）；跨大版本随外壳更新发布。
-- **npm** 不单独升级，随 Node 发行包自带的匹配版本一起更新（避免 npm/Node 版本错配）。
+- **dsh 后端**：高频更新重点。 upstream 发布频繁，应用在启动 20 秒后及每 6 小时自动检测 `registry.npmmirror.com`，静默暂存最新 dsh 并在下次启动时应用。**若已成功暂存合规版本，后续检测将自动跳过重复下载，静默等待下次启动应用。**
+- **Node 运行时**：不主动追新。启动时优先执行无网络门禁比对，满足即直通启动。由于 upstream `@deepseek-ai/dsh` 当前未声明 `engines` 字段，实际由内置最低版本（`22.15.0`，主版本锁定 24，可通过 `DSH_NODE_MAJOR` 调整）进行门禁。仅当门禁不满足或后端反复崩溃时才触发 Node 修复/升级。
+- **npm**：不单独升级，随 Node 发行包自带的匹配版本一起更新（避免 npm/Node 版本错配）。
+- **外壳更新**：默认禁用（避免轮询占位 URL）。仅当通过环境变量 `DSH_SHELL_UPDATE_URL` 配置真实 https URL 时启用，且每 24 小时检查一次。
 - 下载源：dsh/npm 用 `registry.npmmirror.com`；Node 用 `cdn.npmmirror.com/binaries/node`。
 - 配置/Key/会话都在独立 `DSH_HOME`，与升级隔离，不会丢失。
 
@@ -77,10 +79,18 @@ npm start          # 开发模式
 npm run dist       # 生成 release\DSH Desktop Setup x.x.x.exe
 ```
 
-## 外壳自动更新发布
+## 外壳自动更新发布（默认关闭）
 
-后端静默更新无需服务器即可工作；外壳 electron-updater 需配置 `package.json` 的 `build.publish`
-（generic 静态目录或 GitHub Releases），发布时升 `version` → `npm run dist` → 上传 `Setup.exe`、`latest.yml`、`*.blockmap`。
+dsh 后端与 Node 的更新完全不依赖任何服务器，开箱即用。外壳（Electron 程序本身）更新是**可选**的：
+
+- `package.json` 里**故意不带 `build.publish`**（原先那个 `https://example.com/...` 占位地址会让
+  electron-updater 每几小时失败一次）。因此打包产物里**不会生成 `app-update.yml`**，客户端启动时
+  `setupShellUpdater()` 会打出 `shell updater disabled (no release feed configured)` 后直接返回。
+- 只要客户端配置环境变量 `DSH_SHELL_UPDATE_URL`（真实 https 地址）即可单独启用检查，无需重新打包。
+- 要正式发布外壳更新：给 `build.publish` 填真实源（generic 静态目录或 GitHub Releases）→ 升 `version`
+  → `npm run dist` → 上传 `Setup.exe`、`latest.yml`、`*.blockmap`。**注意 `latest.yml` 只在配置了
+  `build.publish` 时才会由 electron-builder 生成**；没配置时 `release\` 下若残留旧 `latest.yml`，
+  它的 sha512 属于上一次构建，不要拿去发布。
 
 ## 常见问题
 

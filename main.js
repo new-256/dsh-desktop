@@ -134,27 +134,53 @@ function spawnBackend() {
   });
 }
 
-/** Attempt to start the backend, self-healing common failure modes once. */
+/** Attempt to start the backend, self-healing common failure modes with escalations. */
 async function startBackendWithHealing() {
   const p = activePaths();
+  let firstErr;
   try {
     return await spawnBackend();
-  } catch (firstErr) {
-    pushLog('first backend start failed; attempting self-heal\n');
-    // Heal 1: non-junction profile modules cause dsh to refuse ("not a symlink").
-    let healed = mgr.repairProfileJunctions(p.dshHome);
-    // Heal 2: wipe the isolated profiles dir entirely (we own it; safe) so dsh
-    // rebuilds junctions/fallbacks cleanly. Keep other dsh-home data (sessions).
-    const prof = path.join(p.dshHome, 'profiles');
-    try {
-      if (fs.existsSync(prof)) { fs.rmSync(prof, { recursive: true, force: true }); healed = true; }
-    } catch (e) { pushLog('profiles wipe failed: ' + e.message + '\n'); }
-    if (backend) { killProcessTree(backend); backend = null; }
-    await new Promise((r) => setTimeout(r, 800));
-    if (!healed) throw firstErr;
-    pushLog('retrying backend after self-heal…\n');
-    return await spawnBackend();
+  } catch (err) {
+    firstErr = err;
+    pushLog('first backend start failed; attempting self-heal (profile wipe)\n');
   }
+
+  // Escalation 1: wipe profiles dir and retry once.
+  let healed = mgr.repairProfileJunctions(p.dshHome);
+  const prof = path.join(p.dshHome, 'profiles');
+  try {
+    if (fs.existsSync(prof)) { fs.rmSync(prof, { recursive: true, force: true }); healed = true; }
+  } catch (e) { pushLog('profiles wipe failed: ' + e.message + '\n'); }
+  if (backend) { killProcessTree(backend); backend = null; }
+  await new Promise((r) => setTimeout(r, 800));
+
+  if (healed) {
+    try {
+      pushLog('retrying backend after profile wipe…\n');
+      return await spawnBackend();
+    } catch (retryErr) {
+      pushLog('backend start failed after profile wipe\n');
+    }
+  }
+
+  // Escalation 2: repair Node runtime if spawn still fails.
+  pushLog('attempting Node runtime repair escalation…\n');
+  const nodeChanged = await mgr.repairNodeForBackendFailure({
+    onLog: (m) => pushLog('[node-repair] ' + m + '\n')
+  });
+  if (backend) { killProcessTree(backend); backend = null; }
+
+  if (nodeChanged) {
+    await new Promise((r) => setTimeout(r, 800));
+    try {
+      pushLog('retrying backend after Node runtime repair…\n');
+      return await spawnBackend();
+    } catch (retryErr2) {
+      pushLog('backend start failed after Node runtime repair\n');
+    }
+  }
+
+  throw firstErr;
 }
 
 let crashNotified = false;
@@ -229,11 +255,53 @@ function showFatal(err) {
   app.quit();
 }
 
+function isRealFeedUrl(urlStr) {
+  if (!urlStr || typeof urlStr !== 'string') return false;
+  try {
+    const u = new URL(urlStr);
+    if (u.protocol !== 'https:') return false;
+    const host = u.hostname.toLowerCase();
+    if (!host || host === 'example.com' || host === 'localhost' || host === '127.0.0.1') return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Shell auto-update (electron-updater) — silent download, prompt on ready
 // ---------------------------------------------------------------------------
 function setupShellUpdater() {
   if (!autoUpdater || !isPackaged) return;
+  let feedUrl = process.env.DSH_SHELL_UPDATE_URL;
+  if (feedUrl) {
+    if (isRealFeedUrl(feedUrl)) {
+      try { autoUpdater.setFeedURL(feedUrl); } catch (e) { console.warn('[shell-updater]', e && e.message); }
+    } else {
+      feedUrl = null;
+    }
+  }
+  if (!feedUrl) {
+    try {
+      const ymlPath = path.join(process.resourcesPath, 'app-update.yml');
+      if (fs.existsSync(ymlPath)) {
+        const content = fs.readFileSync(ymlPath, 'utf8');
+        const m = /url:\s*(\S+)/i.exec(content);
+        if (m && isRealFeedUrl(m[1])) feedUrl = m[1];
+      }
+    } catch {}
+    if (!feedUrl && typeof autoUpdater.getFeedURL === 'function') {
+      try {
+        const u = autoUpdater.getFeedURL();
+        if (isRealFeedUrl(u)) feedUrl = u;
+      } catch {}
+    }
+  }
+  if (!feedUrl) {
+    pushLog('shell updater disabled (no release feed configured)\n');
+    return;
+  }
+
   try {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
@@ -246,7 +314,7 @@ function setupShellUpdater() {
       if (r.response === 0) { isQuitting = true; killProcessTree(backend); autoUpdater.quitAndInstall(); }
     });
     setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 10000);
-    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 3600 * 1000);
+    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 24 * 3600 * 1000);
   } catch (e) { console.warn('[shell-updater] setup failed:', e && e.message); }
 }
 
@@ -254,12 +322,20 @@ function setupShellUpdater() {
 // Silent backend/environment updates — stage in background; apply on next launch
 // ---------------------------------------------------------------------------
 let silentBusy = false;
-async function silentStageUpdates() {
+async function silentStageUpdates(options = {}) {
   if (silentBusy) return;
   silentBusy = true;
   try {
-    const info = await mgr.checkForUpdates();
-    if (!info.updates.length) { pushLog('backend components up to date\n'); return; }
+    const info = await mgr.checkForUpdates(options);
+    if (info.pending && info.pending.length) {
+      pushLog('已暂存 ' + info.pending.map((p) => `${p.component}->${p.staged}`).join(', ') + '，将在下次启动时自动应用（跳过重复下载）\n');
+    }
+    if (!info.updates || !info.updates.length) {
+      if (!info.pending || !info.pending.length) {
+        pushLog('backend components up to date\n');
+      }
+      return;
+    }
     pushLog('silent update available: ' + info.updates.map((u) => `${u.component}->${u.latest}`).join(', ') + '\n');
     const cbs = { onLog: (m) => pushLog('[update] ' + m + '\n'), onProgress: () => {} };
     for (const u of info.updates) {
@@ -282,7 +358,7 @@ async function silentStageUpdates() {
 
 function scheduleSilentUpdates() {
   setTimeout(() => silentStageUpdates(), 20000);
-  setInterval(() => silentStageUpdates(), 24 * 3600 * 1000);
+  setInterval(() => silentStageUpdates(), 6 * 3600 * 1000);
 }
 
 function restartApp() {
@@ -294,7 +370,7 @@ function restartApp() {
 
 ipcMain.handle('app:get-version', () => app.getVersion());
 ipcMain.handle('backend:versions', () => { try { return mgr.currentVersions(); } catch { return null; } });
-ipcMain.handle('backend:check-updates', () => silentStageUpdates());
+ipcMain.handle('backend:check-updates', () => silentStageUpdates({ includeNode: true }));
 ipcMain.handle('app:restart', () => restartApp());
 
 // ---------------------------------------------------------------------------
@@ -313,8 +389,12 @@ if (!gotLock) {
       mgr.ensureSeeded();
       // 2) Apply any update staged on the previous launch (backend NOT running yet → no locks).
       mgr.applyStaged();
-      // 3) Verify Node meets DSH's requirement; stage/apply a compliant one if not.
-      await mgr.ensureNodeMeetsRequirement({ onLog: (m) => pushLog('[node-check] ' + m + '\n'), onProgress: () => {} });
+      // 3) Node gate: fast local check without network requests.
+      const req = mgr.nodeRequirement();
+      pushLog(`node gate: ${req.current || 'none'} >= ${req.required} (${req.source}) -> ${req.ok ? 'ok' : 'unsatisfied'}\n`);
+      if (!req.ok) {
+        await mgr.ensureNodeMeetsRequirement({ onLog: (m) => pushLog('[node-check] ' + m + '\n'), onProgress: () => {} });
+      }
       // 4) Repair isolated profile junctions before boot (dsh throws on real dirs here).
       mgr.repairProfileJunctions(mgr.dshHome());
       // 5) Start backend (self-heals and retries on profile/symlink errors).
