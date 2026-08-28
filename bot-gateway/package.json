@@ -1,0 +1,7 @@
+{
+  "name": "dsh-bot-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH Bot Gateway：QQ(NapCat/官方)/Telegram/飞书/钉钉 远程任务网关（Cordis 宿主插件源码）"
+}
