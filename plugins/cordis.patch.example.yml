@@ -1,0 +1,24 @@
+# cordis.patch.yml 登记模板（复制条目到实际文件：%APPDATA%\DSH Desktop\dsh-home\profiles\web\cordis.patch.yml）
+# 注意：本模板不含任何密钥；agentrouter 的 API Key 保存在 DSH 自己的凭据文件里。
+
+# agentrouter 反代：把 DSH 硬编码的 deepseek-harness User-Agent 改写为 agentrouter
+# 白名单内的客户端标识。必须随进程常驻，否则 llm-pi-ai 里 baseURL 指向
+# http://127.0.0.1:8787 的 agentrouter provider 会全部连接失败。
+- insert:
+    - id: agentrouter-proxy
+      name: ./agentrouter-proxy.plugin.mjs
+      config:
+        port: 8787
+        upstream: https://agentrouter.org
+        # 大陆网络访问不了主域名时改成官方备用域名 https://ps.air-outer.com
+        userAgent: claude-cli/1.0.60 (external, cli)
+        # 置为 true 时逐条打印经过反代的请求；默认只记 4xx/5xx
+        verbose: false
+
+# 会话清理管理器：侧边栏任务的删除/回收站/恢复能力。
+# 使用 ?v=N query 版本号避开 ESM 模块缓存（修改 .mjs 后只需 bump ?v=N 即可触发热加载）。
+- insert:
+    - id: session-cleaner
+      name: ./session-cleaner.plugin.mjs?v=1
+      config:
+        verbose: false
