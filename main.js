@@ -145,21 +145,23 @@ async function startBackendWithHealing() {
     pushLog('first backend start failed; attempting self-heal (junction repair + profile quarantine)\n');
   }
 
-  // Escalation 1: quarantine profiles dir and retry once.
-  let healed = mgr.repairProfileJunctions(p.dshHome);
+  // Escalation 1: quarantine the broken profiles dir (dsh rebuilds a fresh
+  // tree on retry) and repair/rebuild custom plugin junctions, so bare-name
+  // plugins injected by the home-level patch keep resolving after the wipe.
   const qRes = mgr.quarantineProfiles(p.dshHome);
   if (qRes && qRes.quarantined) {
-    healed = true;
     if (!qRes.fallback) {
       pushLog(`旧 profiles 已备份为 ${qRes.name}（未删除），dsh 将重建配置。\n`);
     } else {
       pushLog('旧 profiles 清理完成，dsh 将重建配置。\n');
     }
   }
+  const fixed = mgr.repairProfileJunctions(p.dshHome);
+  if (fixed > 0) pushLog(`自定义插件 junction 修复/重建：${fixed} 项。\n`);
   if (backend) { killProcessTree(backend); backend = null; }
   await new Promise((r) => setTimeout(r, 800));
 
-  if (healed) {
+  if ((qRes && qRes.quarantined) || fixed > 0) {
     try {
       pushLog('retrying backend after profile quarantine…\n');
       return await spawnBackend();
@@ -168,7 +170,47 @@ async function startBackendWithHealing() {
     }
   }
 
-  // Escalation 2: repair Node runtime if spawn still fails.
+  // Escalation 2: a home-level patch plugin may reference a source that no
+  // longer exists (deleted file, gone junction target). Back up the patch
+  // file, disable just those entries, tell the user, and retry once — instead
+  // of looping forever through quarantine + Node repair.
+  let disabled = [];
+  try {
+    const analysis = mgr.analyzeBackendFailure(p.dshHome, backendLogs.join(''));
+    if (analysis && analysis.broken && analysis.broken.length) {
+      const res = mgr.disableBrokenPatchPlugins(p.dshHome, analysis.broken);
+      disabled = (res && res.disabled) || [];
+      if (disabled.length) {
+        pushLog(`临时禁用无法加载的插件：${disabled.join(', ')}（原配置已备份：${res.backup}）。\n`);
+        try {
+          const r = await dialog.showMessageBox(null, {
+            type: 'warning', buttons: ['继续启动', '退出'], defaultId: 0, cancelId: 1,
+            title: APP_NAME,
+            message: '已临时禁用无法加载的插件',
+            detail: `以下插件因文件缺失或损坏已被临时禁用，应用将正常启动：\n\n` +
+              disabled.join('\n') +
+              `\n\n原配置已备份到：\n${res.backup}\n\n修复插件后，用备份文件恢复即可重新启用。`
+          });
+          if (r.response === 1) { isQuitting = true; app.exit(0); return; }
+        } catch {}
+      }
+    }
+  } catch (e) {
+    pushLog('plugin disable analysis failed: ' + (e && e.message) + '\n');
+  }
+  if (backend) { killProcessTree(backend); backend = null; }
+  await new Promise((r) => setTimeout(r, 800));
+
+  if (disabled.length) {
+    try {
+      pushLog('retrying backend after disabling broken plugins…\n');
+      return await spawnBackend();
+    } catch (retryErr2) {
+      pushLog('backend start failed after plugin disable\n');
+    }
+  }
+
+  // Escalation 3: repair Node runtime if spawn still fails.
   pushLog('attempting Node runtime repair escalation…\n');
   const nodeChanged = await mgr.repairNodeForBackendFailure({
     onLog: (m) => pushLog('[node-repair] ' + m + '\n')
@@ -180,7 +222,7 @@ async function startBackendWithHealing() {
     try {
       pushLog('retrying backend after Node runtime repair…\n');
       return await spawnBackend();
-    } catch (retryErr2) {
+    } catch (retryErr3) {
       pushLog('backend start failed after Node runtime repair\n');
     }
   }

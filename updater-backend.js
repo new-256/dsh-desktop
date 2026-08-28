@@ -589,80 +589,186 @@ function ensureSeeded() {
  * directory there (leftover from a pnpm run, a copy, etc.) makes dsh throw and
  * refuse to boot. Remove every non-junction entry, foreign junction (pointing
  * outside active root), or broken link so dsh can re-create valid links.
+ *
+ * Since 0.3.4 this ALSO rebuilds custom plugin junctions: any junction living
+ * in the home-level `node_modules` (which survives profile quarantine by
+ * design) is mirrored into `profiles/node_modules` and
+ * `profiles/web/node_modules`, so bare-name plugins keep resolving after the
+ * launcher quarantines and dsh rebuilds the profile tree.
+ *
+ * Returns the number of entries removed + junctions rebuilt (0 = no change).
  */
 function repairProfileJunctions(home) {
   const root = activeRoot();
   const modulesDir = path.join(home, 'profiles', 'node_modules');
-  if (!fs.existsSync(modulesDir)) return false;
+  // Custom plugin junctions (mirrored from home-level node_modules) point
+  // OUTSIDE the active root by design — exempt their targets from the
+  // "foreign link" sweep so the rebuild pass is not immediately undone.
+  const customTargets = new Set(
+    collectJunctionSources(path.join(home, 'node_modules'))
+      .map((s) => { try { return fs.realpathSync(s.target).toLowerCase(); } catch { return null; } })
+      .filter(Boolean)
+  );
+  let removed = 0;
 
-  let realDirs = 0;
-  let foreignLinks = 0;
-  let brokenLinks = 0;
+  if (fs.existsSync(modulesDir)) {
+    let realDirs = 0;
+    let foreignLinks = 0;
+    let brokenLinks = 0;
 
-  function inspectAndRepair(itemPath) {
-    let st;
-    try {
-      st = fs.lstatSync(itemPath);
-    } catch {
-      return;
-    }
-
-    if (st.isDirectory() && !st.isSymbolicLink()) {
-      rimraf(itemPath);
-      realDirs++;
-      return;
-    }
-
-    if (st.isSymbolicLink()) {
-      let targetPath;
-      try {
-        targetPath = fs.realpathSync(itemPath);
-      } catch {
-        rimraf(itemPath);
-        brokenLinks++;
-        return;
-      }
-
-      if (!isInsideActiveRoot(targetPath, root)) {
-        rimraf(itemPath);
-        foreignLinks++;
-        return;
-      }
-    }
-  }
-
-  try {
-    const entries = fs.readdirSync(modulesDir);
-    for (const entry of entries) {
-      const full = path.join(modulesDir, entry);
+    function inspectAndRepair(itemPath) {
       let st;
-      try { st = fs.lstatSync(full); } catch { continue; }
+      try {
+        st = fs.lstatSync(itemPath);
+      } catch {
+        return;
+      }
 
-      if (entry.startsWith('@')) {
-        if (st.isSymbolicLink()) {
-          inspectAndRepair(full);
-        } else if (st.isDirectory()) {
-          let subEntries = [];
-          try { subEntries = fs.readdirSync(full); } catch {}
-          for (const sub of subEntries) {
-            inspectAndRepair(path.join(full, sub));
-          }
+      if (st.isDirectory() && !st.isSymbolicLink()) {
+        rimraf(itemPath);
+        realDirs++;
+        return;
+      }
+
+      if (st.isSymbolicLink()) {
+        let targetPath;
+        try {
+          targetPath = fs.realpathSync(itemPath);
+        } catch {
+          rimraf(itemPath);
+          brokenLinks++;
+          return;
         }
-      } else {
-        inspectAndRepair(full);
+
+        if (!isInsideActiveRoot(targetPath, root) && !customTargets.has(targetPath.toLowerCase())) {
+          rimraf(itemPath);
+          foreignLinks++;
+          return;
+        }
       }
     }
-  } catch {}
 
-  const repaired = (realDirs + foreignLinks + brokenLinks) > 0;
-  if (repaired) {
-    const details = [];
-    if (realDirs > 0) details.push(`${realDirs} real dir(s)`);
-    if (foreignLinks > 0) details.push(`${foreignLinks} foreign link(s)`);
-    if (brokenLinks > 0) details.push(`${brokenLinks} broken link(s)`);
-    log(`repaired profile entries under ${modulesDir}: ${details.join(', ')}`);
+    try {
+      const entries = fs.readdirSync(modulesDir);
+      for (const entry of entries) {
+        const full = path.join(modulesDir, entry);
+        let st;
+        try { st = fs.lstatSync(full); } catch { continue; }
+
+        if (entry.startsWith('@')) {
+          if (st.isSymbolicLink()) {
+            inspectAndRepair(full);
+          } else if (st.isDirectory()) {
+            let subEntries = [];
+            try { subEntries = fs.readdirSync(full); } catch {}
+            for (const sub of subEntries) {
+              inspectAndRepair(path.join(full, sub));
+            }
+          }
+        } else {
+          inspectAndRepair(full);
+        }
+      }
+    } catch {}
+
+    removed = realDirs + foreignLinks + brokenLinks;
+    if (removed > 0) {
+      const details = [];
+      if (realDirs > 0) details.push(`${realDirs} real dir(s)`);
+      if (foreignLinks > 0) details.push(`${foreignLinks} foreign link(s)`);
+      if (brokenLinks > 0) details.push(`${brokenLinks} broken link(s)`);
+      log(`repaired profile entries under ${modulesDir}: ${details.join(', ')}`);
+    }
   }
-  return repaired;
+
+  const rebuilt = rebuildCustomPluginJunctions(home);
+  const total = removed + rebuilt;
+  if (total > 0) log(`profile junction heal total: removed=${removed}, rebuilt=${rebuilt}`);
+  return total;
+}
+
+/**
+ * Collect junctions under a directory (recursing one level into `@scope`
+ * dirs), returning [{ name, target }] for links whose target still exists.
+ */
+function collectJunctionSources(modulesDir) {
+  const out = [];
+  let entries;
+  try { entries = fs.readdirSync(modulesDir); } catch { return out; }
+  for (const entry of entries) {
+    const full = path.join(modulesDir, entry);
+    let st;
+    try { st = fs.lstatSync(full); } catch { continue; }
+    if (st.isSymbolicLink()) {
+      const target = junctionTarget(full);
+      if (target) out.push({ name: entry, target });
+    } else if (st.isDirectory() && entry.startsWith('@')) {
+      let subs;
+      try { subs = fs.readdirSync(full); } catch { continue; }
+      for (const sub of subs) {
+        const sfull = path.join(full, sub);
+        let sst;
+        try { sst = fs.lstatSync(sfull); } catch { continue; }
+        if (sst.isSymbolicLink()) {
+          const target = junctionTarget(sfull);
+          if (target) out.push({ name: `${entry}/${sub}`, target });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** Return the link target if the link resolves to an existing path, else null. */
+function junctionTarget(link) {
+  let target;
+  try { target = fs.readlinkSync(link); } catch { return null; }
+  try { if (!fs.existsSync(target)) return null; } catch { return null; }
+  return target;
+}
+
+/**
+ * Mirror home-level custom plugin junctions into the profile layers so
+ * bare-name plugins resolve after quarantine + profile rebuild. Returns the
+ * number of junctions created or repaired.
+ */
+function rebuildCustomPluginJunctions(home) {
+  const homeModules = path.join(home, 'node_modules');
+  const sources = collectJunctionSources(homeModules);
+  if (!sources.length) return 0;
+
+  let changed = 0;
+  for (const { name, target } of sources) {
+    for (const rel of ['profiles', 'profiles/web']) {
+      const linkPath = path.join(home, rel, 'node_modules', name);
+      let st;
+      try { st = fs.lstatSync(linkPath); } catch { st = null; }
+
+      if (st && st.isSymbolicLink()) {
+        let ok = false;
+        try {
+          const cur = fs.realpathSync(linkPath);
+          const want = fs.realpathSync(target);
+          ok = cur.toLowerCase() === want.toLowerCase();
+        } catch {}
+        if (ok) continue;
+        try { fs.unlinkSync(linkPath); } catch {}
+      } else if (st) {
+        // A real dir/file squatting the plugin name breaks resolution; replace.
+        rimraf(linkPath);
+      }
+
+      try {
+        fs.mkdirSync(path.dirname(linkPath), { recursive: true });
+        fs.symlinkSync(target, linkPath, 'junction');
+        changed++;
+      } catch (e) {
+        log(`rebuild junction failed ${linkPath}: ${e.message}`);
+      }
+    }
+  }
+  if (changed) log(`rebuilt ${changed} custom plugin junction(s) under ${home}\\profiles`);
+  return changed;
 }
 
 function formatDateTimestamp(d = new Date()) {
@@ -744,6 +850,188 @@ function quarantineProfiles(home) {
   pruneQuarantineProfiles(home);
 
   return { quarantined, name: targetName, path: targetPath, fallback };
+}
+
+// --------------------------------------------------------------------------
+// Home-level patch plugin heal (0.3.4)
+// --------------------------------------------------------------------------
+// The user's HOME-level cordis.patch.yml (dsh-home/cordis.patch.yml) may inject
+// third-party plugins (e.g. the 0.3.3 extension set) that the installed shell
+// does not ship. If such a plugin's source is missing (deleted file, junction
+// target gone), the backend fails to boot with ERR_MODULE_NOT_FOUND and the
+// generic escalations (profile quarantine / Node repair) cannot help. We parse
+// the failure logs, match them to patch entries, back up the patch file,
+// comment out just those entries, notify the user, and retry once.
+
+/** Normalize a module specifier for matching: file:// URLs -> decoded path, strip ?v=N query, lowercase, forward slashes. */
+function normalizeSpecifier(spec) {
+  let s = String(spec || '').trim();
+  if (!s) return '';
+  if (s.startsWith('file://')) {
+    const rest = s.slice('file://'.length).replace(/^\/+/, ''); // file:///C:/... -> C:/...
+    try { s = decodeURIComponent(rest); } catch { s = rest; }
+  }
+  s = s.split('?')[0];
+  return s.replace(/\\/g, '/').toLowerCase();
+}
+
+/** Collect failing module/package specifiers from backend log text. */
+function failingSpecifiersFromLogs(logText) {
+  const out = new Set();
+  if (!logText) return out;
+  const patterns = [
+    /Cannot find (?:package|module) '([^']+)'/g,
+    /Cannot find '([^']+)'/g
+  ];
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(logText)) !== null) out.add(normalizeSpecifier(m[1]));
+  }
+  return out;
+}
+
+/**
+ * Parse the home-level cordis.patch.yml into top-level `- insert:` blocks,
+ * each with sub-entries [{ id, name }]. Returns [] if nothing can be parsed.
+ */
+function parseHomePatchBlocks(yamlText) {
+  const lines = String(yamlText || '').split(/\r?\n/);
+  const blocks = [];
+  let cur = null;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*- insert:/.test(lines[i])) {
+      if (cur) blocks.push(cur);
+      cur = { start: i, end: lines.length, entries: [] };
+      continue;
+    }
+    if (!cur) continue;
+    const idm = /^\s*-\s+id:\s*(\S+)/.exec(lines[i]);
+    if (idm) {
+      cur.entries.push({ id: idm[1], name: null });
+    } else if (cur.entries.length) {
+      const last = cur.entries[cur.entries.length - 1];
+      if (last.name === null) {
+        const nm = /^\s*name:\s*(.+)$/.exec(lines[i]);
+        if (nm) last.name = nm[1].trim().replace(/^['"]|['"]$/g, '');
+      }
+    }
+  }
+  if (cur) blocks.push(cur);
+  for (let i = 0; i < blocks.length; i++) {
+    blocks[i].end = i + 1 < blocks.length ? blocks[i + 1].start : lines.length;
+  }
+  return blocks;
+}
+
+/** Convert a patch entry `name` to a filesystem path for file:// names (or null). */
+function specToPath(name) {
+  let s = String(name || '').trim();
+  if (!/^file:/i.test(s)) return null;
+  if (s.startsWith('file://')) {
+    const rest = s.slice('file://'.length).replace(/^\/+/, ''); // file:///C:/... -> C:/...
+    try { s = decodeURIComponent(rest); } catch { s = rest; }
+  } else {
+    try { s = decodeURIComponent(s.slice('file:'.length)); } catch {}
+  }
+  return s.split('?')[0];
+}
+
+/**
+ * Whether a patch entry's source is currently loadable:
+ *  - file:// name -> the referenced file must exist on disk
+ *  - bare name   -> a valid junction/package must exist in one of the profile
+ *    layers or the home-level node_modules (upward resolution order)
+ */
+function pluginSourceAvailable(home, entry) {
+  const name = entry && entry.name;
+  if (!name) return false;
+  if (/^file:/i.test(name)) {
+    const p = specToPath(name);
+    return !!(p && fs.existsSync(p));
+  }
+  const bare = name.split('?')[0]; // tolerate a ?v=N cache buster on bare names
+  const candidates = ['profiles/web/node_modules', 'profiles/node_modules', 'node_modules'];
+  for (const rel of candidates) {
+    const link = path.join(home, rel, bare);
+    let st;
+    try { st = fs.lstatSync(link); } catch { continue; }
+    if (!st.isSymbolicLink()) continue;
+    try { fs.realpathSync(link); return true; } catch { continue; }
+  }
+  return false;
+}
+
+/**
+ * Analyze backend failure logs against the home-level patch config.
+ * Returns { failing: [specifiers], broken: [{ id, name }] } where `broken`
+ * lists patch entries that both appear in the failure logs and whose source is
+ * genuinely unavailable (i.e. they are the direct boot blocker).
+ */
+function analyzeBackendFailure(home, logText) {
+  const result = { failing: [], broken: [] };
+  const patchPath = path.join(home, 'cordis.patch.yml');
+  if (!fs.existsSync(patchPath)) return result;
+  const failing = failingSpecifiersFromLogs(logText);
+  result.failing = [...failing];
+  if (!failing.size) return result;
+
+  let yamlText;
+  try { yamlText = fs.readFileSync(patchPath, 'utf8'); } catch (e) { log('read patch failed:', e.message); return result; }
+  const seen = new Set();
+  for (const block of parseHomePatchBlocks(yamlText)) {
+    for (const entry of block.entries) {
+      if (!entry.name || seen.has(entry.id)) continue;
+      if (!failing.has(normalizeSpecifier(entry.name))) continue;
+      seen.add(entry.id);
+      if (!pluginSourceAvailable(home, entry)) {
+        result.broken.push({ id: entry.id, name: entry.name });
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Comment out the top-level patch blocks containing the given plugin ids in the
+ * HOME-level cordis.patch.yml, after backing the file up. Returns
+ * { disabled: [ids], backup: <path|null> }.
+ */
+function disableBrokenPatchPlugins(home, brokenEntries) {
+  const patchPath = path.join(home, 'cordis.patch.yml');
+  const ids = (brokenEntries || []).map((e) => e && e.id).filter(Boolean);
+  if (!ids.length || !fs.existsSync(patchPath)) return { disabled: [], backup: null };
+
+  let yamlText;
+  try { yamlText = fs.readFileSync(patchPath, 'utf8'); } catch (e) { log('read patch failed:', e.message); return { disabled: [], backup: null }; }
+  const eol = yamlText.includes('\r\n') ? '\r\n' : '\n';
+  const lines = yamlText.split(/\r?\n/);
+  const blocks = parseHomePatchBlocks(yamlText);
+  const want = new Set(ids);
+  const hit = new Set();
+
+  for (const block of blocks) {
+    const blockIds = block.entries.map((en) => en.id).filter((id) => want.has(id));
+    if (!blockIds.length) continue;
+    blockIds.forEach((id) => hit.add(id));
+    for (let i = block.start; i < block.end; i++) {
+      const l = lines[i];
+      if (l.startsWith('#')) continue;
+      lines[i] = l.trim() === '' ? '#' : '# ' + l;
+    }
+  }
+
+  if (!hit.size) return { disabled: [], backup: null };
+
+  const ts = formatDateTimestamp();
+  const backup = path.join(home, `cordis.patch.yml.disabled-${ts}.bak`);
+  try { fs.copyFileSync(patchPath, backup); } catch (e) { log('backup patch failed:', e.message); return { disabled: [], backup: null }; }
+
+  let out = lines.join(eol);
+  if (!lines.some((l) => /^\s*- insert:/.test(l))) out += eol + '[]' + eol; // keep a valid (empty) patch array
+  try { fs.writeFileSync(patchPath, out); } catch (e) { log('write patch failed:', e.message); return { disabled: [], backup: null }; }
+
+  log(`disabled home-patch plugins: ${[...hit].join(', ')} (backup: ${backup})`);
+  return { disabled: [...hit], backup };
 }
 
 function stagedVersions() {
@@ -967,6 +1255,7 @@ module.exports = {
   P, activeRoot, dshHome,
   ensureSeeded, applyStaged, ensureNodeMeetsRequirement,
   repairProfileJunctions, quarantineProfiles, repairNodeForBackendFailure, nodeRequirement,
+  analyzeBackendFailure, disableBrokenPatchPlugins,
   // main.js spawns the backend with this dedicated/isolated environment.
   buildDedicatedEnv, describeEnvIsolation, enableCorepack,
   currentVersions, stagedVersions, checkForUpdates,
