@@ -6,7 +6,7 @@
 
 把 `dsh web` 包装成 **可安装的 Windows 桌面应用**。设计第一原则：**保证软件总能安装与启动**；在此之上做到免浏览器、自动修复、静默更新。
 
-- 🐋 **独立窗口**：Electron 窗口加载本地 DSH Web GUI，无需浏览器；系统 WebView2 运行时会被探测（诊断用）。
+- 🐋 **独立窗口**：Electron 窗口加载本地 DSH Web GUI，无需浏览器。
 - 📦 **可安装 exe**：electron-builder + NSIS，自动建桌面/开始菜单快捷方式；安装/卸载前自动结束残留进程，杜绝“无法关闭”。
 - 🧩 **自带环境**：安装目录内含 **独立 Node v24 + npm + 完整 dsh 后端**，目标机器无需预装任何东西。
 - 🩺 **启动自检自愈**：无网络 Node 门禁自检（满足即直通启动，不满足自动拉取）；自动修复 profile 目录的 junction 异常；后端启动失败阶梯式自愈（清 profile -> 修复 Node）。
@@ -63,14 +63,6 @@
 - **外壳更新**：默认禁用（避免轮询占位 URL）。仅当通过环境变量 `DSH_SHELL_UPDATE_URL` 配置真实 https URL 时启用，且每 24 小时检查一次。
 - 下载源：dsh/npm 用 `registry.npmmirror.com`；Node 用 `cdn.npmmirror.com/binaries/node`。
 - 配置/Key/会话都在独立 `DSH_HOME`，与升级隔离，不会丢失。
-
-## 关于 WebView2 的说明
-
-窗口层使用 Electron 内置的 **Chromium**（已实测任意机器可启动、无原生编译/ABI 风险）。
-应用会探测系统 Edge WebView2 运行时（Windows 11 自带，Win10 覆盖率高）并记录版本，但不依赖它。
-原因：让 Node/Electron 直接改用系统 WebView2 渲染需要原生绑定（如 webview-nodejs / .NET 宿主），
-那些方案需要本机 C++ 构建工具链、且要按 Node ABI 发原生二进制，反而会损害“保证可安装可启动”这一第一目标。
-如后续要切换到纯 WebView2 宿主（进一步降内存/体积），建议另建独立原生宿主工程，而不是在 Electron 内硬接。
 
 ## 目录
 
