@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' data:; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>DSH Desktop</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body {
+      margin: 0; height: 100%;
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      background: radial-gradient(120% 120% at 50% 0%, #16224a 0%, #0b1020 60%, #070b16 100%);
+      color: #e8eefc;
+      user-select: none;
+      overflow: hidden;
+    }
+    .wrap {
+      height: 100%;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 14px;
+    }
+    .logo {
+      width: 128px; height: 128px;
+      border-radius: 32px;
+      box-shadow: 0 12px 40px rgba(80,150,255,.35);
+      background: rgba(255,255,255,.04);
+    }
+    .title { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
+    .sub { font-size: 13px; color: #9fb4e6; }
+    .spinner {
+      margin-top: 6px;
+      width: 26px; height: 26px;
+      border: 3px solid rgba(150,180,255,.25);
+      border-top-color: #6ea8ff;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <img class="logo" src="assets/icon.png" alt="DSH" />
+    <div class="title">DSH Desktop</div>
+    <div class="sub">正在启动 DeepSeek Harness 后端…</div>
+    <div class="spinner"></div>
+  </div>
+</body>
+</html>

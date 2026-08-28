@@ -1,0 +1,97 @@
+{
+  "name": "dsh-desktop",
+  "productName": "DSH Desktop",
+  "version": "0.3.0",
+  "description": "DSH (DeepSeek Harness) 桌面版：独立窗口运行 Web GUI，免浏览器，隔离数据目录，启动自动修复，静默更新重启生效。",
+  "author": "DSH Desktop Packager",
+  "license": "MIT",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "postinstall": "node scripts/install-backend.js && node scripts/prepare-runtime.js",
+    "start": "electron .",
+    "dist": "electron-builder --win",
+    "dist:dir": "electron-builder --win --dir",
+    "make-icon": "node scripts/make-icon.js",
+    "prepare-runtime": "node scripts/prepare-runtime.js"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "build": {
+    "appId": "com.deepseek.dshdesktop",
+    "productName": "DSH Desktop",
+    "copyright": "MIT",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "updater-backend.js",
+      "splash.html",
+      "assets/**/*",
+      "!vendor/**/*",
+      "!release/**/*",
+      "!scripts/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/dsh",
+        "to": "vendor/dsh",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "vendor/runtime",
+        "to": "vendor/runtime",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asarUnpack": [
+      "**/*.{node,dll,exe}"
+    ],
+    "compression": "maximum",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "include": "build/installer.nsh",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DSH Desktop",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://example.com/dsh-desktop-updates/",
+        "channel": "latest"
+      }
+    ]
+  }
+}

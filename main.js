@@ -1,0 +1,335 @@
+'use strict';
+
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const http = require('http');
+const os = require('os');
+const mgr = require('./updater-backend');
+
+let autoUpdater = null;
+try { ({ autoUpdater } = require('electron-updater')); }
+catch (err) { console.warn('[dsh-desktop] electron-updater unavailable:', err && err.message); }
+
+const APP_NAME = 'DSH Desktop';
+const isPackaged = app.isPackaged;
+
+// Chromium renderer reliability/perf flags (Electron ships Chromium; we use it as
+// the always-available window). A system WebView2 runtime is detected separately
+// for diagnostics, but is not required.
+try {
+  app.commandLine.appendSwitch('enable-gpu-rasterization');
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');
+  app.disableHardwareAcceleration && process.env.DSH_SW_RASTER ? app.disableHardwareAcceleration() : null;
+} catch {}
+
+// Detect the system Edge WebView2 runtime (informational; Windows 11 ships it).
+function detectWebView2() {
+  try {
+    const roots = [
+      process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+      process.env.ProgramFiles || 'C:\\Program Files'
+    ].map((r) => path.join(r, 'Microsoft', 'EdgeWebView', 'Application'));
+    for (const r of roots) {
+      if (fs.existsSync(r)) {
+        const ver = fs.readdirSync(r).find((n) => /^\d+\.\d+\.\d+\.\d+$/.test(n));
+        if (ver) return { present: true, version: ver };
+      }
+    }
+  } catch {}
+  return { present: false, version: null };
+}
+
+// ---------------------------------------------------------------------------
+// Backend lifecycle
+// ---------------------------------------------------------------------------
+let backend = null;
+let backendLogs = [];
+let mainWindow = null;
+let splashWindow = null;
+let activeUrl = null;
+let isQuitting = false;
+
+function pushLog(line) {
+  const text = line == null ? '' : line.toString();
+  backendLogs.push(text);
+  if (backendLogs.length > 300) backendLogs.shift();
+  process.stdout.write(`[dsh-backend] ${text}`);
+}
+
+function waitForServer(url, timeoutMs, cb) {
+  const deadline = Date.now() + timeoutMs;
+  const attempt = () => {
+    const req = http.get(url, (res) => { res.destroy(); cb(true); });
+    req.on('error', () => { if (Date.now() > deadline) return cb(false); setTimeout(attempt, 400); });
+    req.setTimeout(2000, () => req.destroy());
+  };
+  attempt();
+}
+
+function killProcessTree(proc) {
+  if (!proc || proc.killed || proc.exitCode !== null) return;
+  if (process.platform === 'win32') {
+    try { spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); return; } catch {}
+  }
+  try { proc.kill(); } catch {}
+}
+
+function activePaths() { return mgr.P(); }
+
+/**
+ * Spawn the bundled backend from the active user-writable dir, with an isolated
+ * DSH_HOME so it never collides with the user's CLI `~/.dsh` (and its symlink
+ * state is fully owned by this app). Returns a promise resolving to the URL.
+ */
+function spawnBackend() {
+  return new Promise((resolve, reject) => {
+    const p = activePaths();
+    if (!fs.existsSync(p.nodeExe)) return reject(new Error('缺少 Node 运行时：未找到活跃 node.exe（seed 失败）。'));
+    if (!fs.existsSync(p.dshBin)) return reject(new Error('缺少 DSH 后端：未找到活跃 dsh（seed 失败）。'));
+
+    // Dedicated, fully-isolated environment: node prefix first on PATH,
+    // isolated npm/pnpm/corepack homes, isolated DSH_HOME. Never inherits user's
+    // global node/npm environment -> "dsh 专用 node 环境".
+    const env = mgr.buildDedicatedEnv();
+    env.DSH_HOME = p.dshHome;
+    delete env.ELECTRON_RUN_AS_NODE; // we spawn a real standalone node
+
+    const args = [p.dshBin, 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'];
+
+    const child = spawn(p.nodeExe, args, {
+      cwd: path.dirname(p.dshBin), env, windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    backend = child;
+    pushLog(`starting backend: node=${p.nodeExe} DSH_HOME=${p.dshHome}\n`);
+
+    let settled = false;
+    const onUrl = (line) => {
+      const m = /dsh web:\s*(https?:\/\/[^\s]+)/i.exec(line);
+      if (!m) return;
+      const url = m[1].trim();
+      if (settled) return;
+      settled = true;
+      waitForServer(url, 60000, (ok) => {
+        if (ok) { activeUrl = url; resolve(url); }
+        else reject(new Error('后端已打印地址但未能在超时内响应 HTTP。'));
+      });
+    };
+    child.stdout.on('data', (d) => { const t = d.toString(); pushLog(d); t.split(/\r?\n/).forEach(onUrl); });
+    child.stderr.on('data', (d) => { pushLog(d); });
+    child.on('error', (err) => { if (!settled) { settled = true; reject(err); } });
+    child.on('exit', (code, signal) => {
+      if (!settled) {
+        settled = true;
+        reject(new Error(`后端进程提前退出（code=${code} signal=${signal}）。\n\n` +
+          backendLogs.join('').split(/\r?\n/).slice(-30).join('\n')));
+      } else {
+        // Backend died after boot.
+        pushLog(`backend exited after boot code=${code} signal=${signal}\n`);
+        if (!isQuitting) handleBackendCrashed();
+      }
+    });
+  });
+}
+
+/** Attempt to start the backend, self-healing common failure modes once. */
+async function startBackendWithHealing() {
+  const p = activePaths();
+  try {
+    return await spawnBackend();
+  } catch (firstErr) {
+    pushLog('first backend start failed; attempting self-heal\n');
+    // Heal 1: non-junction profile modules cause dsh to refuse ("not a symlink").
+    let healed = mgr.repairProfileJunctions(p.dshHome);
+    // Heal 2: wipe the isolated profiles dir entirely (we own it; safe) so dsh
+    // rebuilds junctions/fallbacks cleanly. Keep other dsh-home data (sessions).
+    const prof = path.join(p.dshHome, 'profiles');
+    try {
+      if (fs.existsSync(prof)) { fs.rmSync(prof, { recursive: true, force: true }); healed = true; }
+    } catch (e) { pushLog('profiles wipe failed: ' + e.message + '\n'); }
+    if (backend) { killProcessTree(backend); backend = null; }
+    await new Promise((r) => setTimeout(r, 800));
+    if (!healed) throw firstErr;
+    pushLog('retrying backend after self-heal…\n');
+    return await spawnBackend();
+  }
+}
+
+let crashNotified = false;
+function handleBackendCrashed() {
+  if (crashNotified) return; crashNotified = true;
+  dialog.showMessageBox(mainWindow, {
+    type: 'warning', buttons: ['重启应用', '关闭'], defaultId: 0, cancelId: 1,
+    title: APP_NAME,
+    message: '后端服务已停止',
+    detail: 'DSH 后端意外退出。重启应用可恢复；你的会话与配置保存在独立数据目录中，不会丢失。'
+  }).then((r) => {
+    crashNotified = false;
+    if (r.response === 0) restartApp(); else app.quit();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Windows
+// ---------------------------------------------------------------------------
+function createSplash() {
+  splashWindow = new BrowserWindow({
+    width: 480, height: 320, frame: false, resizable: false, center: true, show: true,
+    backgroundColor: '#0b1020', icon: path.join(__dirname, 'assets', 'icon.png'),
+    webPreferences: { contextIsolation: true, nodeIntegration: false }
+  });
+  splashWindow.loadFile(path.join(__dirname, 'splash.html'));
+  splashWindow.on('closed', () => { splashWindow = null; });
+}
+
+function closeSplash() { if (splashWindow) { try { splashWindow.close(); } catch {} splashWindow = null; } }
+
+function applyWindowHandlers(win) {
+  win.webContents.setWindowOpenHandler(({ url: target }) => {
+    if (/^https?:\/\//i.test(target) && !/127\.0\.0\.1|localhost/i.test(target)) {
+      shell.openExternal(target); return { action: 'deny' };
+    }
+    return { action: 'allow' };
+  });
+}
+
+function createChromiumWindow(url) {
+  const win = new BrowserWindow({
+    width: 1440, height: 920, minWidth: 900, minHeight: 600, show: false,
+    backgroundColor: '#0b1020', title: APP_NAME,
+    icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false }
+  });
+  Menu.setApplicationMenu(null);
+  applyWindowHandlers(win);
+  win.loadURL(url);
+  win.once('ready-to-show', () => { win.show(); closeSplash(); });
+  win.webContents.on('did-fail-load', (_e, code, desc) => {
+    pushLog(`chromium did-fail-load ${code} ${desc}\n`);
+    if (code === -3) return; // aborted (normal on redirect)
+  });
+  win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
+  return win;
+}
+
+async function createMainWindow(url) {
+  // The Chromium window is always available and has no native-build/ABI risk.
+  // (System WebView2 presence is recorded for diagnostics/future use.)
+  const wv2 = detectWebView2();
+  pushLog(`renderer=Chromium (Electron); system WebView2 present=${wv2.present}${wv2.version ? ' v' + wv2.version : ''}\n`);
+  mainWindow = createChromiumWindow(url);
+}
+
+function showFatal(err) {
+  dialog.showErrorBox(`${APP_NAME} 启动失败`,
+    (err && err.stack ? err.stack : String(err)) +
+    '\n\n--- 后端日志（末尾）---\n' + backendLogs.join('').split(/\r?\n/).slice(-40).join('\n'));
+  app.quit();
+}
+
+// ---------------------------------------------------------------------------
+// Shell auto-update (electron-updater) — silent download, prompt on ready
+// ---------------------------------------------------------------------------
+function setupShellUpdater() {
+  if (!autoUpdater || !isPackaged) return;
+  try {
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.on('error', (e) => console.warn('[shell-updater]', e && e.message));
+    autoUpdater.on('update-downloaded', async () => {
+      const r = await dialog.showMessageBox(mainWindow, {
+        type: 'info', buttons: ['重启更新', '稍后'], defaultId: 0, cancelId: 1,
+        title: APP_NAME, message: '新版本已就绪', detail: '重启后将应用最新版本。'
+      });
+      if (r.response === 0) { isQuitting = true; killProcessTree(backend); autoUpdater.quitAndInstall(); }
+    });
+    setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 10000);
+    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 3600 * 1000);
+  } catch (e) { console.warn('[shell-updater] setup failed:', e && e.message); }
+}
+
+// ---------------------------------------------------------------------------
+// Silent backend/environment updates — stage in background; apply on next launch
+// ---------------------------------------------------------------------------
+let silentBusy = false;
+async function silentStageUpdates() {
+  if (silentBusy) return;
+  silentBusy = true;
+  try {
+    const info = await mgr.checkForUpdates();
+    if (!info.updates.length) { pushLog('backend components up to date\n'); return; }
+    pushLog('silent update available: ' + info.updates.map((u) => `${u.component}->${u.latest}`).join(', ') + '\n');
+    const cbs = { onLog: (m) => pushLog('[update] ' + m + '\n'), onProgress: () => {} };
+    for (const u of info.updates) {
+      try {
+        if (u.component === 'dsh') await mgr.stageDsh(cbs);
+        else if (u.component === 'node') await mgr.stageNode(cbs);
+      } catch (e) { pushLog('[update] stage failed ' + u.component + ': ' + e.message + '\n'); }
+    }
+    pushLog('更新已下载完成，将在下次启动时自动应用。\n');
+    // Non-blocking toast-like notice in the title (no modal interrupt).
+    if (mainWindow && !mainWindow.isDestroyed && !mainWindow.isDestroyed()) {
+      try { mainWindow.flashFrame(false); } catch {}
+    }
+  } catch (e) {
+    pushLog('[update] check failed: ' + (e && e.message) + '\n');
+  } finally {
+    silentBusy = false;
+  }
+}
+
+function scheduleSilentUpdates() {
+  setTimeout(() => silentStageUpdates(), 20000);
+  setInterval(() => silentStageUpdates(), 24 * 3600 * 1000);
+}
+
+function restartApp() {
+  isQuitting = true;
+  killProcessTree(backend);
+  app.relaunch();
+  app.exit(0);
+}
+
+ipcMain.handle('app:get-version', () => app.getVersion());
+ipcMain.handle('backend:versions', () => { try { return mgr.currentVersions(); } catch { return null; } });
+ipcMain.handle('backend:check-updates', () => silentStageUpdates());
+ipcMain.handle('app:restart', () => restartApp());
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); } });
+
+  app.whenReady().then(async () => {
+    createSplash();
+    try {
+      // 1) Seed writable active dir from factory resources (first run).
+      mgr.ensureSeeded();
+      // 2) Apply any update staged on the previous launch (backend NOT running yet → no locks).
+      mgr.applyStaged();
+      // 3) Verify Node meets DSH's requirement; stage/apply a compliant one if not.
+      await mgr.ensureNodeMeetsRequirement({ onLog: (m) => pushLog('[node-check] ' + m + '\n'), onProgress: () => {} });
+      // 4) Repair isolated profile junctions before boot (dsh throws on real dirs here).
+      mgr.repairProfileJunctions(mgr.dshHome());
+      // 5) Start backend (self-heals and retries on profile/symlink errors).
+      const url = await startBackendWithHealing();
+      // 6) Show UI.
+      await createMainWindow(url);
+      // 7) Background: shell updater + silent backend updates.
+      setupShellUpdater();
+      scheduleSilentUpdates();
+    } catch (err) {
+      showFatal(err);
+    }
+  });
+
+  app.on('window-all-closed', () => { isQuitting = true; killProcessTree(backend); app.quit(); });
+  app.on('before-quit', () => { isQuitting = true; killProcessTree(backend); });
+  process.on('exit', () => { isQuitting = true; killProcessTree(backend); });
+}
