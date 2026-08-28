@@ -1,5 +1,9 @@
 # DSH Desktop（DeepSeek Harness 桌面版）
 
+![license](https://img.shields.io/badge/license-MIT-blue)
+![platform](https://img.shields.io/badge/platform-Windows_x64-0078d6)
+![version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2Fchenglong%2Fdsh-desktop%2Freleases%2Flatest&query=tag_name&label=release)
+
 把 `dsh web` 包装成 **可安装的 Windows 桌面应用**。设计第一原则：**保证软件总能安装与启动**；在此之上做到免浏览器、自动修复、静默更新。
 
 - 🐋 **独立窗口**：Electron 窗口加载本地 DSH Web GUI，无需浏览器；系统 WebView2 运行时会被探测（诊断用）。
@@ -10,11 +14,18 @@
 - 🔄 **静默更新、重启生效**：后台高频检测 dsh 后端（每 6 小时及启动时），静默下载到暂存区，**下次启动时自动应用**；Node 仅在不满足要求或故障时按需拉取，绝不在使用中改动正在运行的文件。
 - 🐳 **鲸鱼娘图标**。
 
+## 快速开始
+
+1. 到 [Releases](../../releases) 下载最新的 `DSH Desktop Setup x.x.x.exe`（Windows x64）。
+2. 双击运行：安装器会**先请求管理员权限**，随后逐阶段显示进度（结束进程 → 卸载旧版本 → 写入程序文件 → 创建快捷方式 → 完成）。
+3. 首次启动会自动解压出厂后端（并行解包约 3.2 万个文件，通常 10–25 秒，有启动画面），之后即进入 DSH Web GUI。
+4. 卸载或覆盖安装**默认保留用户数据**（`%APPDATA%\DSH Desktop`）。唯一会删除用户数据的方式是手动执行 `"Uninstall DSH Desktop.exe" --delete-app-data`。
+
 ## 启动顺序（可靠性核心）
 
 应用启动时严格按以下顺序，任一步失败都有兜底：
 
-1. **Seed**：首次把安装目录的出厂 Node/npm/dsh 复制到用户可写目录
+1. **Seed**：首次把安装目录的出厂 Node/npm/dsh 解压到用户可写目录
    `%APPDATA%\DSH Desktop\backend\`（无需管理员权限）。
 2. **应用暂存更新**：若上次后台下载了新版（`dsh.new` / `node.new`），此时后端尚未启动、无文件占用，统一切换。
 3. **Node 门禁检查**：本地无网络极速检查当前 Node 是否满足 dsh 要求（当前 upstream 未声明 `engines`，内置最低 `22.15.0` 兜底）。满足时直接通过（0 延迟 0 网络请求）；仅当不满足时才拉取/准备合规 Node。
@@ -66,11 +77,11 @@
 ```
 DSH/
 ├─ main.js                 # 主进程：启动顺序、自愈、静默更新、窗口、进程树清理
-├─ updater-backend.js      # 后端/Node 管理：seed、暂存更新、Node 版本检查、junction 修复
+├─ updater-backend.js      # 后端/Node 管理：seed、并行解包、暂存更新、Node 版本检查、junction 修复
 ├─ preload.js / splash.html
-├─ build/installer.nsh     # NSIS：安装/卸载前 taskkill 结束残留进程树
-├─ scripts/                # make-icon / install-backend / prepare-runtime
-└─ vendor/{dsh,runtime}    # 出厂 dsh 后端 + Node + npm
+├─ build/installer.nsh     # NSIS：提权、阶段显示、安装/卸载前结束残留进程树
+├─ scripts/                # pack-vendor（打包分卷）/ install-backend / prepare-runtime / make-icon
+└─ vendor/{dsh,runtime}    # 出厂 dsh 后端 + Node + npm（不入库，npm install 生成）
 ```
 
 运行期目录（自动创建）：
@@ -89,21 +100,12 @@ DSH/
 ```bat
 npm install        # 自动准备 vendor 后端与 Node/npm 运行时
 npm start          # 开发模式
-npm run dist       # 生成 release\DSH Desktop Setup x.x.x.exe
+npm run dist       # pack-vendor 打包分卷 -> 生成 release\DSH Desktop Setup x.x.x.exe
 ```
 
-## 外壳自动更新发布（默认关闭）
-
-dsh 后端与 Node 的更新完全不依赖任何服务器，开箱即用。外壳（Electron 程序本身）更新是**可选**的：
-
-- `package.json` 里**故意不带 `build.publish`**（原先那个 `https://example.com/...` 占位地址会让
-  electron-updater 每几小时失败一次）。因此打包产物里**不会生成 `app-update.yml`**，客户端启动时
-  `setupShellUpdater()` 会打出 `shell updater disabled (no release feed configured)` 后直接返回。
-- 只要客户端配置环境变量 `DSH_SHELL_UPDATE_URL`（真实 https 地址）即可单独启用检查，无需重新打包。
-- 要正式发布外壳更新：给 `build.publish` 填真实源（generic 静态目录或 GitHub Releases）→ 升 `version`
-  → `npm run dist` → 上传 `Setup.exe`、`latest.yml`、`*.blockmap`。**注意 `latest.yml` 只在配置了
-  `build.publish` 时才会由 electron-builder 生成**；没配置时 `release\` 下若残留旧 `latest.yml`，
-  它的 sha512 属于上一次构建，不要拿去发布。
+- `vendor/`（约 300 MB 第三方运行时）与 `build/payload/`（分卷压缩包）均由脚本生成，**不入库**。
+- 打包产物里**不生成 `app-update.yml`**：外壳更新默认禁用（`build.publish` 故意留空），
+  客户端启动时 `setupShellUpdater()` 打印 `shell updater disabled (no release feed configured)` 后直接返回。
 
 ## 安装流程：先结束 → 再卸载 → 再安装（默认保留用户数据）
 
@@ -118,8 +120,10 @@ dsh 后端与 Node 的更新完全不依赖任何服务器，开箱即用。外�
 - **进程结束按路径匹配**：过滤条件是 `Path -like '*\DSH Desktop\backend\node.exe'`，因此用户机器上其他 `node.exe`
   （如 `C:\Program Files\nodejs\node.exe`）**绝不会被误杀**。安装目录清扫额外限定了进程名白名单，
   这既避免遍历全部进程，也保证**卸载器不会杀死自己**（其进程名 `Uninstall DSH Desktop` 不在白名单内）。
-- **替代了"无法关闭"弹窗**：`customCheckAppRunning` 取代模板自带的交互式提示，正常情况下静默结束并继续；
-  只有当外壳在多次重试后仍存活（例如以更高权限运行）才弹出"重试/取消"，避免安装到一半失败。
+- **详情面板逐阶段显示**：模板对非静默安装默认 `SetDetailsPrint none`（进度条"冻住"的根源），
+  本包在 `customCheckAppRunning` 中运行时覆盖为 `SetDetailsView show` + `SetDetailsPrint both`，
+  逐阶段打印中文进度：结束进程 / 卸载旧版本 / 写入程序文件 / 创建快捷方式 / 完成。
+- **无隐藏模态框**：多次重试仍无法结束进程时，打印中文警告并**继续安装**（不再弹出可能挡在安装窗口背后的对话框）。
 - **默认不清除用户数据**：`deleteAppDataOnUninstall: false`（即 NSIS 不定义 `DELETE_APP_DATA_ON_UNINSTALL`），
   且升级路径固定传 `--updated`。因此覆盖安装、升级、乃至正常卸载都会保留 `%APPDATA%\DSH Desktop`
   下的全部内容（`dsh-home` 用户数据 + `backend` 运行时）。**唯一**会删除用户数据的情况是手动执行
@@ -131,3 +135,10 @@ dsh 后端与 Node 的更新完全不依赖任何服务器，开箱即用。外�
 - **`is not a symlink` / profile 报错**：应用启动时自动修复；独立 `dsh-home` 与命令行 `~/.dsh` 隔离，正常不会再出现。
 - **想固定 Node 主版本**：设环境变量 `DSH_NODE_MAJOR`（默认 24）。
 - **换镜像**：`DSH_NPM_REGISTRY`、`DSH_NODE_DIST_BASE`。
+
+## 许可证与致谢
+
+[MIT](LICENSE) © 2026 chenglong
+
+- 本应用是 [`dsh`](https://www.npmjs.com/package/@deepseek-ai/dsh)（DeepSeek Harness）的 Windows 桌面包装器，遵循其许可条款使用。
+- 构建依赖：[Electron](https://www.electronjs.org/)、[electron-builder](https://www.electron.build/)、[electron-updater](https://www.electron.build/auto-update)、[7-Zip](https://www.7-zip.org/)（`7zip-bin` 多线程解压）。
