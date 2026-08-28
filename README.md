@@ -105,9 +105,29 @@ dsh 后端与 Node 的更新完全不依赖任何服务器，开箱即用。外�
   `build.publish` 时才会由 electron-builder 生成**；没配置时 `release\` 下若残留旧 `latest.yml`，
   它的 sha512 属于上一次构建，不要拿去发布。
 
+## 安装流程：先结束 → 再卸载 → 再安装（默认保留用户数据）
+
+安装包的执行顺序由 `build/installer.nsh` 的 NSIS 钩子与 electron-builder 模板共同保证：
+
+| 阶段 | 由谁执行 | 做什么 |
+|---|---|---|
+| ① 结束进程 | 我们的 `customInit` + `customCheckAppRunning` | `taskkill /F /T` 结束外壳（含其进程树里的 Node 后端），再**按可执行文件路径**精确结束残留的 `…\DSH Desktop\backend\node.exe` 与安装目录内的残留进程；最多重试 5 次确认已退出 |
+| ② 卸载旧版 | electron-builder 模板 `uninstallOldVersion` | 调用旧版卸载器（传 `--updated`，**不带** `--delete-app-data`） |
+| ③ 安装新版 | 模板 `installApplicationFiles` | 此时文件已无占用，覆盖安装不会失败 |
+
+- **进程结束按路径匹配**：过滤条件是 `Path -like '*\DSH Desktop\backend\node.exe'`，因此用户机器上其他 `node.exe`
+  （如 `C:\Program Files\nodejs\node.exe`）**绝不会被误杀**。安装目录清扫额外限定了进程名白名单，
+  这既避免遍历全部进程，也保证**卸载器不会杀死自己**（其进程名 `Uninstall DSH Desktop` 不在白名单内）。
+- **替代了"无法关闭"弹窗**：`customCheckAppRunning` 取代模板自带的交互式提示，正常情况下静默结束并继续；
+  只有当外壳在多次重试后仍存活（例如以更高权限运行）才弹出"重试/取消"，避免安装到一半失败。
+- **默认不清除用户数据**：`deleteAppDataOnUninstall: false`（即 NSIS 不定义 `DELETE_APP_DATA_ON_UNINSTALL`），
+  且升级路径固定传 `--updated`。因此覆盖安装、升级、乃至正常卸载都会保留 `%APPDATA%\DSH Desktop`
+  下的全部内容（`dsh-home` 用户数据 + `backend` 运行时）。**唯一**会删除用户数据的情况是手动执行
+  `"Uninstall DSH Desktop.exe" --delete-app-data`。
+
 ## 常见问题
 
-- **安装时提示“无法关闭”**：NSIS 会在安装/卸载前 `taskkill /T /F` 结束应用与其 node 后端；如仍卡住，手动关闭 DSH Desktop 后点“重试”。
+- **安装时提示“无法关闭”**：NSIS 钩子（`build/installer.nsh`）会在旧版本卸载与新版本安装前主动彻底结束外壳与指定路径的 Node 后端进程（通过路径精确匹配，绝不误杀用户系统其他 node 进程），并自动重试确认关闭；覆盖安装与卸载默认保留 `%APPDATA%\DSH Desktop` 中的全部用户数据。
 - **`is not a symlink` / profile 报错**：应用启动时自动修复；独立 `dsh-home` 与命令行 `~/.dsh` 隔离，正常不会再出现。
 - **想固定 Node 主版本**：设环境变量 `DSH_NODE_MAJOR`（默认 24）。
 - **换镜像**：`DSH_NPM_REGISTRY`、`DSH_NODE_DIST_BASE`。
