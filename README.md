@@ -10,6 +10,16 @@
 - 🔄 **静默更新、重启生效**：后台高频检测 dsh 后端（每 6 小时及启动时），静默下载到暂存区，**下次启动时自动应用**；Node 仅在不满足要求或故障时按需拉取，绝不在使用中改动正在运行的文件。
 - 🐳 **鲸鱼娘图标**。
 
+## 仓库结构与扩展组件
+
+| 目录/文件 | 说明 |
+|---|---|
+| `main.js` / `preload.js` / `updater-backend.js` / `splash.html` | Electron 外壳本体 |
+| `scripts/` | 安装/打包/运行时准备脚本（vendor 装配、图标生成等） |
+| `plugins/` | **DSH 宿主插件源码（Cordis）**：会话清理器（侧边栏「移入回收站」/回收站/恢复）与 agentrouter 反代；部署方式与 `?v=N` 热加载见 [plugins/README.md](plugins/README.md) |
+| `bot-gateway/` | DSH Bot Gateway：QQ（NapCat/官方）/Telegram/飞书/钉钉远程任务网关，详见 [bot-gateway/README.md](bot-gateway/README.md) |
+| `test-*.mjs` | 集成测试（插件契约 / agentrouter 端到端 / 会话清理全量断言）；密钥经 `AGENTROUTER_API_KEY` 环境变量注入，绝不入库 |
+
 ## 启动顺序（可靠性核心）
 
 应用启动时严格按以下顺序，任一步失败都有兜底：
