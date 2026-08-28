@@ -2,7 +2,7 @@
 
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![platform](https://img.shields.io/badge/platform-Windows_x64-0078d6)
-![version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2Fchenglong%2Fdsh-desktop%2Freleases%2Flatest&query=tag_name&label=release)
+![version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2Fnew-256%2Fdsh-desktop%2Freleases%2Flatest&query=tag_name&label=release)
 
 把 `dsh web` 包装成 **可安装的 Windows 桌面应用**。设计第一原则：**保证软件总能安装与启动**；在此之上做到免浏览器、自动修复、静默更新。
 
