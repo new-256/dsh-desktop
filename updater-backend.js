@@ -70,6 +70,13 @@ function P() {
     // seedDshModules is the dsh package's node_modules dir; copying it into
     // dsh/node_modules gives dsh/node_modules/@deepseek-ai/dsh/lib/bin.js (+ deps).
     seedDshModules: path.join(seed, 'vendor', 'dsh', 'node_modules'),
+    // Packed layout: multi-threaded 7z PARTS shipped under resources/payload
+    // (payload/vendor-0.7z … vendor-(N-1).7z), extracted CONCURRENTLY straight
+    // into the backend root on first run. A legacy single vendor.7z is still
+    // honored for backward compatibility.
+    seedPayloadDir: path.join(seed, 'payload'),
+    seedVendorArchive: path.join(seed, 'payload', 'vendor.7z'),
+    seedVendor7za: path.join(seed, 'payload', '7za.exe'),
     // isolated npm/pnpm/corepack locations (dedicated to this app)
     npmPrefix: path.join(root, '.npm-prefix'),
     npmCache: path.join(root, '.npm-cache'),
@@ -421,6 +428,102 @@ function nodeMeetsRequirement(version, minVer) { return !!version && compareSemv
 // --------------------------------------------------------------------------
 // seeding (first run)
 // --------------------------------------------------------------------------
+/**
+ * Discover the shipped payload archives under resources/payload. Prefers the
+ * multi-part layout (vendor-0.7z … vendor-(N-1).7z, sorted by index); falls back
+ * to a legacy single vendor.7z. Returns a sorted array of absolute part paths.
+ */
+function discoverVendorParts(p) {
+  let names;
+  try { names = fs.readdirSync(p.seedPayloadDir); } catch { return []; }
+  const parts = names
+    .map((n) => /^vendor-(\d+)\.7z$/.exec(n))
+    .filter(Boolean)
+    .map((m) => ({ idx: parseInt(m[1], 10), file: path.join(p.seedPayloadDir, m[0]) }))
+    .sort((a, b) => a.idx - b.idx)
+    .map((e) => e.file);
+  if (parts.length > 0) return parts;
+  if (fs.existsSync(p.seedVendorArchive)) return [p.seedVendorArchive];
+  return [];
+}
+
+// PowerShell single-quote escaping (double any embedded single quote).
+function psQuote(s) { return "'" + String(s).replace(/'/g, "''") + "'"; }
+
+/**
+ * Extract the packed vendor payload straight into the backend root using the
+ * bundled 7za. Each part stores runtime files at its root and the dsh tree under
+ * dsh/, so extracting EVERY part into <root> reproduces exactly the layout the
+ * directory-copy path produces:
+ *   <root>/node.exe, <root>/node_modules/**, <root>/dsh/node_modules/**
+ *
+ * Parallelism: ensureSeeded() must stay synchronous, so we launch one hidden
+ * 7za process per part CONCURRENTLY via a single blocking spawnSync of
+ * PowerShell (Start-Process -PassThru … | Wait-Process), then fail if any part
+ * exited non-zero. This parallelises the file-WRITE side (the real first-run
+ * cost); a single `7za x` writes with one thread regardless of decode threads.
+ * Returns true only when extraction succeeded AND the expected files landed.
+ */
+function seedFromArchive(p) {
+  const parts = discoverVendorParts(p);
+  if (parts.length === 0 || !fs.existsSync(p.seedVendor7za)) return false;
+  try {
+    mkdirp(p.root);
+    log(`seeding backend from ${parts.length} payload part(s) via concurrent 7za extract …`);
+
+    if (parts.length === 1) {
+      // Legacy single archive: one blocking extract, no PowerShell needed.
+      // x = extract with full paths; -aoa = overwrite all; -mmt=on = multi-thread.
+      execFileSync(p.seedVendor7za, ['x', parts[0], '-aoa', '-mmt=on', '-o' + p.root], { stdio: 'ignore' });
+    } else {
+      // Build an inline PowerShell command that spawns one hidden 7za per part
+      // and waits for all of them. No helper script is written to disk.
+      //
+      // Quoting matters and is NOT optional: Start-Process joins -ArgumentList
+      // ARRAY elements with spaces WITHOUT quoting them, so the array form breaks
+      // on the real paths, which always contain a space ("DSH Desktop"). That
+      // failure is silent -- 7za still exits 0 while extracting nothing -- so the
+      // arguments are passed as ONE pre-quoted string instead. Trailing
+      // backslashes are stripped so the closing quote of "-o..." cannot be escaped.
+      const rootArg = String(p.root).replace(/\\+$/, '');
+      const partsLiteral = parts.map(psQuote).join(',');
+      const ps = [
+        "$ErrorActionPreference='Stop';",
+        '$exe=' + psQuote(p.seedVendor7za) + ';',
+        '$root=' + psQuote(rootArg) + ';',
+        '$parts=@(' + partsLiteral + ');',
+        '$procs=@();',
+        'foreach($pt in $parts){',
+        '  $a=\'x "\'+$pt+\'" -aoa -mmt=on "-o\'+$root+\'"\';',
+        '  $procs+=Start-Process -FilePath $exe -ArgumentList $a -PassThru -WindowStyle Hidden;',
+        '}',
+        '$procs | Wait-Process;',
+        '$fail=0; foreach($pr in $procs){ if($pr.ExitCode -ne 0){ $fail++ } }',
+        'if($fail -gt 0){ Write-Output ("parts failed: "+$fail); exit 1 }; exit 0'
+      ].join(' ');
+      const res = require('child_process').spawnSync(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps],
+        { encoding: 'utf8', windowsHide: true }
+      );
+      if (res.error) throw res.error;
+      if (res.status !== 0) {
+        const out = String((res.stdout || '') + (res.stderr || '')).trim().slice(-400);
+        throw new Error(`并行解压有分卷失败(code ${res.status})${out ? ': ' + out : ''}`);
+      }
+    }
+
+    if (fs.existsSync(p.nodeExe) && fs.existsSync(p.dshBin)) {
+      log(`已并行解压 ${parts.length} 个分卷完成后端初始化`);
+      return true;
+    }
+    log('payload extracted but expected files missing; falling back to directory copy');
+  } catch (e) {
+    log('payload seed failed (' + e.message + '); falling back to directory copy');
+  }
+  return false;
+}
+
 function ensureSeeded() {
   const p = P();
   let changed = false;
@@ -434,25 +537,37 @@ function ensureSeeded() {
   const needNode = !fs.existsSync(p.nodeExe);
   const needNpm = !fs.existsSync(p.npmCli);
   const needCorepack = !fs.existsSync(path.join(p.root, 'node_modules', 'corepack', 'dist', 'corepack.js'));
-  if (needNode && fs.existsSync(p.seedNodeExe)) {
-    copyDir(p.seedRuntimeDir, p.root);
-    log('seeded dedicated Node prefix from factory runtime');
+  const needDsh = !fs.existsSync(p.dshBin);
+  const needsSeeding = needNode || needNpm || needCorepack || needDsh;
+
+  // Prefer the packed archive (new layout). This replaces writing ~31.8k loose
+  // files with one multi-threaded extract; it changes only HOW the bytes arrive.
+  if (needsSeeding && seedFromArchive(p)) {
     changed = true;
-  } else if (needNpm || needCorepack) {
-    if (fs.existsSync(path.join(p.seedRuntimeDir, 'node_modules'))) {
-      copyDir(path.join(p.seedRuntimeDir, 'node_modules'), path.join(p.root, 'node_modules'));
-      // also ensure node.exe / shims are present
-      if (!fs.existsSync(p.nodeExe) && fs.existsSync(p.seedNodeExe)) copyFile(p.seedNodeExe, p.nodeExe);
-      log('seeded Node modules (npm/corepack)');
+  } else {
+    // Fallback: old loose-directory layout. Also the path taken by `npm start`
+    // from a source checkout, where resources/payload/vendor.7z does not exist
+    // but vendor/dsh and vendor/runtime do.
+    if (needNode && fs.existsSync(p.seedNodeExe)) {
+      copyDir(p.seedRuntimeDir, p.root);
+      log('seeded dedicated Node prefix from factory runtime');
+      changed = true;
+    } else if (needNpm || needCorepack) {
+      if (fs.existsSync(path.join(p.seedRuntimeDir, 'node_modules'))) {
+        copyDir(path.join(p.seedRuntimeDir, 'node_modules'), path.join(p.root, 'node_modules'));
+        // also ensure node.exe / shims are present
+        if (!fs.existsSync(p.nodeExe) && fs.existsSync(p.seedNodeExe)) copyFile(p.seedNodeExe, p.nodeExe);
+        log('seeded Node modules (npm/corepack)');
+        changed = true;
+      }
+    }
+
+    // Dedicated backend (dsh).
+    if (!fs.existsSync(p.dshBin) && fs.existsSync(path.join(p.seedDshModules, '@deepseek-ai', 'dsh', 'lib', 'bin.js'))) {
+      copyDir(p.seedDshModules, path.join(p.dshDir, 'node_modules'));
+      log('seeded dsh backend from factory resources');
       changed = true;
     }
-  }
-
-  // Dedicated backend (dsh).
-  if (!fs.existsSync(p.dshBin) && fs.existsSync(path.join(p.seedDshModules, '@deepseek-ai', 'dsh', 'lib', 'bin.js'))) {
-    copyDir(p.seedDshModules, path.join(p.dshDir, 'node_modules'));
-    log('seeded dsh backend from factory resources');
-    changed = true;
   }
 
   if (changed) {
