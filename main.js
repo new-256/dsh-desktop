@@ -142,24 +142,29 @@ async function startBackendWithHealing() {
     return await spawnBackend();
   } catch (err) {
     firstErr = err;
-    pushLog('first backend start failed; attempting self-heal (profile wipe)\n');
+    pushLog('first backend start failed; attempting self-heal (junction repair + profile quarantine)\n');
   }
 
-  // Escalation 1: wipe profiles dir and retry once.
+  // Escalation 1: quarantine profiles dir and retry once.
   let healed = mgr.repairProfileJunctions(p.dshHome);
-  const prof = path.join(p.dshHome, 'profiles');
-  try {
-    if (fs.existsSync(prof)) { fs.rmSync(prof, { recursive: true, force: true }); healed = true; }
-  } catch (e) { pushLog('profiles wipe failed: ' + e.message + '\n'); }
+  const qRes = mgr.quarantineProfiles(p.dshHome);
+  if (qRes && qRes.quarantined) {
+    healed = true;
+    if (!qRes.fallback) {
+      pushLog(`旧 profiles 已备份为 ${qRes.name}（未删除），dsh 将重建配置。\n`);
+    } else {
+      pushLog('旧 profiles 清理完成，dsh 将重建配置。\n');
+    }
+  }
   if (backend) { killProcessTree(backend); backend = null; }
   await new Promise((r) => setTimeout(r, 800));
 
   if (healed) {
     try {
-      pushLog('retrying backend after profile wipe…\n');
+      pushLog('retrying backend after profile quarantine…\n');
       return await spawnBackend();
     } catch (retryErr) {
-      pushLog('backend start failed after profile wipe\n');
+      pushLog('backend start failed after profile quarantine\n');
     }
   }
 
@@ -370,6 +375,7 @@ function restartApp() {
 
 ipcMain.handle('app:get-version', () => app.getVersion());
 ipcMain.handle('backend:versions', () => { try { return mgr.currentVersions(); } catch { return null; } });
+ipcMain.handle('env:isolation', () => { try { return mgr.describeEnvIsolation(); } catch { return null; } });
 ipcMain.handle('backend:check-updates', () => silentStageUpdates({ includeNode: true }));
 ipcMain.handle('app:restart', () => restartApp());
 
@@ -397,6 +403,8 @@ if (!gotLock) {
       }
       // 4) Repair isolated profile junctions before boot (dsh throws on real dirs here).
       mgr.repairProfileJunctions(mgr.dshHome());
+      const iso = mgr.describeEnvIsolation();
+      pushLog(`env isolation: stripped ${iso.strippedVars.length} var(s), dropped ${iso.droppedPathEntries.length} foreign PATH entr(ies), DSH_HOME=${iso.dshHome}\n`);
       // 5) Start backend (self-heals and retries on profile/symlink errors).
       const url = await startBackendWithHealing();
       // 6) Show UI.

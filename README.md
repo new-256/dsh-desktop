@@ -18,11 +18,24 @@
    `%APPDATA%\DSH Desktop\backend\`（无需管理员权限）。
 2. **应用暂存更新**：若上次后台下载了新版（`dsh.new` / `node.new`），此时后端尚未启动、无文件占用，统一切换。
 3. **Node 门禁检查**：本地无网络极速检查当前 Node 是否满足 dsh 要求（当前 upstream 未声明 `engines`，内置最低 `22.15.0` 兜底）。满足时直接通过（0 延迟 0 网络请求）；仅当不满足时才拉取/准备合规 Node。
-4. **修复 junction**：清理 `DSH_HOME/profiles/node_modules` 下任何“真实目录”（dsh 要求这些是 junction，
-   真实目录会导致 `exists and is not a symlink` 直接崩溃）。
+4. **修复 junction**：清理 `DSH_HOME/profiles/node_modules` 下任何真实目录、指向外部安装的外国链接或失效死链接（dsh 要求这些是合规 junction，异常链接会导致崩溃或依赖错乱）。
 5. **启动后端**：用独立 `DSH_HOME=%APPDATA%\DSH Desktop\dsh-home` 启动 dsh web；
    若因 profile 状态失败，**自动清空 profiles 目录重试**；若再次失败，阶梯式**拉取最新 Node 运行时修复并重试**。
 6. **开窗口**，随后后台进行：dsh 静默更新检测（启动后 20 秒及每 6 小时）；外壳更新检查（默认禁用，配置 `DSH_SHELL_UPDATE_URL` 时启用）。
+
+## 环境隔离与数据安全
+
+应用对运行环境与用户数据进行了严格隔离与保护：
+
+- **数据持久化与安全**：用户数据（会话 `sessions/`、配置文件 `settings.yaml`、凭据 `.credentials.yaml` 等）保存在独立的 `%APPDATA%\DSH Desktop\dsh-home\` 中，为 `backend` 的同级目录。
+  - 卸载或覆盖安装时绝不清理用户数据（`deleteAppDataOnUninstall` 为 `false`），出厂 seed 与应用更新仅作用于 `backend\` 目录。
+  - 启动自愈机制**绝不删除**用户会话、配置与凭据；若后端启动因 profile 状态异常触发自愈，应用不会直接销毁数据，而是将旧 `profiles` 隔离备份为 `profiles.broken-<timestamp>`（仅保留最近 2 个历史备份），保证数据可恢复。
+- **环境变量净化**：后端进程及其派生的子进程使用经过严格净化的环境变量：
+  - **劫持变量剥离**：自动剔除 `NODE_OPTIONS`、`NODE_PATH`、`NODE_REPL_EXTERNAL_MODULE`、`NODE_ICU_DATA`、`NODE_V8_COVERAGE`、`ELECTRON_RUN_AS_NODE` 等易导致运行时崩溃或代码注入的变量。
+  - **npm 配置隔离**：统一清理 ambient `npm_config_*` 及 `NPM_TOKEN`，强制应用专用的 `.npmrc`。
+  - **网络与代理保留**：特例保留并规范化网络/代理相关配置（`HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`、`NODE_EXTRA_CA_CERTS` 以及 `npm_config_proxy` / `npm_config_ca` 等），确保企业内网代理与自定义证书正常工作。
+  - **PATH 净化**：以应用自建的 Node/npm 路径为最高优先级，同时自动过滤 ambient PATH 中指向外部 `node.exe`、`npm.cmd`、`npx.cmd`、`pnpm.cmd` 或 `dsh.cmd` 的路径，防止误调用全局或外部 Node/dsh 环境。
+- **Junction 自动修复**：每次启动时自动检查 `dsh-home/profiles/node_modules`，清理残存的真实目录、指向外部安装路径的外国链接（Foreign links）以及失效的死链接（Broken links），由 dsh 在启动时自动重建合法链接。
 
 ## 两套更新
 

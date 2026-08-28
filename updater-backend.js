@@ -89,6 +89,8 @@ function execSync(cmd) {
 }
 function rimraf(d) {
   if (!d) return;
+  try { fs.rmdirSync(d); return; } catch {}
+  try { fs.unlinkSync(d); return; } catch {}
   try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 3, retryDelay: 250 }); }
   catch { execSync(`rmdir /s /q "${d}"`); }
 }
@@ -128,6 +130,148 @@ function run(cmd, args, opts = {}) {
 // --------------------------------------------------------------------------
 // Dedicated, isolated runtime environment
 // --------------------------------------------------------------------------
+// Dedicated, isolated runtime environment
+// --------------------------------------------------------------------------
+const NODE_HIJACK_VARS = [
+  'NODE_OPTIONS',
+  'NODE_PATH',
+  'NODE_REPL_EXTERNAL_MODULE',
+  'NODE_ICU_DATA',
+  'NODE_V8_COVERAGE',
+  'ELECTRON_RUN_AS_NODE'
+];
+
+const NPM_PROXY_TLS_ALLOWLIST = new Set([
+  'npm_config_proxy',
+  'npm_config_https_proxy',
+  'npm_config_noproxy',
+  'npm_config_cafile',
+  'npm_config_ca',
+  'npm_config_strict_ssl'
+]);
+
+const TARGET_BINARIES = ['node.exe', 'npm.cmd', 'npx.cmd', 'pnpm.cmd', 'dsh.cmd'];
+
+function isInsideActiveRoot(dirPath, rootPath) {
+  if (!dirPath || !rootPath) return false;
+  try {
+    const resolvedDir = path.resolve(dirPath).toLowerCase();
+    const resolvedRoot = path.resolve(rootPath).toLowerCase();
+    return resolvedDir === resolvedRoot || resolvedDir.startsWith(resolvedRoot + path.sep);
+  } catch {
+    return false;
+  }
+}
+
+function containsForeignBinary(dirPath) {
+  if (!dirPath) return false;
+  try {
+    const cleanDir = dirPath.replace(/^"+|"+$/g, '').trim();
+    if (!cleanDir) return false;
+    for (const bin of TARGET_BINARIES) {
+      if (fs.existsSync(path.join(cleanDir, bin))) {
+        return true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+function analyzeEnvIsolation(baseEnv = process.env) {
+  const p = P();
+  const env = {};
+  const strippedVarsSet = new Set();
+
+  for (const key of Object.keys(baseEnv)) {
+    env[key] = baseEnv[key];
+  }
+
+  // Remove Node startup / module resolution hijacking vectors that cause backend spawn failure
+  // (e.g., stray NODE_OPTIONS --require or stale NODE_PATH).
+  for (const key of Object.keys(env)) {
+    const upperKey = key.toUpperCase();
+    if (NODE_HIJACK_VARS.includes(upperKey)) {
+      strippedVarsSet.add(key);
+      delete env[key];
+    }
+  }
+
+  // Normalize npm configuration case-insensitively. Remove ambient npm_config_* vars
+  // (except proxy/TLS allowlist) so user's global config cannot win over dedicated .npmrc.
+  // Preserve corporate network proxy & custom CA cert settings (HTTP_PROXY, HTTPS_PROXY,
+  // NO_PROXY, NODE_EXTRA_CA_CERTS). Unlike NODE_OPTIONS, these do not allow code execution hijacking.
+  const proxyTlsValues = {};
+  for (const key of Object.keys(env)) {
+    const lowerKey = key.toLowerCase();
+    if (lowerKey.startsWith('npm_config_')) {
+      if (NPM_PROXY_TLS_ALLOWLIST.has(lowerKey)) {
+        if (env[key] !== undefined) {
+          proxyTlsValues[lowerKey] = env[key];
+        }
+      } else {
+        strippedVarsSet.add(key);
+      }
+      delete env[key];
+    } else if (lowerKey === 'npm_execpath' || lowerKey === 'npm_lifecycle_script' || lowerKey.startsWith('npm_package_') || lowerKey === 'npm_token') {
+      strippedVarsSet.add(key);
+      delete env[key];
+    }
+  }
+
+  // Re-emit proxy/TLS allowlisted npm config keys in lowercase form.
+  for (const [k, v] of Object.entries(proxyTlsValues)) {
+    env[k] = v;
+  }
+
+  // Isolated npm / corepack / pnpm homes & DSH_HOME.
+  env.NPM_CONFIG_USERCONFIG = p.npmRc;
+  env.NPM_CONFIG_CACHE = p.npmCache;
+  env.NPM_CONFIG_PREFIX = p.npmPrefix;
+  env.npm_config_userconfig = p.npmRc;
+  env.npm_config_cache = p.npmCache;
+  env.npm_config_prefix = p.npmPrefix;
+  env.COREPACK_HOME = p.corepackHome;
+  env.COREPACK_ENABLE_AUTO_PIN = '0';
+  env.PNPM_HOME = p.pnpmHome;
+  env.XDG_DATA_HOME = p.corepackHome;
+
+  if (env.DSH_HOME && env.DSH_HOME !== p.dshHome) {
+    strippedVarsSet.add('DSH_HOME');
+  }
+  delete env.DSH_HOME;
+  env.DSH_HOME = p.dshHome;
+
+  // PATH hygiene: build PATH as [our node prefix, our npm prefix, ...filtered ambient PATH].
+  const rawPath = baseEnv.PATH || baseEnv.Path || baseEnv.path || '';
+  const pathSep = process.platform === 'win32' ? ';' : ':';
+  const rawEntries = rawPath.split(pathSep).map((e) => e.replace(/^"+|"+$/g, '').trim()).filter(Boolean);
+
+  const droppedPathEntries = [];
+  const keptAmbientEntries = [];
+
+  for (const entry of rawEntries) {
+    if (isInsideActiveRoot(entry, p.root)) {
+      keptAmbientEntries.push(entry);
+    } else if (containsForeignBinary(entry)) {
+      droppedPathEntries.push(entry);
+    } else {
+      keptAmbientEntries.push(entry);
+    }
+  }
+
+  const pathHead = [p.root, p.npmPrefix];
+  env.PATH = [...pathHead, ...keptAmbientEntries].join(pathSep);
+
+  const strippedVars = Array.from(strippedVarsSet).sort();
+
+  return {
+    env,
+    strippedVars,
+    droppedPathEntries,
+    pathHead
+  };
+}
+
 /**
  * Build the environment for the dsh backend AND every child process it spawns
  * (npm/pnpm/corepack when installing plugins, etc.). This guarantees:
@@ -150,27 +294,25 @@ function buildDedicatedEnv() {
   ];
   try { fs.writeFileSync(p.npmRc, npmrcLines.join('\n') + '\n'); } catch {}
 
-  const env = { ...process.env };
-  // Put the dedicated node prefix (where node.exe / npm.cmd / npx.cmd live) first.
-  const pathSep = process.platform === 'win32' ? ';' : ':';
-  env.PATH = [p.root, p.npmPrefix, process.env.PATH || process.env.Path || ''].join(pathSep);
-  // Remove any ambient node-related vars that could redirect resolution.
-  delete env.ELECTRON_RUN_AS_NODE;
-  // Isolated npm / corepack / pnpm homes.
-  env.NPM_CONFIG_USERCONFIG = p.npmRc;
-  env.NPM_CONFIG_CACHE = p.npmCache;
-  env.NPM_CONFIG_PREFIX = p.npmPrefix;
-  env.npm_config_userconfig = p.npmRc;
-  env.npm_config_cache = p.npmCache;
-  env.npm_config_prefix = p.npmPrefix;
-  env.COREPACK_HOME = p.corepackHome;
-  env.COREPACK_ENABLE_AUTO_PIN = '0';
-  env.PNPM_HOME = p.pnpmHome;
-  env.XDG_DATA_HOME = p.corepackHome;
-  // Isolated harness home (do NOT inherit the user's CLI DSH_HOME).
-  delete env.DSH_HOME;
-  env.DSH_HOME = p.dshHome;
-  return env;
+  const isolation = analyzeEnvIsolation(process.env);
+  delete isolation.env.ELECTRON_RUN_AS_NODE;
+  if (isolation.droppedPathEntries.length > 0) {
+    log(`dropped ${isolation.droppedPathEntries.length} foreign PATH entry(ies) from ambient PATH`);
+  }
+  return isolation.env;
+}
+
+function describeEnvIsolation() {
+  const p = P();
+  const isolation = analyzeEnvIsolation(process.env);
+  return {
+    nodePrefix: p.root,
+    npmPrefix: p.npmPrefix,
+    dshHome: p.dshHome,
+    strippedVars: isolation.strippedVars,
+    droppedPathEntries: isolation.droppedPathEntries,
+    pathHead: isolation.pathHead
+  };
 }
 
 // Ensure pnpm/yarn shims exist inside the dedicated node prefix (dsh plugins use pnpm).
@@ -330,27 +472,163 @@ function ensureSeeded() {
 /**
  * dsh manages `$DSH_HOME/profiles/node_modules/<pkg>` as junctions. A real
  * directory there (leftover from a pnpm run, a copy, etc.) makes dsh throw and
- * refuse to boot. Remove every non-junction entry so dsh can re-create links.
+ * refuse to boot. Remove every non-junction entry, foreign junction (pointing
+ * outside active root), or broken link so dsh can re-create valid links.
  */
 function repairProfileJunctions(home) {
+  const root = activeRoot();
   const modulesDir = path.join(home, 'profiles', 'node_modules');
   if (!fs.existsSync(modulesDir)) return false;
-  let repaired = false;
-  for (const entry of fs.readdirSync(modulesDir)) {
-    const full = path.join(modulesDir, entry);
-    let st; try { st = fs.lstatSync(full); } catch { continue; }
+
+  let realDirs = 0;
+  let foreignLinks = 0;
+  let brokenLinks = 0;
+
+  function inspectAndRepair(itemPath) {
+    let st;
+    try {
+      st = fs.lstatSync(itemPath);
+    } catch {
+      return;
+    }
+
     if (st.isDirectory() && !st.isSymbolicLink()) {
-      if (entry.startsWith('@')) {
-        for (const sub of fs.readdirSync(full)) {
-          const sfull = path.join(full, sub);
-          let sst; try { sst = fs.lstatSync(sfull); } catch { continue; }
-          if (sst.isDirectory() && !sst.isSymbolicLink()) { rimraf(sfull); repaired = true; }
-        }
-      } else { rimraf(full); repaired = true; }
+      rimraf(itemPath);
+      realDirs++;
+      return;
+    }
+
+    if (st.isSymbolicLink()) {
+      let targetPath;
+      try {
+        targetPath = fs.realpathSync(itemPath);
+      } catch {
+        rimraf(itemPath);
+        brokenLinks++;
+        return;
+      }
+
+      if (!isInsideActiveRoot(targetPath, root)) {
+        rimraf(itemPath);
+        foreignLinks++;
+        return;
+      }
     }
   }
-  if (repaired) log('repaired non-junction profile entries under', modulesDir);
+
+  try {
+    const entries = fs.readdirSync(modulesDir);
+    for (const entry of entries) {
+      const full = path.join(modulesDir, entry);
+      let st;
+      try { st = fs.lstatSync(full); } catch { continue; }
+
+      if (entry.startsWith('@')) {
+        if (st.isSymbolicLink()) {
+          inspectAndRepair(full);
+        } else if (st.isDirectory()) {
+          let subEntries = [];
+          try { subEntries = fs.readdirSync(full); } catch {}
+          for (const sub of subEntries) {
+            inspectAndRepair(path.join(full, sub));
+          }
+        }
+      } else {
+        inspectAndRepair(full);
+      }
+    }
+  } catch {}
+
+  const repaired = (realDirs + foreignLinks + brokenLinks) > 0;
+  if (repaired) {
+    const details = [];
+    if (realDirs > 0) details.push(`${realDirs} real dir(s)`);
+    if (foreignLinks > 0) details.push(`${foreignLinks} foreign link(s)`);
+    if (brokenLinks > 0) details.push(`${brokenLinks} broken link(s)`);
+    log(`repaired profile entries under ${modulesDir}: ${details.join(', ')}`);
+  }
   return repaired;
+}
+
+function formatDateTimestamp(d = new Date()) {
+  const YYYY = d.getFullYear();
+  const MM = String(d.getMonth() + 1).padStart(2, '0');
+  const DD = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${YYYY}${MM}${DD}-${hh}${mm}${ss}`;
+}
+
+function pruneQuarantineProfiles(home) {
+  try {
+    const entries = fs.readdirSync(home);
+    const quarantineDirs = [];
+    for (const entry of entries) {
+      if (/^profiles\.broken-/i.test(entry)) {
+        const full = path.join(home, entry);
+        let st;
+        try { st = fs.lstatSync(full); } catch { continue; }
+        if (st.isDirectory()) {
+          quarantineDirs.push({ name: entry, path: full, mtime: st.mtimeMs });
+        }
+      }
+    }
+
+    quarantineDirs.sort((a, b) => b.name.localeCompare(a.name) || (b.mtime - a.mtime));
+
+    if (quarantineDirs.length > 2) {
+      const toRemove = quarantineDirs.slice(2);
+      for (const item of toRemove) {
+        rimraf(item.path);
+        log(`pruned old quarantine directory: ${item.name}`);
+      }
+    }
+  } catch (e) {
+    log(`pruneQuarantineProfiles error: ${e.message}`);
+  }
+}
+
+/**
+ * Safely quarantine a broken profiles directory to profiles.broken-<YYYYMMDD-HHmmss>.
+ * Falls back to destructive rimraf only if rename fails (e.g. file lock), ensuring
+ * app boot reliability is never compromised. Prunes old quarantine dirs keeping the 2 most recent.
+ */
+function quarantineProfiles(home) {
+  const prof = path.join(home, 'profiles');
+  if (!fs.existsSync(prof)) return { quarantined: false, name: null, fallback: false };
+
+  const timestamp = formatDateTimestamp();
+  let targetName = `profiles.broken-${timestamp}`;
+  let targetPath = path.join(home, targetName);
+
+  let counter = 1;
+  while (fs.existsSync(targetPath)) {
+    targetName = `profiles.broken-${timestamp}_${counter++}`;
+    targetPath = path.join(home, targetName);
+  }
+
+  let quarantined = false;
+  let fallback = false;
+
+  try {
+    fs.renameSync(prof, targetPath);
+    quarantined = true;
+    log(`quarantined broken profiles to ${targetName}`);
+  } catch (e) {
+    log(`rename profiles to ${targetName} failed (${e.message}); falling back to rimraf`);
+    try {
+      rimraf(prof);
+      quarantined = true;
+      fallback = true;
+    } catch (err) {
+      log(`fallback rimraf profiles failed: ${err.message}`);
+    }
+  }
+
+  pruneQuarantineProfiles(home);
+
+  return { quarantined, name: targetName, path: targetPath, fallback };
 }
 
 function stagedVersions() {
@@ -573,9 +851,9 @@ async function checkForUpdates(options = {}) {
 module.exports = {
   P, activeRoot, dshHome,
   ensureSeeded, applyStaged, ensureNodeMeetsRequirement,
-  repairProfileJunctions, repairNodeForBackendFailure, nodeRequirement,
+  repairProfileJunctions, quarantineProfiles, repairNodeForBackendFailure, nodeRequirement,
   // main.js spawns the backend with this dedicated/isolated environment.
-  buildDedicatedEnv, enableCorepack,
+  buildDedicatedEnv, describeEnvIsolation, enableCorepack,
   currentVersions, stagedVersions, checkForUpdates,
   stageDsh, stageNode,
   latestDshVersion, latestNodeVersion, minNodeForDsh, nodeMeetsRequirement,
