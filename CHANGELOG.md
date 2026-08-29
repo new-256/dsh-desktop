@@ -2,6 +2,19 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 风格；版本号与 `package.json` 保持一致。
 
+## [0.3.4] - 2026-08-29
+
+外壳自愈加固：修复"插件源缺失时反复隔离 profiles / 重装 Node 仍启动失败"的死循环（0.3.3 为内部误构建，混入插件开发项目，未发布；本版本为 0.3.2 的直接后继）。
+
+### 新增
+
+- **自定义插件 junction 自动重建**：`repairProfileJunctions` 现在会把 `dsh-home/node_modules` 家级插件 junction（如 bot-gateway、dsh-model-status）镜像到 `profiles/node_modules` 与 `profiles/web/node_modules`，隔离重建 profiles 后裸包名插件仍可解析；外来链接清理会豁免家级 junction 目标，避免重建结果被下一轮清理误删。
+- **家级补丁坏条目自动禁用**：后端反复启动失败时解析 `ERR_MODULE_NOT_FOUND` 日志，匹配 `dsh-home/cordis.patch.yml` 中源文件缺失的插件条目——先备份（`cordis.patch.yml.disabled-<时间戳>.bak`）再注释禁用，弹窗告知用户后重试一次，不再死循环。
+
+### 变更
+
+- 自愈阶梯调整为：隔离重建 profiles → 插件 junction 修复 / 坏条目禁用 → Node 运行时修复。
+
 ## [0.3.2] - 2026-08-28
 
 安装器体验重做，修复"安装一小时不完成"问题：

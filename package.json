@@ -6,6 +6,10 @@
   "author": "DSH Desktop Packager",
   "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/new-256/dsh-desktop.git"
+  },
   "main": "main.js",
   "scripts": {
     "postinstall": "node scripts/install-backend.js && node scripts/prepare-runtime.js",
