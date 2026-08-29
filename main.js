@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain, Tray, nativeImage } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -14,6 +14,9 @@ catch (err) { console.warn('[dsh-desktop] electron-updater unavailable:', err &&
 
 const APP_NAME = 'DSH Desktop';
 const isPackaged = app.isPackaged;
+// Auto-started at login (the tray toggle writes `--hidden` to the Windows Run
+// key): boot fully but stay hidden in the tray — keep-alive by default.
+const autoStartHidden = process.argv.includes('--hidden');
 
 // Chromium renderer reliability/perf flags (Electron ships Chromium; we use it as
 // the always-available window). A system WebView2 runtime is detected separately
@@ -50,6 +53,8 @@ let mainWindow = null;
 let splashWindow = null;
 let activeUrl = null;
 let isQuitting = false;
+let tray = null;
+let trayHintShown = false;
 
 function pushLog(line) {
   const text = line == null ? '' : line.toString();
@@ -233,6 +238,8 @@ async function startBackendWithHealing() {
 let crashNotified = false;
 function handleBackendCrashed() {
   if (crashNotified) return; crashNotified = true;
+  // The window may be hidden in the tray — surface it before the dialog.
+  if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); }
   dialog.showMessageBox(mainWindow, {
     type: 'warning', buttons: ['重启应用', '关闭'], defaultId: 0, cancelId: 1,
     title: APP_NAME,
@@ -240,7 +247,7 @@ function handleBackendCrashed() {
     detail: 'DSH 后端意外退出。重启应用可恢复；你的会话与配置保存在独立数据目录中，不会丢失。'
   }).then((r) => {
     crashNotified = false;
-    if (r.response === 0) restartApp(); else app.quit();
+    if (r.response === 0) restartApp(); else { isQuitting = true; app.quit(); }
   });
 }
 
@@ -258,6 +265,81 @@ function createSplash() {
 }
 
 function closeSplash() { if (splashWindow) { try { splashWindow.close(); } catch {} splashWindow = null; } }
+
+// ---------------------------------------------------------------------------
+// System tray / close-to-tray — DSH is a keep-alive app by default
+// ---------------------------------------------------------------------------
+function trayMenuTemplate() {
+  let autoStartItem;
+  if (isPackaged) {
+    autoStartItem = {
+      label: '开机自启',
+      type: 'checkbox',
+      checked: app.getLoginItemSettings().openAtLogin,
+      click: (item) => {
+        const next = !!item.checked;
+        try {
+          app.setLoginItemSettings({ openAtLogin: next, args: ['--hidden'] });
+          pushLog(`auto-start ${next ? 'enabled' : 'disabled'}\n`);
+        } catch (e) {
+          pushLog(`auto-start toggle failed: ${e && e.message}\n`);
+          item.checked = !next; // revert the checkbox
+        }
+      }
+    };
+  } else {
+    autoStartItem = { label: '开机自启（仅安装版可用）', enabled: false };
+  }
+  return [
+    { label: '打开 DSH Desktop', click: () => showMainWindow() },
+    { type: 'separator' },
+    autoStartItem,
+    { type: 'separator' },
+    { label: '退出', click: () => quitApp() }
+  ];
+}
+
+function createTray() {
+  if (tray && !tray.isDestroyed()) return tray;
+  let icon;
+  try {
+    icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png')).resize({ width: 16, height: 16 });
+  } catch {
+    icon = path.join(__dirname, 'assets', 'icon.png');
+  }
+  try {
+    tray = new Tray(icon);
+  } catch (e) {
+    pushLog(`tray creation failed: ${e && e.message}\n`);
+    return null;
+  }
+  tray.setToolTip(APP_NAME);
+  tray.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate()));
+  tray.on('click', () => showMainWindow());
+  tray.on('double-click', () => showMainWindow());
+  // Refresh the context menu on every right-click so the 开机自启 checkbox
+  // always reflects the current login-item state.
+  tray.on('right-click', () => { try { tray.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate())); } catch {} });
+  return tray;
+}
+
+function showMainWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
+  // Window was actually closed (should not happen while tray is alive); rebuild it.
+  if (activeUrl) createMainWindow(activeUrl);
+}
+
+function quitApp() {
+  isQuitting = true;
+  if (tray) { try { tray.destroy(); } catch {} tray = null; }
+  killProcessTree(backend);
+  app.quit();
+}
 
 function applyWindowHandlers(win) {
   win.webContents.setWindowOpenHandler(({ url: target }) => {
@@ -278,12 +360,27 @@ function createChromiumWindow(url) {
   Menu.setApplicationMenu(null);
   applyWindowHandlers(win);
   win.loadURL(url);
-  win.once('ready-to-show', () => { win.show(); closeSplash(); });
+  win.once('ready-to-show', () => {
+    if (autoStartHidden) { closeSplash(); return; } // auto-started at login: stay in tray
+    win.show(); closeSplash();
+  });
   win.webContents.on('did-fail-load', (_e, code, desc) => {
     pushLog(`chromium did-fail-load ${code} ${desc}\n`);
     if (code === -3) return; // aborted (normal on redirect)
   });
   win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
+  // Close button (X) hides to tray instead of quitting — DSH is keep-alive.
+  win.on('close', (e) => {
+    if (isQuitting || !tray) return;
+    e.preventDefault();
+    win.hide();
+    if (!trayHintShown) {
+      trayHintShown = true;
+      try {
+        tray.displayBalloon({ iconType: 'info', title: APP_NAME, content: '已最小化到系统托盘，DSH 仍在后台运行。右键托盘图标可退出。' });
+      } catch {}
+    }
+  });
   return win;
 }
 
@@ -428,10 +525,10 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); } });
+  app.on('second-instance', () => showMainWindow());
 
   app.whenReady().then(async () => {
-    createSplash();
+    if (!autoStartHidden) createSplash();
     try {
       // 1) Seed writable active dir from factory resources (first run).
       mgr.ensureSeeded();
@@ -449,8 +546,9 @@ if (!gotLock) {
       pushLog(`env isolation: stripped ${iso.strippedVars.length} var(s), dropped ${iso.droppedPathEntries.length} foreign PATH entr(ies), DSH_HOME=${iso.dshHome}\n`);
       // 5) Start backend (self-heals and retries on profile/symlink errors).
       const url = await startBackendWithHealing();
-      // 6) Show UI.
+      // 6) Show UI + arm the keep-alive tray (close button hides to tray).
       await createMainWindow(url);
+      createTray();
       // 7) Background: shell updater + silent backend updates.
       setupShellUpdater();
       scheduleSilentUpdates();
@@ -459,7 +557,11 @@ if (!gotLock) {
     }
   });
 
-  app.on('window-all-closed', () => { isQuitting = true; killProcessTree(backend); app.quit(); });
+  app.on('window-all-closed', () => {
+    // With a live tray the app is keep-alive: closing the (hidden) window must
+    // not quit. Only quit for a real exit or when the tray could not be created.
+    if (isQuitting || !tray) { isQuitting = true; killProcessTree(backend); app.quit(); }
+  });
   app.on('before-quit', () => { isQuitting = true; killProcessTree(backend); });
   process.on('exit', () => { isQuitting = true; killProcessTree(backend); });
 }
