@@ -291,7 +291,7 @@ function trayMenuTemplate() {
     autoStartItem = { label: '开机自启（仅安装版可用）', enabled: false };
   }
   return [
-    updateMenuItem(),
+    ...updateMenuItems(),
     { type: 'separator' },
     { label: '打开 DSH Desktop', click: () => showMainWindow() },
     { type: 'separator' },
@@ -468,37 +468,42 @@ function setupShellUpdater() {
 // Silent backend/environment updates — stage in background; apply on next launch
 // ---------------------------------------------------------------------------
 let silentBusy = false;
-let updateStatus = { state: 'idle', percent: 0, message: '未检查更新', detail: '' };
-function setUpdateStatus(state, message, percent = updateStatus.percent, detail = updateStatus.detail) {
-  updateStatus = { state, percent: Math.max(0, Math.min(100, percent)), message, detail };
+let updateStatus = { state: 'idle', percent: 0, message: '未检查更新', detail: '', current: '读取中', latest: '未检查' };
+function setUpdateStatus(state, message, percent = updateStatus.percent, detail = updateStatus.detail, versions = {}) {
+  updateStatus = { ...updateStatus, ...versions, state, percent: Math.max(0, Math.min(100, percent)), message, detail };
   if (tray && !tray.isDestroyed()) {
     try { tray.setToolTip(`${APP_NAME} · ${message}`); tray.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate())); } catch {}
   }
 }
-function updateMenuItem() {
+function updateMenuItems() {
   const p = updateStatus.percent;
   const suffix = updateStatus.state === 'downloading' ? ` ${p}%` : '';
-  return { label: `更新：${updateStatus.message}${suffix}`, enabled: false };
+  return [
+    { label: `当前版本：${updateStatus.current}`, enabled: false },
+    { label: `最新版本：${updateStatus.latest}`, enabled: false },
+    { label: `更新：${updateStatus.message}${suffix}`, enabled: false }
+  ];
 }
 async function silentStageUpdates(options = {}) {
   if (silentBusy) return;
   silentBusy = true;
-  setUpdateStatus('checking', '正在检查更新', 0);
+  setUpdateStatus('checking', '正在检查更新', 0, '', { current: mgr.currentVersions()?.dsh || '未知', latest: '检查中…' });
   try {
     const info = await mgr.checkForUpdates(options);
+    setUpdateStatus('checking', '检查完成', 0, '', { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
     if (info.pending && info.pending.length) {
       pushLog('已暂存 ' + info.pending.map((p) => `${p.component}->${p.staged}`).join(', ') + '，将在下次启动时自动应用（跳过重复下载）\n');
     }
     if (!info.updates || !info.updates.length) {
       if (!info.pending || !info.pending.length) {
         pushLog('backend components up to date\n');
-        setUpdateStatus('idle', '已是最新版本', 100);
+        setUpdateStatus('idle', '已是最新版本', 100, '', { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
       } else {
-        setUpdateStatus('ready', '更新待重启应用', 100, info.pending.map((p) => `${p.component} ${p.staged}`).join('；'));
+        setUpdateStatus('ready', '更新待重启应用', 100, info.pending.map((p) => `${p.component} ${p.staged}`).join('；'), { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
       }
       return;
     }
-    setUpdateStatus('downloading', `发现 ${info.updates.length} 项更新`, 0, info.updates.map((u) => `${u.component} → ${u.latest}`).join('；'));
+    setUpdateStatus('downloading', `发现 ${info.updates.length} 项更新`, 0, info.updates.map((u) => `${u.component} → ${u.latest}`).join('；'), { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
     const cbs = { onLog: (m) => pushLog('[update] ' + m + '\n'), onProgress: (p) => setUpdateStatus('downloading', '正在下载更新', Math.round((p || 0) * 100), updateStatus.detail) };
     const summaries = [];
     for (const u of info.updates) {
@@ -514,14 +519,14 @@ async function silentStageUpdates(options = {}) {
       } catch (e) { pushLog('[update] stage failed ' + u.component + ': ' + e.message + '\n'); }
     }
     const detail = summaries.length ? summaries.join('\n') : '新版本已下载。';
-    setUpdateStatus('ready', '更新已下载，等待重启', 100, detail);
+    setUpdateStatus('ready', '更新已下载，等待重启', 100, detail, { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
     pushLog('更新内容：\n' + detail + '\n将在下次启动时自动应用。\n');
     if (mainWindow && !mainWindow.isDestroyed()) {
       try { mainWindow.flashFrame(false); } catch {}
       try { tray && tray.displayBalloon({ iconType: 'info', title: 'DSH 更新已准备', content: detail + '\n重启应用后生效。' }); } catch {}
     }
   } catch (e) {
-    setUpdateStatus('error', '更新失败', 0, e && e.message ? e.message : '未知错误');
+    setUpdateStatus('error', '更新失败', 0, e && e.message ? e.message : '未知错误', { current: updateStatus.current, latest: updateStatus.latest || '未知' });
     pushLog('[update] check failed: ' + (e && e.message) + '\n');
   } finally {
     silentBusy = false;
