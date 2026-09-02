@@ -1212,8 +1212,17 @@ function applyStaged() {
     try {
       const oldBackup = path.join(p.root, 'dsh.old');
       rimraf(oldBackup);
-      if (fs.existsSync(p.dshDir)) fs.renameSync(p.dshDir, oldBackup);
-      fs.renameSync(p.dshNew, p.dshDir);
+      try {
+        if (fs.existsSync(p.dshDir)) fs.renameSync(p.dshDir, oldBackup);
+        fs.renameSync(p.dshNew, p.dshDir);
+      } catch (swapError) {
+        // Windows security software can transiently reject rename. Retry with a
+        // copy-based swap; never discard dsh.new until the active package exists.
+        log('dsh rename swap failed, retrying copy swap:', swapError.message);
+        if (!fs.existsSync(path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'))) throw swapError;
+        copyDir(p.dshNew, p.dshDir);
+        rimraf(p.dshNew);
+      }
       // Retain the previous version for rollback after startup health checks.
       rimraf(p.dshPrevious);
       if (fs.existsSync(oldBackup)) fs.renameSync(oldBackup, p.dshPrevious);
