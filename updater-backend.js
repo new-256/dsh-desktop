@@ -63,6 +63,8 @@ function P() {
     dshBin: path.join(root, 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'),
     dshPkg: path.join(root, 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
     dshNew: path.join(root, 'dsh.new'),
+    dshPrevious: path.join(root, 'dsh.previous'),
+    pluginSnapshot: path.join(root, 'plugin-state.json'),
     nodeNew: path.join(root, 'node.new'),
     downloadDir: path.join(root, 'downloads'),
     versionsJson: path.join(root, 'versions.json'),
@@ -880,8 +882,26 @@ function quarantineProfiles(home) {
   return { quarantined, name: targetName, path: targetPath, fallback };
 }
 
-// --------------------------------------------------------------------------
-// Home-level patch plugin heal (0.3.4)
+function pluginEntries(home) {
+  const patchPath = path.join(home, 'cordis.patch.yml');
+  if (!fs.existsSync(patchPath)) return [];
+  let text; try { text = fs.readFileSync(patchPath, 'utf8'); } catch { return []; }
+  return parsePatchEntries(text).map((entry) => ({ name: entry.name, available: pluginSourceAvailable(home, entry) }));
+}
+function snapshotPluginState() {
+  const p = P();
+  const snapshot = { backend: currentVersions().dsh, createdAt: new Date().toISOString(), plugins: pluginEntries(p.dshHome) };
+  writeJson(p.pluginSnapshot, snapshot);
+  return snapshot;
+}
+function pluginCompatibilityReport(home, backendVersion) {
+  return pluginEntries(home).map((plugin) => ({ ...plugin, compatible: plugin.available, reason: plugin.available ? null : '插件源文件不存在或不可加载' }));
+}
+function disableIncompatiblePlugins(home, report) {
+  const broken = report.filter((p) => !p.compatible);
+  if (!broken.length) return { disabled: [], backup: null };
+  return disableBrokenPatchPlugins(home, broken.map((p) => ({ id: p.name, name: p.name })));
+}
 // --------------------------------------------------------------------------
 // The user's HOME-level cordis.patch.yml (dsh-home/cordis.patch.yml) may inject
 // third-party plugins (e.g. the 0.3.3 extension set) that the installed shell
@@ -1143,6 +1163,20 @@ async function stageNode(callbacks = {}) {
   return { version: latest, reused: false };
 }
 
+function rollbackDsh() {
+  const p = P();
+  if (!fs.existsSync(path.join(p.dshPrevious, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'))) return false;
+  const failed = path.join(p.root, 'dsh.failed');
+  rimraf(failed);
+  if (fs.existsSync(p.dshDir)) fs.renameSync(p.dshDir, failed);
+  fs.renameSync(p.dshPrevious, p.dshDir);
+  rimraf(failed);
+  const cur = currentVersions();
+  writeJson(p.versionsJson, { ...readJson(p.versionsJson, {}), ...Object.fromEntries(Object.entries(cur).filter(([, v]) => v)) });
+  log('rolled back dsh to', cur.dsh);
+  return true;
+}
+
 // Apply anything staged. Runs BEFORE the backend is spawned (so nothing is locked).
 function applyStaged() {
   const p = P();
@@ -1180,7 +1214,9 @@ function applyStaged() {
       rimraf(oldBackup);
       if (fs.existsSync(p.dshDir)) fs.renameSync(p.dshDir, oldBackup);
       fs.renameSync(p.dshNew, p.dshDir);
-      rimraf(oldBackup);
+      // Retain the previous version for rollback after startup health checks.
+      rimraf(p.dshPrevious);
+      if (fs.existsSync(oldBackup)) fs.renameSync(oldBackup, p.dshPrevious);
       applied.dsh = dshVersion(); log('applied staged dsh', applied.dsh);
     } catch (e) {
       log('apply staged dsh failed:', e.message);
@@ -1286,6 +1322,7 @@ module.exports = {
   // main.js spawns the backend with this dedicated/isolated environment.
   buildDedicatedEnv, describeEnvIsolation, enableCorepack,
   currentVersions, stagedVersions, checkForUpdates,
+  snapshotPluginState, pluginCompatibilityReport, disableIncompatiblePlugins, rollbackDsh,
   stageDsh, stageNode,
   latestDshVersion, latestDshInfo, latestNodeVersion, minNodeForDsh, nodeMeetsRequirement,
   compareSemver
