@@ -2,7 +2,14 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 风格；版本号与 `package.json` 保持一致。
 
-## [0.3.10] - 2026-09-02
+## [0.3.11] - 2026-09-02
+
+### 修复
+
+- 启动前自动兼容迁移旧版 session projection cache，为缺失的 `identity.isSeeded` 与 `identity.inheritedEventCount` 补齐安全默认值。
+- 每个被修改的缓存文件先创建备份，再使用临时文件原子替换；不触碰会话 JSONL、workspace、设置和凭据。
+- 修复 bot-gateway 前端模块注册 ID 与 npm 包名不一致导致的 Loader 报错。
+
 
 ### 修复
 

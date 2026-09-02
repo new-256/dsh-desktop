@@ -554,12 +554,55 @@ function seedFromArchive(p) {
   return false;
 }
 
+function migrateProjectionCache() {
+  const p = P();
+  const dir = path.join(p.dshHome, 'storages', 'session_projcache');
+  if (!fs.existsSync(dir)) return { changed: 0, skipped: 0 };
+  const backupDir = path.join(dir, `migration-backup-${formatDateTimestamp()}`);
+  let changed = 0; let skipped = 0;
+  const files = [];
+  function collect(root) {
+    let entries = []; try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const full = path.join(root, entry.name);
+      if (entry.isDirectory()) collect(full);
+      else if (entry.isFile() && entry.name.toLowerCase().endsWith('.json')) files.push(full);
+    }
+  }
+  collect(dir);
+  for (const file of files) {
+    let value; try { value = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { skipped++; continue; }
+    let touched = false;
+    function visit(node) {
+      if (!node || typeof node !== 'object') return;
+      if (node.identity && typeof node.identity === 'object' && !Array.isArray(node.identity)) {
+        if (typeof node.identity.isSeeded !== 'boolean') { node.identity.isSeeded = false; touched = true; }
+        if (typeof node.identity.inheritedEventCount !== 'number' || !Number.isFinite(node.identity.inheritedEventCount)) { node.identity.inheritedEventCount = 0; touched = true; }
+      }
+      for (const child of Object.values(node)) visit(child);
+    }
+    visit(value);
+    if (!touched) continue;
+    try {
+      mkdirp(path.dirname(path.join(backupDir, path.relative(dir, file))));
+      fs.copyFileSync(file, path.join(backupDir, path.relative(dir, file)));
+      const temp = `${file}.migration-${process.pid}.tmp`;
+      fs.writeFileSync(temp, JSON.stringify(value, null, 2) + '\n', 'utf8');
+      fs.renameSync(temp, file);
+      changed++;
+    } catch (e) { try { fs.unlinkSync(`${file}.migration-${process.pid}.tmp`); } catch {} log('projection cache migration skipped:', e.message); skipped++; }
+  }
+  if (changed) log(`migrated ${changed} projection cache file(s); backups: ${backupDir}`);
+  return { changed, skipped, backup: changed ? backupDir : null };
+}
+
 function ensureSeeded() {
   const p = P();
   let changed = false;
   mkdirp(p.root); mkdirp(path.join(p.root, 'node_modules'));
   // Isolated harness home (created eagerly so junction repair / first boot work even on a fresh install).
   mkdirp(p.dshHome);
+  migrateProjectionCache();
 
   // Dedicated Node prefix: copy node.exe + shims (npm.cmd/npx.cmd/corepack.cmd)
   // + node_modules/{npm,corepack} from the factory runtime into the active root,
@@ -1325,7 +1368,7 @@ async function checkForUpdates(options = {}) {
 
 module.exports = {
   P, activeRoot, dshHome,
-  ensureSeeded, applyStaged, ensureNodeMeetsRequirement,
+  ensureSeeded, migrateProjectionCache, applyStaged, ensureNodeMeetsRequirement,
   repairProfileJunctions, quarantineProfiles, repairNodeForBackendFailure, nodeRequirement,
   analyzeBackendFailure, disableBrokenPatchPlugins,
   // main.js spawns the backend with this dedicated/isolated environment.
