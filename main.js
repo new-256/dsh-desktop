@@ -88,6 +88,12 @@ function activePaths() { return mgr.P(); }
  * DSH_HOME so it never collides with the user's CLI `~/.dsh` (and its symlink
  * state is fully owned by this app). Returns a promise resolving to the URL.
  */
+function updateSplash(message) {
+  if (!splashWindow || splashWindow.isDestroyed()) return;
+  const text = String(message || '正在启动 DeepSeek Harness 后端…').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' ');
+  splashWindow.webContents.executeJavaScript(`(() => { const el = document.querySelector('.sub'); if (el) el.textContent = '${text}'; })()`).catch(() => {});
+}
+
 function spawnBackend() {
   return new Promise((resolve, reject) => {
     const p = activePaths();
@@ -618,7 +624,16 @@ if (!gotLock) {
       // 3) Apply any update staged on the previous launch (backend NOT running yet → no locks).
       if (requestedBackend === 'online') {
         pushLog('安装程序选择在线最新 DSH 版本，开始检查更新。\n');
-        await silentStageUpdates({ includeNode: false });
+        updateSplash('正在检查在线 DSH 最新版本…');
+        const info = await mgr.checkForUpdates({ includeNode: false });
+        const online = info.latest && info.latest.dsh;
+        if (!online) throw new Error('无法获取在线 DSH 版本');
+        const current = info.current && info.current.dsh;
+        if (!current || mgr.compareSemver(online, current) > 0) {
+          updateSplash(`正在下载在线 DSH ${online}…`);
+          await mgr.stageDsh({ onLog: (m) => { pushLog('[backend-online] ' + m + '\n'); updateSplash(m); }, onProgress: (p) => updateSplash(`正在下载在线 DSH ${online}：${Math.round((p || 0) * 100)}%`) }, online);
+        }
+        updateSplash('正在应用在线 DSH 后端…');
       }
       const applied = mgr.applyStaged();
       const shouldIsolatePlugins = !!(applied && applied.dsh);

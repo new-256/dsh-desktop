@@ -562,6 +562,7 @@ function requestedBackendVersion() {
 
 function migrateProjectionCache() {
   const p = P();
+  const dir = path.join(p.dshHome, 'storages', 'session_projcache');
   if (!fs.existsSync(dir)) return { changed: 0, skipped: 0 };
   const backupDir = path.join(dir, `migration-backup-${formatDateTimestamp()}`);
   let changed = 0; let skipped = 0;
@@ -934,7 +935,14 @@ function pluginEntries(home) {
   const patchPath = path.join(home, 'cordis.patch.yml');
   if (!fs.existsSync(patchPath)) return [];
   let text; try { text = fs.readFileSync(patchPath, 'utf8'); } catch { return []; }
-  return parsePatchEntries(text).map((entry) => ({ name: entry.name, available: pluginSourceAvailable(home, entry) }));
+  const blocks = parseHomePatchBlocks(text);
+  const list = [];
+  for (const b of blocks) {
+    for (const e of b.entries) {
+      if (e && e.name) list.push({ name: e.name, id: e.id, available: pluginSourceAvailable(home, e) });
+    }
+  }
+  return list;
 }
 function snapshotPluginState() {
   const p = P();
@@ -944,6 +952,11 @@ function snapshotPluginState() {
 }
 function pluginCompatibilityReport(home, backendVersion) {
   return pluginEntries(home).map((plugin) => ({ ...plugin, compatible: plugin.available, reason: plugin.available ? null : '插件源文件不存在或不可加载' }));
+}
+function disableIncompatiblePlugins(home, report) {
+  const broken = report.filter((p) => !p.compatible);
+  if (!broken.length) return { disabled: [], backup: null };
+  return disableBrokenPatchPlugins(home, broken.map((p) => ({ id: p.name, name: p.name })));
 }
 function pluginIsolationStatePath() { return path.join(P().root, 'plugin-isolation.json'); }
 function readPatchText(home) { try { return fs.readFileSync(path.join(home, 'cordis.patch.yml'), 'utf8'); } catch { return null; } }
@@ -1416,7 +1429,7 @@ async function checkForUpdates(options = {}) {
 }
 
 module.exports = {
-  requestedBackendVersion,
+  P, activeRoot, dshHome, requestedBackendVersion,
   ensureSeeded, migrateProjectionCache, applyStaged, ensureNodeMeetsRequirement,
   repairProfileJunctions, quarantineProfiles, repairNodeForBackendFailure, nodeRequirement,
   analyzeBackendFailure, disableBrokenPatchPlugins,
