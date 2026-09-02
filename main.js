@@ -235,7 +235,8 @@ async function startBackendWithHealing() {
   throw firstErr;
 }
 
-async function startBackendWithPluginIsolation() {
+async function startBackendWithPluginIsolation(shouldIsolate = false) {
+  if (!shouldIsolate) return startBackendWithHealing();
   const isolation = mgr.preparePluginIsolation();
   if (!isolation.active || !isolation.plugins.length) return startBackendWithHealing();
   pushLog('检测到后端更新，先隔离全部第三方插件进行核心启动检查。\n');
@@ -608,8 +609,15 @@ if (!gotLock) {
     try {
       // 1) Seed writable active dir from factory resources (first run).
       mgr.ensureSeeded();
-      // 2) Apply any update staged on the previous launch (backend NOT running yet → no locks).
-      mgr.applyStaged();
+      // 2) Honor an installer-selected backend before the first backend boot.
+      const requestedBackend = mgr.requestedBackendVersion();
+      if (requestedBackend && mgr.currentVersions().dsh !== requestedBackend) {
+        pushLog(`安装程序选择 DSH 后端 ${requestedBackend}，正在准备该版本。\n`);
+        await mgr.stageDsh({ onLog: (m) => pushLog('[backend-select] ' + m + '\n'), onProgress: () => {} }, requestedBackend);
+      }
+      // 3) Apply any update staged on the previous launch (backend NOT running yet → no locks).
+      const applied = mgr.applyStaged();
+      const shouldIsolatePlugins = !!(applied && applied.dsh);
       // 3) Node gate: fast local check without network requests.
       const req = mgr.nodeRequirement();
       pushLog(`node gate: ${req.current || 'none'} >= ${req.required} (${req.source}) -> ${req.ok ? 'ok' : 'unsatisfied'}\n`);
@@ -621,7 +629,7 @@ if (!gotLock) {
       const iso = mgr.describeEnvIsolation();
       pushLog(`env isolation: stripped ${iso.strippedVars.length} var(s), dropped ${iso.droppedPathEntries.length} foreign PATH entr(ies), DSH_HOME=${iso.dshHome}\n`);
       // 5) Start backend (self-heals and retries on profile/symlink errors).
-      const url = await startBackendWithPluginIsolation();
+      const url = await startBackendWithPluginIsolation(shouldIsolatePlugins);
       // 6) Show UI + arm the keep-alive tray (close button hides to tray).
       await createMainWindow(url);
       createTray();

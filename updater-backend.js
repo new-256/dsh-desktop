@@ -1397,7 +1397,12 @@ async function checkForUpdates(options = {}) {
       result.latest[t.key] = latest;
       result.changes[t.key] = details.changes || [];
       const currentVer = cur[t.key] || null;
-      if (!currentVer || compareSemver(latest, currentVer) > 0) {
+    if (requested && t.key === 'dsh' && currentVer && compareSemver(requested, currentVer) === 0) {
+      result.latest[t.key] = requested;
+      result.changes[t.key] = [];
+      return;
+    }
+    if (!currentVer || compareSemver(latest, currentVer) > 0) {
         const stagedVer = staged[t.key];
         if (stagedVer && compareSemver(stagedVer, latest) >= 0) {
           result.pending.push({ component: t.key, current: currentVer, latest, staged: stagedVer });

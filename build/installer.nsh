@@ -24,14 +24,14 @@ Function DshBackendVersionPageCreate
 FunctionEnd
 
 Function DshBackendVersionPageLeave
-  ${NSD_CB_GetText} $DshBackendVersionCombo $DshBackendVersion
+  ${NSD_GetText} $DshBackendVersionCombo $DshBackendVersion
   ${If} $DshBackendVersion == "随安装包提供的版本（推荐）"
     StrCpy $DshBackendVersion ""
   ${EndIf}
   ${If} $DshBackendVersion != ""
     CreateDirectory "$APPDATA\DSH Desktop"
     FileOpen $0 "$APPDATA\DSH Desktop\requested-backend-version.txt" w
-    FileWrite $0 "$DshBackendVersion$\n"
+    FileWrite $0 "$DshBackendVersion$\r$\n"
     FileClose $0
   ${Else}
     Delete "$APPDATA\DSH Desktop\requested-backend-version.txt"
