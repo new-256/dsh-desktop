@@ -1,7 +1,7 @@
 {
   "name": "dsh-desktop",
   "productName": "DSH Desktop",
-  "version": "0.3.13",
+  "version": "0.3.14",
   "description": "DSH (DeepSeek Harness) 桌面版：独立窗口运行 Web GUI，免浏览器，隔离数据目录，启动自动修复，静默更新重启生效。",
   "author": "DSH Desktop Packager",
   "license": "MIT",

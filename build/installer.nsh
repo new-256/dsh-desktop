@@ -5,6 +5,9 @@ Var DshBackendVersion
 Var DshBackendVersionCombo
 
 Function DshBackendVersionPageCreate
+  ${If} ${FileExists} "$APPDATA\DSH Desktop\backend\versions.json"
+    Abort
+  ${EndIf}
   nsDialogs::Create 1018
   Pop $0
   ${If} $0 == error
