@@ -556,7 +556,7 @@ function seedFromArchive(p) {
 
 function requestedBackendVersion() {
   const file = path.join(userDataPath(), 'requested-backend-version.txt');
-  try { const value = fs.readFileSync(file, 'utf8').trim(); if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value)) return value; } catch {}
+  try { const value = fs.readFileSync(file, 'utf8').trim(); if (value === 'online') return 'online'; if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value)) return value; } catch {}
   return null;
 }
 

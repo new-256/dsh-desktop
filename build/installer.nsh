@@ -18,6 +18,7 @@ Function DshBackendVersionPageCreate
   ${NSD_CreateComboBox} 0 34u 100% 90u ""
   Pop $DshBackendVersionCombo
   ${NSD_CB_AddString} $DshBackendVersionCombo "随安装包提供的版本（推荐）"
+  ${NSD_CB_AddString} $DshBackendVersionCombo "在线最新版本（首次启动下载）"
   ${NSD_CB_AddString} $DshBackendVersionCombo "0.1.2-alpha.4"
   ${NSD_CB_AddString} $DshBackendVersionCombo "0.1.1-rc.2"
   ${NSD_CB_SelectString} $DshBackendVersionCombo "随安装包提供的版本（推荐）"
@@ -30,6 +31,8 @@ Function DshBackendVersionPageLeave
   ${NSD_GetText} $DshBackendVersionCombo $DshBackendVersion
   ${If} $DshBackendVersion == "随安装包提供的版本（推荐）"
     StrCpy $DshBackendVersion ""
+  ${ElseIf} $DshBackendVersion == "在线最新版本（首次启动下载）"
+    StrCpy $DshBackendVersion "online"
   ${EndIf}
   ${If} $DshBackendVersion != ""
     CreateDirectory "$APPDATA\DSH Desktop"

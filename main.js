@@ -611,11 +611,15 @@ if (!gotLock) {
       mgr.ensureSeeded();
       // 2) Honor an installer-selected backend before the first backend boot.
       const requestedBackend = mgr.requestedBackendVersion();
-      if (requestedBackend && mgr.currentVersions().dsh !== requestedBackend) {
+      if (requestedBackend && requestedBackend !== 'online' && mgr.currentVersions().dsh !== requestedBackend) {
         pushLog(`安装程序选择 DSH 后端 ${requestedBackend}，正在准备该版本。\n`);
         await mgr.stageDsh({ onLog: (m) => pushLog('[backend-select] ' + m + '\n'), onProgress: () => {} }, requestedBackend);
       }
       // 3) Apply any update staged on the previous launch (backend NOT running yet → no locks).
+      if (requestedBackend === 'online') {
+        pushLog('安装程序选择在线最新 DSH 版本，开始检查更新。\n');
+        await silentStageUpdates({ includeNode: false });
+      }
       const applied = mgr.applyStaged();
       const shouldIsolatePlugins = !!(applied && applied.dsh);
       // 3) Node gate: fast local check without network requests.
