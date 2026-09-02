@@ -2,7 +2,18 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 风格；版本号与 `package.json` 保持一致。
 
-## [0.3.3] - 2026-08-28
+## [0.3.6] - 2026-09-01
+
+### 修复
+
+- **后端更新源改进**：以 `deepseek-ai/deepseek-harness` 的 `master/apps/cli/package.json` 作为 DSH 版本判断来源；GitHub 不可用时回退 npm registry。
+- 按 GitHub 检测到的明确版本安装 npm 包，避免 npm `latest` 标签滞后导致漏更新。
+- 完善预发布版本（alpha/beta/rc）比较。
+
+### 新增
+
+- 后端更新完成后通过托盘气泡和运行日志告知版本变化及上游最近提交摘要；更新在下次启动时应用。
+
 
 本版本不改变安装器/外壳行为，把仓库从单一 Electron 包装器扩展为「桌面外壳 + 宿主插件 + 机器人网关 + 集成测试」的完整工作区。
 

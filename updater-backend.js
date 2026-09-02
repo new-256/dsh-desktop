@@ -32,6 +32,8 @@ const os = require('os');
 const https = require('https');
 
 const REGISTRY = process.env.DSH_NPM_REGISTRY || 'https://registry.npmmirror.com';
+const UPSTREAM_GITHUB_RAW = process.env.DSH_UPSTREAM_GITHUB_RAW || 'https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master';
+const UPSTREAM_GITHUB_API = process.env.DSH_UPSTREAM_GITHUB_API || 'https://api.github.com/repos/deepseek-ai/deepseek-harness';
 const NODE_DIST_BASE = process.env.DSH_NODE_DIST_BASE || 'https://cdn.npmmirror.com/binaries/node';
 // Node 自动更新锁定的主版本（与 DSH 原生模块预编译 ABI 对齐）。
 const PINNED_NODE_MAJOR = parseInt(process.env.DSH_NODE_MAJOR || '24', 10);
@@ -110,10 +112,21 @@ function copyDir(src, dst) {
 function copyFile(src, dst) { mkdirp(path.dirname(dst)); fs.copyFileSync(src, dst); }
 function readJson(file, fallback) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; } }
 function writeJson(file, obj) { mkdirp(path.dirname(file)); fs.writeFileSync(file, JSON.stringify(obj, null, 2)); }
-function parts(v) { return String(v).split('.').map((n) => parseInt(n, 10) || 0); }
+function parts(v) { return String(v || '0.0.0').replace(/^v/, '').split('-')[0].split('.').map((n) => parseInt(n, 10) || 0); }
 function compareSemver(a, b) {
   const pa = parts(a), pb = parts(b);
   for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0) ? 1 : -1;
+  const pre = (v) => { const s = String(v || '').replace(/^v/, '').split('-')[1]; return s ? s.split('.') : []; };
+  const aa = pre(a), bb = pre(b);
+  if (!aa.length && bb.length) return 1;
+  if (aa.length && !bb.length) return -1;
+  for (let i = 0; i < Math.max(aa.length, bb.length); i++) {
+    if (aa[i] == null) return -1; if (bb[i] == null) return 1;
+    const an = /^\d+$/.test(aa[i]), bn = /^\d+$/.test(bb[i]);
+    if (an && bn && Number(aa[i]) !== Number(bb[i])) return Number(aa[i]) > Number(bb[i]) ? 1 : -1;
+    if (an !== bn) return an ? -1 : 1;
+    if (aa[i] !== bb[i]) return aa[i] > bb[i] ? 1 : -1;
+  }
   return 0;
 }
 function highestSemver(list) { return list.reduce((b, v) => (b == null || compareSemver(v, b) > 0 ? v : b), null); }
@@ -394,7 +407,22 @@ function currentVersions() {
     dsh: fs.existsSync(p.dshBin) ? dshVersion() : null
   };
 }
-async function latestDshVersion() { return (await fetchJson(`${REGISTRY}/@deepseek-ai%2Fdsh/latest`)).version; }
+async function latestDshInfo() {
+  try {
+    const pkg = await fetchJson(`${UPSTREAM_GITHUB_RAW}/apps/cli/package.json`);
+    if (!pkg || !pkg.version) throw new Error('GitHub package version missing');
+    let changes = [];
+    try {
+      const commits = await fetchJson(`${UPSTREAM_GITHUB_API}/commits?path=apps/cli&per_page=5`);
+      changes = Array.isArray(commits) ? commits.map((c) => c && c.commit && c.commit.message).filter(Boolean).map((m) => m.split(/\r?\n/)[0]).slice(0, 5) : [];
+    } catch {}
+    return { version: pkg.version, source: 'github', changes };
+  } catch (e) {
+    const version = (await fetchJson(`${REGISTRY}/@deepseek-ai%2Fdsh/latest`)).version;
+    return { version, source: 'npm', changes: [], fallback: e.message };
+  }
+}
+async function latestDshVersion() { return (await latestDshInfo()).version; }
 async function latestNodeVersion() {
   const idx = await fetchJson(`${NODE_DIST_BASE}/index.json`);
   const same = idx.filter((e) => e && e.version && new RegExp(`^v${PINNED_NODE_MAJOR}\\.\\d+\\.\\d+$`).test(e.version)).map((e) => e.version.slice(1));
@@ -1057,24 +1085,21 @@ function stagedVersions() {
 // --------------------------------------------------------------------------
 // STAGED updates — install/download to staging only; never touch running files.
 // --------------------------------------------------------------------------
-async function stageDsh(callbacks = {}) {
+async function stageDsh(callbacks = {}, requestedVersion = null) {
   const p = P();
   const say = (m) => callbacks.onLog && callbacks.onLog(m);
+  const info = requestedVersion ? { version: requestedVersion, source: 'github', changes: [] } : await latestDshInfo();
+  const latest = info.version;
   const staged = stagedVersions().dsh;
-  if (staged) {
-    try {
-      const latest = await latestDshVersion();
-      if (compareSemver(staged, latest) >= 0) {
-        log(`dsh version ${staged} is already staged (latest=${latest}); reusing`);
-        say(`最新 DSH 后端 (${staged}) 已在暂存区，无需重复下载。`);
-        return { version: staged, reused: true };
-      }
-    } catch {}
+  if (staged && compareSemver(staged, latest) >= 0) {
+    log(`dsh version ${staged} is already staged (latest=${latest}); reusing`);
+    say(`最新 DSH 后端 (${staged}) 已在暂存区，无需重复下载。`);
+    return { version: staged, reused: true, changes: info.changes || [] };
   }
   if (!fs.existsSync(p.nodeExe) || !fs.existsSync(p.npmCli)) throw new Error('缺少 node/npm，无法更新后端。');
   rimraf(p.dshNew); mkdirp(p.dshNew);
-  writeJson(path.join(p.dshNew, 'package.json'), { name: 'dsh-active-backend', version: '0.0.0', private: true, dependencies: { '@deepseek-ai/dsh': 'latest' } });
-  say('正在下载并安装最新 DSH 后端（npmmirror，依赖较多，请稍候）…');
+  writeJson(path.join(p.dshNew, 'package.json'), { name: 'dsh-active-backend', version: '0.0.0', private: true, dependencies: { '@deepseek-ai/dsh': latest } });
+  say(`正在下载并安装 DSH 后端 ${latest}（${info.source === 'github' ? 'GitHub 版本，npm 下载' : 'npm'}，依赖较多，请稍候）…`);
   await run(p.nodeExe, [p.npmCli, 'install', '--no-audit', '--no-fund', '--loglevel=error', `--registry=${REGISTRY}`, '--no-bin-links'], {
     cwd: p.dshNew,
     env: buildDedicatedEnv(),
@@ -1084,7 +1109,7 @@ async function stageDsh(callbacks = {}) {
   if (!fs.existsSync(newBin)) { rimraf(p.dshNew); throw new Error('后端暂存安装后未找到 dsh，已放弃（当前版本不受影响）。'); }
   const ver = readJson(path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'package.json'), {}).version || null;
   log('staged dsh', ver);
-  return { version: ver, reused: false };
+  return { version: ver, reused: false, changes: info.changes || [], source: info.source };
 }
 
 async function stageNode(callbacks = {}) {
@@ -1226,7 +1251,7 @@ async function checkForUpdates(options = {}) {
   ensureSeeded();
   const cur = currentVersions();
   const staged = stagedVersions();
-  const result = { current: cur, latest: { npm: cur.npm }, updates: [], pending: [], errors: [] };
+  const result = { current: cur, latest: { npm: cur.npm }, updates: [], pending: [], errors: [], changes: {} };
   const tasks = [
     { key: 'dsh', fn: latestDshVersion }
   ];
@@ -1235,15 +1260,17 @@ async function checkForUpdates(options = {}) {
   }
   await Promise.all(tasks.map(async (t) => {
     try {
-      const latest = await t.fn();
+      const details = t.key === 'dsh' ? await latestDshInfo() : { version: await t.fn(), changes: [] };
+      const latest = details.version;
       result.latest[t.key] = latest;
+      result.changes[t.key] = details.changes || [];
       const currentVer = cur[t.key] || null;
       if (!currentVer || compareSemver(latest, currentVer) > 0) {
         const stagedVer = staged[t.key];
         if (stagedVer && compareSemver(stagedVer, latest) >= 0) {
           result.pending.push({ component: t.key, current: currentVer, latest, staged: stagedVer });
         } else {
-          result.updates.push({ component: t.key, current: currentVer, latest });
+          result.updates.push({ component: t.key, current: currentVer, latest, changes: details.changes || [] });
         }
       }
     } catch (e) { result.errors.push({ component: t.key, error: e.message }); }
@@ -1260,6 +1287,6 @@ module.exports = {
   buildDedicatedEnv, describeEnvIsolation, enableCorepack,
   currentVersions, stagedVersions, checkForUpdates,
   stageDsh, stageNode,
-  latestDshVersion, latestNodeVersion, minNodeForDsh, nodeMeetsRequirement,
+  latestDshVersion, latestDshInfo, latestNodeVersion, minNodeForDsh, nodeMeetsRequirement,
   compareSemver
 };

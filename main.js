@@ -482,16 +482,24 @@ async function silentStageUpdates(options = {}) {
     }
     pushLog('silent update available: ' + info.updates.map((u) => `${u.component}->${u.latest}`).join(', ') + '\n');
     const cbs = { onLog: (m) => pushLog('[update] ' + m + '\n'), onProgress: () => {} };
+    const summaries = [];
     for (const u of info.updates) {
       try {
-        if (u.component === 'dsh') await mgr.stageDsh(cbs);
-        else if (u.component === 'node') await mgr.stageNode(cbs);
+        if (u.component === 'dsh') {
+          const staged = await mgr.stageDsh(cbs, u.latest);
+          summaries.push(`DSH 后端 ${u.current || '无'} → ${staged.version}`);
+          if (u.changes && u.changes.length) summaries.push('上游更新：' + u.changes.slice(0, 3).join('；'));
+        } else if (u.component === 'node') {
+          await mgr.stageNode(cbs);
+          summaries.push(`Node 运行时 ${u.current || '无'} → ${u.latest}`);
+        }
       } catch (e) { pushLog('[update] stage failed ' + u.component + ': ' + e.message + '\n'); }
     }
-    pushLog('更新已下载完成，将在下次启动时自动应用。\n');
-    // Non-blocking toast-like notice in the title (no modal interrupt).
-    if (mainWindow && !mainWindow.isDestroyed && !mainWindow.isDestroyed()) {
+    const detail = summaries.length ? summaries.join('\n') : '新版本已下载。';
+    pushLog('更新内容：\n' + detail + '\n将在下次启动时自动应用。\n');
+    if (mainWindow && !mainWindow.isDestroyed()) {
       try { mainWindow.flashFrame(false); } catch {}
+      try { tray && tray.displayBalloon({ iconType: 'info', title: 'DSH 更新已准备', content: detail + '\n重启应用后生效。' }); } catch {}
     }
   } catch (e) {
     pushLog('[update] check failed: ' + (e && e.message) + '\n');
