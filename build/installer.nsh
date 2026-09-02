@@ -1,4 +1,45 @@
-; NSIS custom hooks for DSH Desktop
+!include LogicLib.nsh
+!include nsDialogs.nsh
+
+Var DshBackendVersion
+Var DshBackendVersionCombo
+
+Function DshBackendVersionPageCreate
+  nsDialogs::Create 1018
+  Pop $0
+  ${If} $0 == error
+    Abort
+  ${EndIf}
+  ${NSD_CreateLabel} 0 0 100% 28u "选择首次安装使用的 DSH 后端版本："
+  Pop $0
+  ${NSD_CreateComboBox} 0 34u 100% 90u ""
+  Pop $DshBackendVersionCombo
+  ${NSD_CB_AddString} $DshBackendVersionCombo "随安装包提供的版本（推荐）"
+  ${NSD_CB_AddString} $DshBackendVersionCombo "0.1.2-alpha.4"
+  ${NSD_CB_AddString} $DshBackendVersionCombo "0.1.1-rc.2"
+  ${NSD_CB_SelectString} $DshBackendVersionCombo "随安装包提供的版本（推荐）"
+  ${NSD_CreateLabel} 0 78u 100% 46u "选择会在安装完成后的首次启动生效。用户会话、插件配置和凭据不会被删除。"
+  Pop $0
+  nsDialogs::Show
+FunctionEnd
+
+Function DshBackendVersionPageLeave
+  ${NSD_CB_GetText} $DshBackendVersionCombo $DshBackendVersion
+  ${If} $DshBackendVersion == "随安装包提供的版本（推荐）"
+    StrCpy $DshBackendVersion ""
+  ${EndIf}
+  ${If} $DshBackendVersion != ""
+    CreateDirectory "$APPDATA\DSH Desktop"
+    FileOpen $0 "$APPDATA\DSH Desktop\requested-backend-version.txt" w
+    FileWrite $0 "$DshBackendVersion$\n"
+    FileClose $0
+  ${Else}
+    Delete "$APPDATA\DSH Desktop\requested-backend-version.txt"
+  ${EndIf}
+FunctionEnd
+
+Page custom DshBackendVersionPageCreate DshBackendVersionPageLeave
+
 ;
 ; Guaranteed Execution Order during Install:
 ;   1. Process Termination: customInit (installer launch) and customCheckAppRunning

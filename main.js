@@ -1,7 +1,7 @@
 'use strict';
 
 const { app, BrowserWindow, Menu, shell, dialog, ipcMain, Tray, nativeImage } = require('electron');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -235,7 +235,50 @@ async function startBackendWithHealing() {
   throw firstErr;
 }
 
-let crashNotified = false;
+async function startBackendWithPluginIsolation() {
+  const isolation = mgr.preparePluginIsolation();
+  if (!isolation.active || !isolation.plugins.length) return startBackendWithHealing();
+  pushLog('检测到后端更新，先隔离全部第三方插件进行核心启动检查。\n');
+  let coreUrl;
+  try {
+    coreUrl = await startBackendWithHealing();
+  } catch (error) {
+    mgr.finishPluginIsolation(isolation.plugins.map((p) => ({ index: p.index, status: 'not-tested' })));
+    throw error;
+  }
+  if (backend) { killProcessTree(backend); backend = null; }
+  const statuses = [];
+  for (const plugin of isolation.plugins) {
+    mgr.enablePluginIsolationBlock(plugin.index);
+    backendLogs = [];
+    try {
+      await startBackendWithHealing();
+      const pluginText = backendLogs.join('');
+      const failed = plugin.ids.some((id) => new RegExp(`(?:failed|error|cannot|without registering).*${String(id).replace(/[.*+?^${}()|[\\]\\]/g, '\\\\$&')}`, 'i').test(pluginText));
+      statuses.push({ index: plugin.index, status: failed ? 'failed' : 'ok' });
+      if (failed) pushLog(`插件 ${plugin.ids.join(', ')} 启动检查失败，将保持禁用。\n`);
+    } catch (error) {
+      statuses.push({ index: plugin.index, status: 'failed', error: error.message });
+      pushLog(`插件 ${plugin.ids.join(', ')} 启动失败，将保持禁用：${error.message}\n`);
+    }
+    if (backend) { killProcessTree(backend); backend = null; }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  const report = mgr.finishPluginIsolation(statuses);
+  backendLogs = [];
+  const url = await startBackendWithHealing();
+  const failed = (report?.plugins || []).filter((p) => p.status === 'failed');
+  if (failed.length) {
+    const names = failed.flatMap((p) => p.ids || p.names || []).filter(Boolean);
+    setTimeout(() => dialog.showMessageBox(mainWindow, {
+      type: 'warning', title: APP_NAME, buttons: ['知道了'],
+      message: '部分插件与当前后端不兼容',
+      detail: `DSH 已正常启动，但以下插件已保持禁用：\n\n${names.join('\n')}\n\n插件源码和原配置已保留，可在修复插件后重新启用。`
+    }).catch(() => {}), 800);
+  }
+  return url;
+}
+
 function handleBackendCrashed() {
   if (crashNotified) return; crashNotified = true;
   // The window may be hidden in the tray — surface it before the dialog.
@@ -578,7 +621,7 @@ if (!gotLock) {
       const iso = mgr.describeEnvIsolation();
       pushLog(`env isolation: stripped ${iso.strippedVars.length} var(s), dropped ${iso.droppedPathEntries.length} foreign PATH entr(ies), DSH_HOME=${iso.dshHome}\n`);
       // 5) Start backend (self-heals and retries on profile/symlink errors).
-      const url = await startBackendWithHealing();
+      const url = await startBackendWithPluginIsolation();
       // 6) Show UI + arm the keep-alive tray (close button hides to tray).
       await createMainWindow(url);
       createTray();

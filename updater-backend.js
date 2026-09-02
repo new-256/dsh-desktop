@@ -554,9 +554,14 @@ function seedFromArchive(p) {
   return false;
 }
 
+function requestedBackendVersion() {
+  const file = path.join(userDataPath(), 'requested-backend-version.txt');
+  try { const value = fs.readFileSync(file, 'utf8').trim(); if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value)) return value; } catch {}
+  return null;
+}
+
 function migrateProjectionCache() {
   const p = P();
-  const dir = path.join(p.dshHome, 'storages', 'session_projcache');
   if (!fs.existsSync(dir)) return { changed: 0, skipped: 0 };
   const backupDir = path.join(dir, `migration-backup-${formatDateTimestamp()}`);
   let changed = 0; let skipped = 0;
@@ -940,11 +945,49 @@ function snapshotPluginState() {
 function pluginCompatibilityReport(home, backendVersion) {
   return pluginEntries(home).map((plugin) => ({ ...plugin, compatible: plugin.available, reason: plugin.available ? null : '插件源文件不存在或不可加载' }));
 }
-function disableIncompatiblePlugins(home, report) {
-  const broken = report.filter((p) => !p.compatible);
-  if (!broken.length) return { disabled: [], backup: null };
-  return disableBrokenPatchPlugins(home, broken.map((p) => ({ id: p.name, name: p.name })));
+function pluginIsolationStatePath() { return path.join(P().root, 'plugin-isolation.json'); }
+function readPatchText(home) { try { return fs.readFileSync(path.join(home, 'cordis.patch.yml'), 'utf8'); } catch { return null; } }
+function writePatchText(home, text) { const file = path.join(home, 'cordis.patch.yml'); mkdirp(path.dirname(file)); fs.writeFileSync(file, text, 'utf8'); }
+function patchBlocks(home) {
+  const text = readPatchText(home); return text == null ? { text: null, blocks: [] } : { text, blocks: parseHomePatchBlocks(text) };
 }
+function commentPatchBlocks(text, selected = null) {
+  const eol = String(text).includes('\r\n') ? '\r\n' : '\n';
+  const lines = String(text).split(/\r?\n/);
+  const blocks = parseHomePatchBlocks(text);
+  for (let i = 0; i < blocks.length; i++) {
+    if (selected && !selected.has(i)) {
+      for (let j = blocks[i].start; j < blocks[i].end; j++) {
+        if (lines[j].trim() && !lines[j].startsWith('#')) lines[j] = '# ' + lines[j];
+      }
+    }
+  }
+  return lines.join(eol);
+}
+function preparePluginIsolation() {
+  const p = P(); const parsed = patchBlocks(p.dshHome);
+  if (parsed.text == null || !parsed.blocks.length) return { active: false, plugins: [] };
+  const state = { original: parsed.text, createdAt: new Date().toISOString(), plugins: parsed.blocks.map((block, index) => ({ index, ids: block.entries.map((e) => e.id), names: block.entries.map((e) => e.name), status: 'pending' })) };
+  writeJson(pluginIsolationStatePath(), state);
+  const backup = path.join(p.dshHome, `cordis.patch.yml.isolation-${formatDateTimestamp()}.bak`);
+  fs.copyFileSync(path.join(p.dshHome, 'cordis.patch.yml'), backup);
+  writePatchText(p.dshHome, commentPatchBlocks(parsed.text));
+  return { active: true, backup, plugins: state.plugins };
+}
+function enablePluginIsolationBlock(index) {
+  const p = P(); const state = readJson(pluginIsolationStatePath(), null); if (!state || !state.original) return false;
+  const blocks = parseHomePatchBlocks(state.original); const selected = new Set([index]);
+  writePatchText(p.dshHome, commentPatchBlocks(state.original, selected)); return !!blocks[index];
+}
+function finishPluginIsolation(statuses = []) {
+  const p = P(); const state = readJson(pluginIsolationStatePath(), null); if (!state || !state.original) return null;
+  const failed = new Set(statuses.filter((s) => s.status === 'failed').map((s) => s.index));
+  const good = new Set(state.plugins.map((item) => item.index).filter((index) => !failed.has(index)));
+  const result = { ...state, plugins: state.plugins.map((item) => ({ ...item, ...(statuses.find((s) => s.index === item.index) || {}) })), finishedAt: new Date().toISOString() };
+  writePatchText(p.dshHome, commentPatchBlocks(state.original, good));
+  writeJson(pluginIsolationStatePath(), result); return result;
+}
+function clearPluginIsolation() { try { fs.unlinkSync(pluginIsolationStatePath()); } catch {} }
 // --------------------------------------------------------------------------
 // The user's HOME-level cordis.patch.yml (dsh-home/cordis.patch.yml) may inject
 // third-party plugins (e.g. the 0.3.3 extension set) that the installed shell
@@ -1337,6 +1380,7 @@ async function repairNodeForBackendFailure(callbacks = {}) {
 async function checkForUpdates(options = {}) {
   const { includeNode = false } = options;
   ensureSeeded();
+  const requested = requestedBackendVersion();
   const cur = currentVersions();
   const staged = stagedVersions();
   const result = { current: cur, latest: { npm: cur.npm }, updates: [], pending: [], errors: [], changes: {} };
@@ -1348,7 +1392,7 @@ async function checkForUpdates(options = {}) {
   }
   await Promise.all(tasks.map(async (t) => {
     try {
-      const details = t.key === 'dsh' ? await latestDshInfo() : { version: await t.fn(), changes: [] };
+      const details = t.key === 'dsh' ? (requested ? { version: requested, changes: [], source: 'installer-selection' } : await latestDshInfo()) : { version: await t.fn(), changes: [] };
       const latest = details.version;
       result.latest[t.key] = latest;
       result.changes[t.key] = details.changes || [];
@@ -1367,7 +1411,7 @@ async function checkForUpdates(options = {}) {
 }
 
 module.exports = {
-  P, activeRoot, dshHome,
+  requestedBackendVersion,
   ensureSeeded, migrateProjectionCache, applyStaged, ensureNodeMeetsRequirement,
   repairProfileJunctions, quarantineProfiles, repairNodeForBackendFailure, nodeRequirement,
   analyzeBackendFailure, disableBrokenPatchPlugins,
@@ -1375,6 +1419,7 @@ module.exports = {
   buildDedicatedEnv, describeEnvIsolation, enableCorepack,
   currentVersions, stagedVersions, checkForUpdates,
   snapshotPluginState, pluginCompatibilityReport, disableIncompatiblePlugins, rollbackDsh,
+  preparePluginIsolation, enablePluginIsolationBlock, finishPluginIsolation, clearPluginIsolation,
   stageDsh, stageNode,
   latestDshVersion, latestDshInfo, latestNodeVersion, minNodeForDsh, nodeMeetsRequirement,
   compareSemver
