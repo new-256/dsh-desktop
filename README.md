@@ -1,143 +1,100 @@
 # DSH Desktop（DeepSeek Harness 桌面版）
 
-把 `dsh web` 包装成 **可安装的 Windows 桌面应用**。设计第一原则：**保证软件总能安装与启动**；在此之上做到免浏览器、自动修复、静默更新。
+一句话介绍：把 `dsh web` 装成一个正经的 Windows 桌面应用。双击图标就能用，不用开浏览器，不用装 Node，目标机器上什么都不用准备。
 
-- 🐋 **独立窗口**：Electron 窗口加载本地 DSH Web GUI，无需浏览器；系统 WebView2 运行时会被探测（诊断用）。
-- 📦 **可安装 exe**：electron-builder + NSIS，自动建桌面/开始菜单快捷方式；安装/卸载前自动结束残留进程，杜绝“无法关闭”。
-- 🧩 **自带环境**：安装目录内含 **独立 Node v24 + npm + 完整 dsh 后端**，目标机器无需预装任何东西。
-- 🩺 **启动自检自愈**：无网络 Node 门禁自检（满足即直通启动，不满足自动拉取）；自动修复 profile 目录的 junction 异常；后端启动失败阶梯式自愈（清 profile -> 修复 Node）。
-- 🏠 **独立数据目录**：使用自己的 `DSH_HOME`，与你命令行的 `~/.dsh` 完全隔离，互不抢锁/互不污染。
-- 🔄 **静默更新、重启生效**：后台每 6 小时及启动时检查 DSH；以 GitHub `deepseek-ai/deepseek-harness` 的 `master/apps/cli/package.json` 判断最新版本，再从 npm registry 安装对应版本，避免 npm `latest` 标签滞后漏更新；下载完成后通过托盘提示版本变化和上游提交摘要，下次启动时自动应用。Node 仅在不满足要求或故障时按需拉取，绝不在使用中改动正在运行的文件。
-- 🐳 **鲸鱼娘图标**。
+做这个项目时想得最多的一件事是：**软件得总能装得上、打得开**。所有设计都围绕这个来。
 
-## 仓库结构与扩展组件
+## 它能帮你做什么
+
+- **独立窗口**：Electron 窗口直接加载本地的 DSH Web 界面，和浏览器说再见。
+- **自带全套环境**：安装包里带了独立 Node v24、npm 和完整的 dsh 后端，装完就能跑。
+- **数据完全隔离**：桌面版用自己的数据目录（`DSH_HOME`），和你命令行里的 `~/.dsh` 互不打扰、互不抢锁。
+- **默认保活**：点右上角 X 只是缩到系统托盘，真想退出走托盘菜单。开机自启也能在托盘里开关。
+- **出问题自己先修**：junction 坏了自动重建、profile 出问题自动隔离备份重试、Node 出问题自动修复，实在修不好才弹窗告诉你。
+- **鲸鱼娘图标**。
+
+## 更新是怎么运作的（和早期版本不一样，务必看一眼）
+
+一句话：**只通知，不偷跑。你不点头，更新不会发生。**
+
+具体流程：
+
+1. 程序会定期看一眼有没有新版本（启动后 5 秒第一次，之后每 6 小时一次），只看，不下。
+2. 发现新版本，托盘冒个气泡通知你，菜单里显示"有新版本，点击此处确认"。
+3. 你点托盘里的版本号那几行，弹窗列出更新内容和上游最近的改动，点"下载并更新"才真正开始下载。
+4. 下载完问你要不要立刻重启；选"稍后"就下次启动时自动生效。
+5. 版本判断会**两头核对**：GitHub（`deepseek-ai/deepseek-harness` 的 master）上有、npm 镜像上也发布了，两边都在的版本才提示。GitHub 比 npm 快的时候（很常见），只提示两边都有的那个，不会让你去下一个根本下不下来的版本。
+
+桌面外壳自己的更新默认是关的。想开的话配环境变量 `DSH_SHELL_UPDATE_URL`（真实的 https 地址），同样是通知制，确认后才下载。
+
+## 安装时可以选后端版本
+
+第一次安装会多出一个选择页：
+
+- 随安装包提供的版本（推荐）
+- 在线最新版本（首次启动时联网下载）
+- 指定的某个版本
+
+覆盖安装和升级不会重复问。选择只在首次启动生效一次，之后一切走上面说的托盘确认流程。
+
+## 大更新后的插件安全启动
+
+后端真的换了新版本之后，第一次启动会这么走：
+
+1. 先把所有第三方插件注释掉，确认 DSH 本体起得来；
+2. 再一个一个放回来试，启动页上能看到进度（"正在逐个检查插件 3/8"）；
+3. 有问题的插件保持禁用，启动后弹窗告诉你哪些不兼容；
+4. 插件源码和原始配置都完整保留，修好了随时能重新启用。
+
+平时普通启动不走这套流程，不会浪费你的时间。
+
+## 出问题了怎么办
+
+看桌面上的 `DSH-Desktop-日志.txt`。启动、更新、插件检查的每一步和所有错误都实时写在里面，程序崩溃前也会先把堆栈写进去。文件超过 10MB 会自动转成 `DSH-Desktop-日志-旧.txt`，不会无限膨胀。
+
+遇到问题提反馈时，把这个文件一起发过来，基本一眼就能定位。
+
+## 你的数据安全吗
+
+安全，这几条是硬规矩：
+
+- 会话、配置、凭据都在 `%APPDATA%\DSH Desktop\dsh-home\` 里，卸载、升级、覆盖安装**都不会动**；
+- 老版本的会话缓存升级时自动无损迁移（补齐新版本要求的新字段），改之前先备份到 `migration-backup-时间戳` 目录；
+- 启动自愈最坏的情况也只是把 profiles 隔离备份成 `profiles.broken-时间戳`（保留最近 2 份），不删任何数据。
+
+## 仓库里有什么
 
 | 目录/文件 | 说明 |
 |---|---|
-| `main.js` / `preload.js` / `updater-backend.js` / `splash.html` | Electron 外壳本体 |
-| `scripts/` | 安装/打包/运行时准备脚本（vendor 装配、图标生成等） |
-| `plugins/` | **DSH 宿主插件源码（Cordis）**：会话清理器（侧边栏「移入回收站」/回收站/恢复）与 agentrouter 反代；部署方式与 `?v=N` 热加载见 [plugins/README.md](plugins/README.md) |
-| `bot-gateway/` | DSH Bot Gateway：QQ（NapCat/官方）/Telegram/飞书/钉钉远程任务网关，详见 [bot-gateway/README.md](bot-gateway/README.md) |
-| `test-*.mjs` | 集成测试（插件契约 / agentrouter 端到端 / 会话清理全量断言）；密钥经 `AGENTROUTER_API_KEY` 环境变量注入，绝不入库 |
-
-## 启动顺序（可靠性核心）
-
-应用启动时严格按以下顺序，任一步失败都有兜底：
-
-1. **Seed**：首次把安装目录的出厂 Node/npm/dsh 复制到用户可写目录
-   `%APPDATA%\DSH Desktop\backend\`（无需管理员权限）。
-2. **应用暂存更新**：若上次后台下载了新版（`dsh.new` / `node.new`），此时后端尚未启动、无文件占用，统一切换。
-3. **Node 门禁检查**：本地无网络极速检查当前 Node 是否满足 dsh 要求（当前 upstream 未声明 `engines`，内置最低 `22.15.0` 兜底）。满足时直接通过（0 延迟 0 网络请求）；仅当不满足时才拉取/准备合规 Node。
-4. **修复 junction**：清理 `DSH_HOME/profiles/node_modules` 下任何真实目录、指向外部安装的外国链接或失效死链接（dsh 要求这些是合规 junction，异常链接会导致崩溃或依赖错乱）。
-5. **启动后端**：用独立 `DSH_HOME=%APPDATA%\DSH Desktop\dsh-home` 启动 dsh web；
-   若因 profile 状态失败，**自动清空 profiles 目录重试**；若再次失败，阶梯式**拉取最新 Node 运行时修复并重试**。
-6. **开窗口**，随后后台进行：dsh 静默更新检测（启动后 20 秒及每 6 小时）；外壳更新检查（默认禁用，配置 `DSH_SHELL_UPDATE_URL` 时启用）。
-
-## 环境隔离与数据安全
-
-应用对运行环境与用户数据进行了严格隔离与保护：
-
-- **数据持久化与安全**：用户数据（会话 `sessions/`、配置文件 `settings.yaml`、凭据 `.credentials.yaml` 等）保存在独立的 `%APPDATA%\DSH Desktop\dsh-home\` 中，为 `backend` 的同级目录。
-  - 卸载或覆盖安装时绝不清理用户数据（`deleteAppDataOnUninstall` 为 `false`），出厂 seed 与应用更新仅作用于 `backend\` 目录。
-  - 启动自愈机制**绝不删除**用户会话、配置与凭据；若后端启动因 profile 状态异常触发自愈，应用不会直接销毁数据，而是将旧 `profiles` 隔离备份为 `profiles.broken-<timestamp>`（仅保留最近 2 个历史备份），保证数据可恢复。
-- **环境变量净化**：后端进程及其派生的子进程使用经过严格净化的环境变量：
-  - **劫持变量剥离**：自动剔除 `NODE_OPTIONS`、`NODE_PATH`、`NODE_REPL_EXTERNAL_MODULE`、`NODE_ICU_DATA`、`NODE_V8_COVERAGE`、`ELECTRON_RUN_AS_NODE` 等易导致运行时崩溃或代码注入的变量。
-  - **npm 配置隔离**：统一清理 ambient `npm_config_*` 及 `NPM_TOKEN`，强制应用专用的 `.npmrc`。
-  - **网络与代理保留**：特例保留并规范化网络/代理相关配置（`HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`、`NODE_EXTRA_CA_CERTS` 以及 `npm_config_proxy` / `npm_config_ca` 等），确保企业内网代理与自定义证书正常工作。
-  - **PATH 净化**：以应用自建的 Node/npm 路径为最高优先级，同时自动过滤 ambient PATH 中指向外部 `node.exe`、`npm.cmd`、`npx.cmd`、`pnpm.cmd` 或 `dsh.cmd` 的路径，防止误调用全局或外部 Node/dsh 环境。
-- **Junction 自动修复**：每次启动时自动检查 `dsh-home/profiles/node_modules`，清理残存的真实目录、指向外部安装路径的外国链接（Foreign links）以及失效的死链接（Broken links），由 dsh 在启动时自动重建合法链接。
-
-## 两套更新
-
-| 层 | 内容 | 方式 | 何时生效 |
-|---|---|---|---|
-| **外壳** | Electron 程序、启动/修复逻辑 | electron-updater（需配置 `DSH_SHELL_UPDATE_URL` 或发布源，默认禁用） | 下载后提示重启 |
-| **dsh 后端** | dsh 后端 (`@deepseek-ai/dsh`) | 应用内高频**静默**下载到暂存区（每 6 小时及启动检测） | **下次启动自动应用** |
-| **Node 运行时** | Node.exe、npm 匹配包 | 仅当不满足 dsh 版本门禁或后端启动失败时**按需**拉取 | **下次启动/修复时应用** |
-
-- 后端/Node/npm 运行在用户可写目录，更新**不需要管理员权限**。
-- **dsh 后端**：高频更新重点。 upstream 发布频繁，应用在启动 20 秒后及每 6 小时自动检测 `registry.npmmirror.com`，静默暂存最新 dsh 并在下次启动时应用。**若已成功暂存合规版本，后续检测将自动跳过重复下载，静默等待下次启动应用。**
-- **Node 运行时**：不主动追新。启动时优先执行无网络门禁比对，满足即直通启动。由于 upstream `@deepseek-ai/dsh` 当前未声明 `engines` 字段，实际由内置最低版本（`22.15.0`，主版本锁定 24，可通过 `DSH_NODE_MAJOR` 调整）进行门禁。仅当门禁不满足或后端反复崩溃时才触发 Node 修复/升级。
-- **npm**：不单独升级，随 Node 发行包自带的匹配版本一起更新（避免 npm/Node 版本错配）。
-- **外壳更新**：默认禁用（避免轮询占位 URL）。仅当通过环境变量 `DSH_SHELL_UPDATE_URL` 配置真实 https URL 时启用，且每 24 小时检查一次。
-- 下载源：dsh/npm 用 `registry.npmmirror.com`；Node 用 `cdn.npmmirror.com/binaries/node`。
-- 配置/Key/会话都在独立 `DSH_HOME`，与升级隔离，不会丢失。
-
-## 关于 WebView2 的说明
-
-窗口层使用 Electron 内置的 **Chromium**（已实测任意机器可启动、无原生编译/ABI 风险）。
-应用会探测系统 Edge WebView2 运行时（Windows 11 自带，Win10 覆盖率高）并记录版本，但不依赖它。
-原因：让 Node/Electron 直接改用系统 WebView2 渲染需要原生绑定（如 webview-nodejs / .NET 宿主），
-那些方案需要本机 C++ 构建工具链、且要按 Node ABI 发原生二进制，反而会损害“保证可安装可启动”这一第一目标。
-如后续要切换到纯 WebView2 宿主（进一步降内存/体积），建议另建独立原生宿主工程，而不是在 Electron 内硬接。
-
-## 目录
-
-```
-DSH/
-├─ main.js                 # 主进程：启动顺序、自愈、静默更新、窗口、进程树清理
-├─ updater-backend.js      # 后端/Node 管理：seed、暂存更新、Node 版本检查、junction 修复
-├─ preload.js / splash.html
-├─ build/installer.nsh     # NSIS：安装/卸载前 taskkill 结束残留进程树
-├─ scripts/                # make-icon / install-backend / prepare-runtime
-└─ vendor/{dsh,runtime}    # 出厂 dsh 后端 + Node + npm
-```
+| `main.js` / `preload.js` / `updater-backend.js` / `diag-log.js` / `splash.html` | Electron 外壳本体（主进程、后端管理、桌面诊断日志） |
+| `build/installer.nsh` | 安装器定制：结束进程、版本选择页 |
+| `scripts/` | 安装/打包/运行时准备脚本 |
+| `assets/` | 图标等资源 |
 
 运行期目录（自动创建）：
 
 ```
 %APPDATA%\DSH Desktop\
-├─ backend\
-│  ├─ node.exe / node_modules\npm / dsh\…   # 活跃运行时与后端
-│  ├─ dsh.new / node.new / downloads\        # 静默更新暂存区
-│  └─ versions.json
-└─ dsh-home\                                 # 独立 DSH_HOME（profiles/sessions/config）
+├─ backend\        # 活跃的 Node、npm、dsh 后端 + 更新暂存区
+└─ dsh-home\       # 你的数据：profiles、会话、设置、凭据
 ```
+
+## 启动顺序（简单说）
+
+每次启动按固定顺序走，每一步失败都有兜底：把出厂环境铺到用户目录（第一次）→ 应用上次下载好的更新（此时后端还没跑，没有文件占用）→ 检查 Node 版本够不够 → 修一遍插件链接 → 启动后端 → 开窗口。整个过程都写着桌面日志。
 
 ## 开发 / 打包
 
 ```bat
-npm install        # 自动准备 vendor 后端与 Node/npm 运行时
+npm install        # 自动准备 vendor 后端与 Node 运行时
 npm start          # 开发模式
 npm run dist       # 生成 release\DSH Desktop Setup x.x.x.exe
 ```
 
-## 外壳自动更新发布（默认关闭）
-
-dsh 后端与 Node 的更新完全不依赖任何服务器，开箱即用。外壳（Electron 程序本身）更新是**可选**的：
-
-- `package.json` 里**故意不带 `build.publish`**（原先那个 `https://example.com/...` 占位地址会让
-  electron-updater 每几小时失败一次）。因此打包产物里**不会生成 `app-update.yml`**，客户端启动时
-  `setupShellUpdater()` 会打出 `shell updater disabled (no release feed configured)` 后直接返回。
-- 只要客户端配置环境变量 `DSH_SHELL_UPDATE_URL`（真实 https 地址）即可单独启用检查，无需重新打包。
-- 要正式发布外壳更新：给 `build.publish` 填真实源（generic 静态目录或 GitHub Releases）→ 升 `version`
-  → `npm run dist` → 上传 `Setup.exe`、`latest.yml`、`*.blockmap`。**注意 `latest.yml` 只在配置了
-  `build.publish` 时才会由 electron-builder 生成**；没配置时 `release\` 下若残留旧 `latest.yml`，
-  它的 sha512 属于上一次构建，不要拿去发布。
-
-## 安装流程：先结束 → 再卸载 → 再安装（默认保留用户数据）
-
-安装包的执行顺序由 `build/installer.nsh` 的 NSIS 钩子与 electron-builder 模板共同保证：
-
-| 阶段 | 由谁执行 | 做什么 |
-|---|---|---|
-| ① 结束进程 | 我们的 `customInit` + `customCheckAppRunning` | `taskkill /F /T` 结束外壳（含其进程树里的 Node 后端），再**按可执行文件路径**精确结束残留的 `…\DSH Desktop\backend\node.exe` 与安装目录内的残留进程；最多重试 5 次确认已退出 |
-| ② 卸载旧版 | electron-builder 模板 `uninstallOldVersion` | 调用旧版卸载器（传 `--updated`，**不带** `--delete-app-data`） |
-| ③ 安装新版 | 模板 `installApplicationFiles` | 此时文件已无占用，覆盖安装不会失败 |
-
-- **进程结束按路径匹配**：过滤条件是 `Path -like '*\DSH Desktop\backend\node.exe'`，因此用户机器上其他 `node.exe`
-  （如 `C:\Program Files\nodejs\node.exe`）**绝不会被误杀**。安装目录清扫额外限定了进程名白名单，
-  这既避免遍历全部进程，也保证**卸载器不会杀死自己**（其进程名 `Uninstall DSH Desktop` 不在白名单内）。
-- **替代了"无法关闭"弹窗**：`customCheckAppRunning` 取代模板自带的交互式提示，正常情况下静默结束并继续；
-  只有当外壳在多次重试后仍存活（例如以更高权限运行）才弹出"重试/取消"，避免安装到一半失败。
-- **默认不清除用户数据**：`deleteAppDataOnUninstall: false`（即 NSIS 不定义 `DELETE_APP_DATA_ON_UNINSTALL`），
-  且升级路径固定传 `--updated`。因此覆盖安装、升级、乃至正常卸载都会保留 `%APPDATA%\DSH Desktop`
-  下的全部内容（`dsh-home` 用户数据 + `backend` 运行时）。**唯一**会删除用户数据的情况是手动执行
-  `"Uninstall DSH Desktop.exe" --delete-app-data`。
-
 ## 常见问题
 
-- **安装时提示“无法关闭”**：NSIS 钩子（`build/installer.nsh`）会在旧版本卸载与新版本安装前主动彻底结束外壳与指定路径的 Node 后端进程（通过路径精确匹配，绝不误杀用户系统其他 node 进程），并自动重试确认关闭；覆盖安装与卸载默认保留 `%APPDATA%\DSH Desktop` 中的全部用户数据。
-- **`is not a symlink` / profile 报错**：应用启动时自动修复；独立 `dsh-home` 与命令行 `~/.dsh` 隔离，正常不会再出现。
-- **想固定 Node 主版本**：设环境变量 `DSH_NODE_MAJOR`（默认 24）。
+- **安装时提示"无法关闭"**：不会的。安装器会先按路径精确结束 DSH 相关进程（绝不误杀你机器上其他的 node），再卸旧装新。
+- **`is not a symlink` 报错**：启动时自动修复，一般见不到。数据目录和命令行是隔离的，正常不会再撞。
+- **更新下了却没生效**：重启一次。更新都是重启时应用的；如果还不行，看桌面日志，里面写得很清楚。
+- **想固定 Node 主版本**：环境变量 `DSH_NODE_MAJOR`（默认 24）。
 - **换镜像**：`DSH_NPM_REGISTRY`、`DSH_NODE_DIST_BASE`。
