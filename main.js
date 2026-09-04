@@ -7,6 +7,21 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const mgr = require('./updater-backend');
+const diag = require('./diag-log').write;
+
+// 任何主进程异常都先落到桌面日志，再向用户展示 —— 不再出现"无声崩溃"。
+process.on('uncaughtException', (err) => {
+  try { diag('未捕获异常:', err); } catch {}
+  try {
+    dialog.showErrorBox('DSH Desktop 主进程异常',
+      ((err && (err.stack || err.message)) || String(err)) +
+      '\n\n详情已写入桌面日志：DSH-Desktop-日志.txt');
+  } catch {}
+  app.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  try { diag('未处理的 Promise 拒绝:', reason); } catch {}
+});
 
 let autoUpdater = null;
 try { ({ autoUpdater } = require('electron-updater')); }
@@ -62,6 +77,7 @@ function pushLog(line) {
   backendLogs.push(text);
   if (backendLogs.length > 300) backendLogs.shift();
   process.stdout.write(`[dsh-backend] ${text}`);
+  diag('后端输出', text);
 }
 
 function waitForServer(url, timeoutMs, cb) {
@@ -371,6 +387,10 @@ function trayMenuTemplate() {
 
 function createTray() {
   if (tray && !tray.isDestroyed()) return tray;
+  // Show the real backend version immediately instead of "读取中" — the first
+  // scheduled check only lands later, which made a just-applied update look
+  // like "version did not change".
+  try { updateStatus.current = mgr.currentVersions()?.dsh || updateStatus.current; } catch {}
   let icon;
   try {
     icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png')).resize({ width: 16, height: 16 });
@@ -463,9 +483,11 @@ async function createMainWindow(url) {
 }
 
 function showFatal(err) {
+  diag('启动失败（fatal）:', err);
   dialog.showErrorBox(`${APP_NAME} 启动失败`,
     (err && err.stack ? err.stack : String(err)) +
-    '\n\n--- 后端日志（末尾）---\n' + backendLogs.join('').split(/\r?\n/).slice(-40).join('\n'));
+    '\n\n--- 后端日志（末尾）---\n' + backendLogs.join('').split(/\r?\n/).slice(-40).join('\n') +
+    '\n\n--- 详细诊断日志已写入桌面：DSH-Desktop-日志.txt ---');
   app.quit();
 }
 
@@ -577,6 +599,7 @@ async function checkBackendUpdates(options = {}) {
   setUpdateStatus('checking', '正在检查更新', 0, '', { current: mgr.currentVersions()?.dsh || '未知', latest: '检查中…' });
   try {
     const info = await mgr.checkForUpdates(options);
+    diag('更新检查结果:', { current: info.current, latest: info.latest, updates: info.updates, pending: info.pending, errors: info.errors });
     if (info.updates && info.updates.length) {
       setUpdateStatus('available', '有新版本，点击此处确认', 0, info.updates.map((u) => `${u.component} → ${u.latest}`).join('；'), { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
       pushLog('发现新版本（等待用户确认后才下载）：' + info.updates.map((u) => `${u.component} ${u.current || '无'} → ${u.latest}`).join('；') + '\n');
@@ -608,8 +631,10 @@ async function stageConfirmedUpdates(updates, info) {
   if (silentBusy) return;
   silentBusy = true;
   setUpdateStatus('downloading', `开始下载 ${updates.length} 项更新`, 0, updates.map((u) => `${u.component} → ${u.latest}`).join('；'), { current: (info && info.current && info.current.dsh) || updateStatus.current, latest: (info && info.latest && info.latest.dsh) || updateStatus.latest });
+  diag('用户已确认，开始下载更新:', updates.map((u) => `${u.component} ${u.current || '无'} → ${u.latest}`).join('；'));
   const cbs = { onLog: (m) => pushLog('[update] ' + m + '\n'), onProgress: (p) => setUpdateStatus('downloading', '正在下载更新', Math.round((p || 0) * 100), updateStatus.detail) };
   const summaries = [];
+  const failures = [];
   for (const u of updates) {
     try {
       if (u.component === 'dsh') {
@@ -620,25 +645,45 @@ async function stageConfirmedUpdates(updates, info) {
         await mgr.stageNode(cbs);
         summaries.push(`Node 运行时 ${u.current || '无'} → ${u.latest}`);
       }
-    } catch (e) { pushLog('[update] stage failed ' + u.component + ': ' + e.message + '\n'); }
+    } catch (e) {
+      const msg = `${u.component === 'dsh' ? 'DSH 后端' : u.component} ${u.latest}：${e && e.message ? e.message : e}`;
+      failures.push(msg);
+      diag('更新下载失败:', u.component, u.latest, e);
+      pushLog('[update] stage failed ' + u.component + ': ' + (e && e.message) + '\n');
+    }
   }
   if (shellUpdateVersion && autoUpdater) {
-    try { await autoUpdater.downloadUpdate(); summaries.push(`DSH Desktop ${shellUpdateVersion}`); } catch (e) { pushLog('[update] shell download failed: ' + e.message + '\n'); }
+    try { await autoUpdater.downloadUpdate(); summaries.push(`DSH Desktop ${shellUpdateVersion}`); } catch (e) { failures.push(`DSH Desktop ${shellUpdateVersion}：${e && e.message}`); diag('外壳更新下载失败:', e); }
   }
-  const detail = summaries.length ? summaries.join('\n') : '新版本已下载。';
+  silentBusy = false;
+  // Honest reporting: never claim success when nothing could be downloaded
+  // (e.g. the GitHub version is not published on npm yet).
+  if (!summaries.length) {
+    const failText = failures.join('\n\n');
+    setUpdateStatus('error', '更新下载失败', 0, failText, { current: updateStatus.current, latest: updateStatus.latest });
+    diag('全部更新下载失败，版本未变化。', failText);
+    dialog.showMessageBox(mainWindow, {
+      type: 'error', buttons: ['知道了'], title: APP_NAME, message: '更新下载失败',
+      detail: failText + '\n\n当前版本未受影响、未重启需求。\n可能原因：该版本尚未发布到 npm 镜像。\n\n详情已写入桌面日志：DSH-Desktop-日志.txt'
+    }).catch(() => {});
+    return;
+  }
+  const detail = summaries.join('\n') + (failures.length ? '\n\n以下组件下载失败（已跳过）：\n' + failures.join('\n') : '');
   setUpdateStatus('ready', '更新已下载，等待重启', 100, detail, { current: updateStatus.current, latest: updateStatus.latest });
   pushLog('更新内容：\n' + detail + '\n将在下次启动时自动应用。\n');
-  silentBusy = false;
+  diag('更新下载完成，等待重启:', detail);
   const r = await dialog.showMessageBox(mainWindow, {
     type: 'info', buttons: ['立即重启并更新', '稍后'], defaultId: 0, cancelId: 1,
     title: APP_NAME, message: '更新已下载完成',
     detail: detail + '\n\n重启应用后生效。'
   });
+  diag('更新完成对话框选择:', r.response === 0 ? '立即重启并更新' : '稍后');
   if (r.response === 0) restartApp();
 }
 
 /** Tray menu click on the version/update items — the single consent gate for updates. */
 async function handleUpdateMenuClick() {
+  diag('托盘更新项被点击，当前状态:', { state: updateStatus.state, current: updateStatus.current, latest: updateStatus.latest });
   if (silentBusy) {
     dialog.showMessageBox(mainWindow, { type: 'info', buttons: ['知道了'], title: APP_NAME, message: '正在检查或下载更新', detail: '请稍候，当前更新操作完成后即可继续。' }).catch(() => {});
     return;
@@ -685,11 +730,14 @@ async function handleUpdateMenuClick() {
 
 function scheduleSilentUpdates() {
   // Check-only cadence: announces new versions via the tray, never downloads.
-  setTimeout(() => checkBackendUpdates(), 20000);
+  // First check is early (5s) so the tray shows fresh version data right after
+  // a restart that applied an update.
+  setTimeout(() => checkBackendUpdates(), 5000);
   setInterval(() => checkBackendUpdates(), 6 * 3600 * 1000);
 }
 
 async function restartApp() {
+  diag('restartApp：准备重启（更新应用流程）');
   isQuitting = true;
   const proc = backend;
   backend = null;
@@ -702,10 +750,12 @@ async function restartApp() {
     await new Promise((resolve) => {
       if (proc.exitCode !== null) return resolve();
       const timer = setTimeout(resolve, 6000);
-      proc.once('exit', () => { clearTimeout(timer); resolve(); });
+      proc.once('exit', (code) => { clearTimeout(timer); resolve(); diag('restartApp：后端进程已退出 code=', code); });
     });
     await new Promise((r) => setTimeout(r, 400));
+    diag('restartApp：后端已停止，等待句柄释放后拉起新实例');
   }
+  diag('restartApp：app.relaunch + exit');
   app.relaunch();
   app.exit(0);
 }
@@ -726,14 +776,17 @@ if (!gotLock) {
   app.on('second-instance', () => showMainWindow());
 
   app.whenReady().then(async () => {
+    diag('启动流程开始', { hidden: autoStartHidden, packaged: isPackaged, versions: (() => { try { return mgr.currentVersions(); } catch { return null; } })() });
     if (!autoStartHidden) createSplash();
     try {
       // 1) Seed writable active dir from factory resources (first run).
+      diag('步骤1 初始化活跃目录 ensureSeeded');
       mgr.ensureSeeded();
       // 2) Honor the installer-selected backend ONCE (first launch after install).
       //    The marker file is consumed afterwards so later boots never force-stage
       //    an old version and never bypass the tray-confirmation update policy.
       const requestedBackend = mgr.requestedBackendVersion();
+      diag('步骤2 安装选择标记:', requestedBackend || '（无）');
       if (requestedBackend) {
         try {
           if (requestedBackend === 'online') {
@@ -742,6 +795,7 @@ if (!gotLock) {
             const info = await mgr.checkForUpdates({ includeNode: false });
             const online = info.latest && info.latest.dsh;
             const current = info.current && info.current.dsh;
+            diag('在线选择检查结果:', { online, current });
             if (online && (!current || mgr.compareSemver(online, current) > 0)) {
               updateSplash(`正在下载在线 DSH ${online}…`);
               await mgr.stageDsh({ onLog: (m) => { pushLog('[backend-online] ' + m + '\n'); updateSplash(m); }, onProgress: (p) => updateSplash(`正在下载在线 DSH ${online}：${Math.round((p || 0) * 100)}%`) }, online);
@@ -754,13 +808,18 @@ if (!gotLock) {
           }
         } catch (e) {
           pushLog(`安装选择的后端准备失败，将使用现有后端启动：${e && e.message}\n`);
+          diag('安装选择的后端准备失败:', e);
         } finally {
           mgr.clearRequestedBackendVersion();
+          diag('步骤2 完成（安装选择标记已清除）');
         }
       }
       // 3) Apply any update staged on the previous launch (backend NOT running yet → no locks).
+      diag('步骤3 应用暂存更新 applyStaged（前）:', (() => { try { return mgr.stagedVersions(); } catch { return null; } })());
       const applied = mgr.applyStaged();
+      diag('步骤3 应用暂存更新 applyStaged（后）:', applied);
       const shouldIsolatePlugins = !!(applied && applied.dsh);
+      diag('插件隔离流程:', shouldIsolatePlugins ? '本次启动应用了新后端，将执行隔离轮测' : '跳过');
       // 3) Node gate: fast local check without network requests.
       const req = mgr.nodeRequirement();
       pushLog(`node gate: ${req.current || 'none'} >= ${req.required} (${req.source}) -> ${req.ok ? 'ok' : 'unsatisfied'}\n`);
@@ -772,13 +831,17 @@ if (!gotLock) {
       const iso = mgr.describeEnvIsolation();
       pushLog(`env isolation: stripped ${iso.strippedVars.length} var(s), dropped ${iso.droppedPathEntries.length} foreign PATH entr(ies), DSH_HOME=${iso.dshHome}\n`);
       // 5) Start backend (self-heals and retries on profile/symlink errors).
+      diag('步骤5 启动后端');
       const url = await startBackendWithPluginIsolation(shouldIsolatePlugins);
+      diag('步骤5 后端已启动:', url);
       // 6) Show UI + arm the keep-alive tray (close button hides to tray).
       await createMainWindow(url);
       createTray();
+      diag('步骤6 主窗口与托盘就绪');
       // 7) Background: shell updater + silent backend updates.
       setupShellUpdater();
       scheduleSilentUpdates();
+      diag('步骤7 启动流程完成');
     } catch (err) {
       showFatal(err);
     }

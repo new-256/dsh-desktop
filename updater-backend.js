@@ -93,7 +93,8 @@ function P() {
 // --------------------------------------------------------------------------
 // helpers
 // --------------------------------------------------------------------------
-function log(...a) { console.log('[backend-mgr]', ...a); }
+const diagLog = require('./diag-log').write;
+function log(...a) { console.log('[backend-mgr]', ...a); diagLog('[backend-mgr]', ...a); }
 function mkdirp(d) { fs.mkdirSync(d, { recursive: true }); }
 function execSync(cmd) {
   try { require('child_process').execSync(cmd, { stdio: 'ignore', shell: true }); } catch {}
