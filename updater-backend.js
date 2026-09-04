@@ -410,20 +410,54 @@ function currentVersions() {
     dsh: fs.existsSync(p.dshBin) ? dshVersion() : null
   };
 }
+/** npm 镜像上 @deepseek-ai/dsh 已发布的版本集合（与 GitHub 版本交叉校核用）。 */
+async function npmDshPublished() {
+  const doc = await fetchJson(`${REGISTRY}/@deepseek-ai%2Fdsh`);
+  const versions = Object.keys((doc && doc.versions) || {});
+  if (!versions.length) throw new Error('npm registry returned no versions');
+  return { versions, latest: highestSemver(versions) };
+}
+
 async function latestDshInfo() {
+  // 1) GitHub master = 权威最新版本。
+  let github = null; let changes = []; let githubErr = null;
   try {
     const pkg = await fetchJson(`${UPSTREAM_GITHUB_RAW}/apps/cli/package.json`);
     if (!pkg || !pkg.version) throw new Error('GitHub package version missing');
-    let changes = [];
+    github = pkg.version;
     try {
       const commits = await fetchJson(`${UPSTREAM_GITHUB_API}/commits?path=apps/cli&per_page=5`);
       changes = Array.isArray(commits) ? commits.map((c) => c && c.commit && c.commit.message).filter(Boolean).map((m) => m.split(/\r?\n/)[0]).slice(0, 5) : [];
     } catch {}
-    return { version: pkg.version, source: 'github', changes };
-  } catch (e) {
-    const version = (await fetchJson(`${REGISTRY}/@deepseek-ai%2Fdsh/latest`)).version;
-    return { version, source: 'npm', changes: [], fallback: e.message };
+  } catch (e) { githubErr = e.message; }
+
+  // 2) npm 已发布版本 —— 只有两边都存在的版本才提示更新（否则下载必然失败）。
+  let npm = null; let npmErr = null;
+  try { npm = await npmDshPublished(); } catch (e) { npmErr = e.message; }
+
+  if (github && npm) {
+    if (npm.versions.includes(github)) {
+      return { version: github, source: 'github+npm', changes, github, npmLatest: npm.latest };
+    }
+    // GitHub 领先于 npm：仅提示 npm 已发布且不超过 GitHub 的最新版本。
+    const installable = npm.versions.filter((v) => compareSemver(v, github) <= 0);
+    const best = highestSemver(installable);
+    if (best) {
+      log(`GitHub 已到 ${github}，npm 尚未发布该版本；本次仅提示两边均存在的 ${best}（npm 最新 ${npm.latest}）`);
+      return { version: best, source: 'npm-verified', changes, github, npmLatest: npm.latest, githubAhead: github };
+    }
+    if (npm.latest) return { version: npm.latest, source: 'npm', changes, github, npmLatest: npm.latest };
   }
+  if (github && !npm) {
+    // npm 校核失败（网络等）：退回 GitHub 版本；下载失败时界面会如实报错。
+    log(`npm 版本校核失败（${npmErr}），退回 GitHub 版本 ${github}`);
+    return { version: github, source: 'github', changes, github, npmCheckFailed: npmErr };
+  }
+  if (!github && npm && npm.latest) {
+    return { version: npm.latest, source: 'npm', changes: [], fallback: githubErr };
+  }
+  const version = (await fetchJson(`${REGISTRY}/@deepseek-ai%2Fdsh/latest`)).version;
+  return { version, source: 'npm', changes: [], fallback: githubErr || npmErr };
 }
 async function latestDshVersion() { return (await latestDshInfo()).version; }
 async function latestNodeVersion() {
@@ -1214,6 +1248,14 @@ async function stageDsh(callbacks = {}, requestedVersion = null) {
   const say = (m) => callbacks.onLog && callbacks.onLog(m);
   const info = requestedVersion ? { version: requestedVersion, source: 'github', changes: [] } : await latestDshInfo();
   const latest = info.version;
+  // 显式指定版本：先校核 npm 是否已发布该版本，避免必然失败的下载。
+  if (requestedVersion) {
+    let published = null;
+    try { published = await npmDshPublished(); } catch (e) { say(`npm 版本校核失败（${e.message}），仍将尝试下载…`); }
+    if (published && !published.versions.includes(requestedVersion)) {
+      throw new Error(`版本 ${requestedVersion} 尚未发布到 npm 镜像（npm 当前最新 ${published.latest}），无法下载安装。`);
+    }
+  }
   const staged = stagedVersions().dsh;
   if (staged && compareSemver(staged, latest) >= 0) {
     log(`dsh version ${staged} is already staged (latest=${latest}); reusing`);
