@@ -559,6 +559,10 @@ function requestedBackendVersion() {
   try { const value = fs.readFileSync(file, 'utf8').trim(); if (value === 'online') return 'online'; if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value)) return value; } catch {}
   return null;
 }
+/** Consume the installer's backend-selection marker so it applies exactly once. */
+function clearRequestedBackendVersion() {
+  try { fs.unlinkSync(path.join(userDataPath(), 'requested-backend-version.txt')); } catch {}
+}
 
 function migrateProjectionCache() {
   const p = P();
@@ -1280,6 +1284,7 @@ function rollbackDsh() {
 function applyStaged() {
   const p = P();
   const applied = { dsh: null, node: null };
+  const sleepSync = (ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch {} };
 
   // Node first: apply the FULL staged prefix (node.exe + shims + node_modules/{npm,corepack}).
   if (fs.existsSync(path.join(p.nodeNew, 'node.exe'))) {
@@ -1302,34 +1307,52 @@ function applyStaged() {
       applied.node = nodeVersion(p.nodeExe);
       log('applied staged Node prefix', applied.node);
       try { enableCorepack(env); } catch {}
-    } catch (e) { log('apply staged node failed:', e.message); }
-    rimraf(p.nodeNew);
+      rimraf(p.nodeNew); // discard staging only after a confirmed successful apply
+    } catch (e) {
+      // Keep node.new so the update is retried on the next launch.
+      log('apply staged node failed (node.new kept for next launch):', e.message);
+    }
   }
 
-  // Dsh backend: swap dshDir with dshNew.
+  // Dsh backend: swap dshDir with dshNew. Retried because a just-killed
+  // backend (or antivirus) can transiently hold locks on the old tree.
   if (fs.existsSync(path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'))) {
-    try {
-      const oldBackup = path.join(p.root, 'dsh.old');
-      rimraf(oldBackup);
+    let swapped = false;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 4 && !swapped; attempt++) {
       try {
+        const oldBackup = path.join(p.root, 'dsh.old');
+        rimraf(oldBackup);
         if (fs.existsSync(p.dshDir)) fs.renameSync(p.dshDir, oldBackup);
-        fs.renameSync(p.dshNew, p.dshDir);
-      } catch (swapError) {
-        // Windows security software can transiently reject rename. Retry with a
-        // copy-based swap; never discard dsh.new until the active package exists.
-        log('dsh rename swap failed, retrying copy swap:', swapError.message);
-        if (!fs.existsSync(path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'))) throw swapError;
+        try {
+          fs.renameSync(p.dshNew, p.dshDir);
+        } catch (midSwap) {
+          // Restore the first rename so the next attempt starts from a clean state.
+          if (!fs.existsSync(p.dshDir) && fs.existsSync(oldBackup)) fs.renameSync(oldBackup, p.dshDir);
+          throw midSwap;
+        }
+        swapped = true;
+        // Retain the previous version for rollback after startup health checks.
+        rimraf(p.dshPrevious);
+        if (fs.existsSync(oldBackup)) { try { fs.renameSync(oldBackup, p.dshPrevious); } catch { rimraf(oldBackup); } }
+      } catch (e) {
+        lastErr = e;
+        log(`apply staged dsh attempt ${attempt} failed: ${e.message}`);
+        if (attempt < 4) sleepSync(900);
+      }
+    }
+    if (!swapped) {
+      // Last resort: copy new over old. dsh.new is kept if this fails too.
+      try {
         copyDir(p.dshNew, p.dshDir);
         rimraf(p.dshNew);
+        swapped = true;
+        log('applied staged dsh via copy fallback');
+      } catch (e) {
+        log('apply staged dsh failed; dsh.new kept for next launch:', (e && e.message) || (lastErr && lastErr.message));
       }
-      // Retain the previous version for rollback after startup health checks.
-      rimraf(p.dshPrevious);
-      if (fs.existsSync(oldBackup)) fs.renameSync(oldBackup, p.dshPrevious);
-      applied.dsh = dshVersion(); log('applied staged dsh', applied.dsh);
-    } catch (e) {
-      log('apply staged dsh failed:', e.message);
-      // dsh.new stays for next attempt; current dsh remains usable.
     }
+    if (swapped) { applied.dsh = dshVersion(); log('applied staged dsh', applied.dsh); }
   }
 
   if (applied.node || applied.dsh) {
@@ -1429,7 +1452,7 @@ async function checkForUpdates(options = {}) {
 }
 
 module.exports = {
-  P, activeRoot, dshHome, requestedBackendVersion,
+  P, activeRoot, dshHome, requestedBackendVersion, clearRequestedBackendVersion,
   ensureSeeded, migrateProjectionCache, applyStaged, ensureNodeMeetsRequirement,
   repairProfileJunctions, quarantineProfiles, repairNodeForBackendFailure, nodeRequirement,
   analyzeBackendFailure, disableBrokenPatchPlugins,

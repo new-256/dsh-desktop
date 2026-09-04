@@ -689,9 +689,23 @@ function scheduleSilentUpdates() {
   setInterval(() => checkBackendUpdates(), 6 * 3600 * 1000);
 }
 
-function restartApp() {
+async function restartApp() {
   isQuitting = true;
-  killProcessTree(backend);
+  const proc = backend;
+  backend = null;
+  if (proc) {
+    try { proc.removeAllListeners('exit'); } catch {}
+    killProcessTree(proc);
+    // Wait (bounded) for the backend tree to actually die, so the relaunched
+    // instance can swap dsh.new → dsh without colliding with file locks still
+    // held by this dying process. Without this the staged update is skipped.
+    await new Promise((resolve) => {
+      if (proc.exitCode !== null) return resolve();
+      const timer = setTimeout(resolve, 6000);
+      proc.once('exit', () => { clearTimeout(timer); resolve(); });
+    });
+    await new Promise((r) => setTimeout(r, 400));
+  }
   app.relaunch();
   app.exit(0);
 }
@@ -716,26 +730,35 @@ if (!gotLock) {
     try {
       // 1) Seed writable active dir from factory resources (first run).
       mgr.ensureSeeded();
-      // 2) Honor an installer-selected backend before the first backend boot.
+      // 2) Honor the installer-selected backend ONCE (first launch after install).
+      //    The marker file is consumed afterwards so later boots never force-stage
+      //    an old version and never bypass the tray-confirmation update policy.
       const requestedBackend = mgr.requestedBackendVersion();
-      if (requestedBackend && requestedBackend !== 'online' && mgr.currentVersions().dsh !== requestedBackend) {
-        pushLog(`安装程序选择 DSH 后端 ${requestedBackend}，正在准备该版本。\n`);
-        await mgr.stageDsh({ onLog: (m) => pushLog('[backend-select] ' + m + '\n'), onProgress: () => {} }, requestedBackend);
+      if (requestedBackend) {
+        try {
+          if (requestedBackend === 'online') {
+            pushLog('安装程序选择在线最新 DSH 版本，开始检查更新。\n');
+            updateSplash('正在检查在线 DSH 最新版本…');
+            const info = await mgr.checkForUpdates({ includeNode: false });
+            const online = info.latest && info.latest.dsh;
+            const current = info.current && info.current.dsh;
+            if (online && (!current || mgr.compareSemver(online, current) > 0)) {
+              updateSplash(`正在下载在线 DSH ${online}…`);
+              await mgr.stageDsh({ onLog: (m) => { pushLog('[backend-online] ' + m + '\n'); updateSplash(m); }, onProgress: (p) => updateSplash(`正在下载在线 DSH ${online}：${Math.round((p || 0) * 100)}%`) }, online);
+            }
+            updateSplash('正在应用在线 DSH 后端…');
+          } else if (mgr.currentVersions().dsh !== requestedBackend) {
+            pushLog(`安装程序选择 DSH 后端 ${requestedBackend}，正在准备该版本。\n`);
+            updateSplash(`正在准备 DSH 后端 ${requestedBackend}…`);
+            await mgr.stageDsh({ onLog: (m) => pushLog('[backend-select] ' + m + '\n'), onProgress: () => {} }, requestedBackend);
+          }
+        } catch (e) {
+          pushLog(`安装选择的后端准备失败，将使用现有后端启动：${e && e.message}\n`);
+        } finally {
+          mgr.clearRequestedBackendVersion();
+        }
       }
       // 3) Apply any update staged on the previous launch (backend NOT running yet → no locks).
-      if (requestedBackend === 'online') {
-        pushLog('安装程序选择在线最新 DSH 版本，开始检查更新。\n');
-        updateSplash('正在检查在线 DSH 最新版本…');
-        const info = await mgr.checkForUpdates({ includeNode: false });
-        const online = info.latest && info.latest.dsh;
-        if (!online) throw new Error('无法获取在线 DSH 版本');
-        const current = info.current && info.current.dsh;
-        if (!current || mgr.compareSemver(online, current) > 0) {
-          updateSplash(`正在下载在线 DSH ${online}…`);
-          await mgr.stageDsh({ onLog: (m) => { pushLog('[backend-online] ' + m + '\n'); updateSplash(m); }, onProgress: (p) => updateSplash(`正在下载在线 DSH ${online}：${Math.round((p || 0) * 100)}%`) }, online);
-        }
-        updateSplash('正在应用在线 DSH 后端…');
-      }
       const applied = mgr.applyStaged();
       const shouldIsolatePlugins = !!(applied && applied.dsh);
       // 3) Node gate: fast local check without network requests.
