@@ -517,9 +517,21 @@ function setupShellUpdater() {
   }
 
   try {
-    autoUpdater.autoDownload = true;
+    // No silent shell updates either: only announce; download happens after the
+    // user confirms in the tray-driven dialog (see stageConfirmedUpdates).
+    autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.on('error', (e) => console.warn('[shell-updater]', e && e.message));
+    autoUpdater.on('update-available', (info) => {
+      shellUpdateVersion = (info && info.version) || null;
+      pushLog(`shell update available: ${shellUpdateVersion || 'unknown'}（等待用户确认）\n`);
+      try {
+        tray && tray.displayBalloon({
+          iconType: 'info', title: 'DSH Desktop 有新版本',
+          content: `桌面版 ${shellUpdateVersion || '新版本'} 可用。点击托盘菜单中的版本/更新项确认下载。`
+        });
+      } catch {}
+    });
     autoUpdater.on('update-downloaded', async () => {
       const r = await dialog.showMessageBox(mainWindow, {
         type: 'info', buttons: ['重启更新', '稍后'], defaultId: 0, cancelId: 1,
@@ -546,64 +558,135 @@ function setUpdateStatus(state, message, percent = updateStatus.percent, detail 
 function updateMenuItems() {
   const p = updateStatus.percent;
   const suffix = updateStatus.state === 'downloading' ? ` ${p}%` : '';
+  // Update items stay clickable so the user can open the confirmation dialog
+  // from the tray; only transient states (checking / downloading) are locked.
+  const interactive = ['idle', 'available', 'ready', 'error'].includes(updateStatus.state);
+  const click = interactive ? () => { handleUpdateMenuClick(); } : null;
   return [
-    { label: `当前版本：${updateStatus.current}`, enabled: false },
-    { label: `最新版本：${updateStatus.latest}`, enabled: false },
-    { label: `更新：${updateStatus.message}${suffix}`, enabled: false }
+    { label: `当前版本：${updateStatus.current}`, enabled: interactive, click },
+    { label: `最新版本：${updateStatus.latest}`, enabled: interactive, click },
+    { label: `更新：${updateStatus.message}${suffix}`, enabled: interactive, click }
   ];
 }
-async function silentStageUpdates(options = {}) {
-  if (silentBusy) return;
+let shellUpdateVersion = null;
+
+/** Check-only: never downloads. New versions are announced via the tray and wait for user confirmation. */
+async function checkBackendUpdates(options = {}) {
+  if (silentBusy) return null;
   silentBusy = true;
   setUpdateStatus('checking', '正在检查更新', 0, '', { current: mgr.currentVersions()?.dsh || '未知', latest: '检查中…' });
   try {
     const info = await mgr.checkForUpdates(options);
-    setUpdateStatus('checking', '检查完成', 0, '', { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
-    if (info.pending && info.pending.length) {
-      pushLog('已暂存 ' + info.pending.map((p) => `${p.component}->${p.staged}`).join(', ') + '，将在下次启动时自动应用（跳过重复下载）\n');
-    }
-    if (!info.updates || !info.updates.length) {
-      if (!info.pending || !info.pending.length) {
-        pushLog('backend components up to date\n');
-        setUpdateStatus('idle', '已是最新版本', 100, '', { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
-      } else {
-        setUpdateStatus('ready', '更新待重启应用', 100, info.pending.map((p) => `${p.component} ${p.staged}`).join('；'), { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
-      }
-      return;
-    }
-    setUpdateStatus('downloading', `发现 ${info.updates.length} 项更新`, 0, info.updates.map((u) => `${u.component} → ${u.latest}`).join('；'), { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
-    const cbs = { onLog: (m) => pushLog('[update] ' + m + '\n'), onProgress: (p) => setUpdateStatus('downloading', '正在下载更新', Math.round((p || 0) * 100), updateStatus.detail) };
-    const summaries = [];
-    for (const u of info.updates) {
+    if (info.updates && info.updates.length) {
+      setUpdateStatus('available', '有新版本，点击此处确认', 0, info.updates.map((u) => `${u.component} → ${u.latest}`).join('；'), { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
+      pushLog('发现新版本（等待用户确认后才下载）：' + info.updates.map((u) => `${u.component} ${u.current || '无'} → ${u.latest}`).join('；') + '\n');
       try {
-        if (u.component === 'dsh') {
-          const staged = await mgr.stageDsh(cbs, u.latest);
-          summaries.push(`DSH 后端 ${u.current || '无'} → ${staged.version}`);
-          if (u.changes && u.changes.length) summaries.push('上游更新：' + u.changes.slice(0, 3).join('；'));
-        } else if (u.component === 'node') {
-          await mgr.stageNode(cbs);
-          summaries.push(`Node 运行时 ${u.current || '无'} → ${u.latest}`);
-        }
-      } catch (e) { pushLog('[update] stage failed ' + u.component + ': ' + e.message + '\n'); }
+        tray && tray.displayBalloon({
+          iconType: 'info', title: 'DSH 有可用更新',
+          content: info.updates.map((u) => `${u.component} → ${u.latest}`).join('；') + '\n点击托盘菜单中的版本/更新项确认下载。'
+        });
+      } catch {}
+    } else if (info.pending && info.pending.length) {
+      pushLog('已暂存 ' + info.pending.map((p) => `${p.component}->${p.staged}`).join(', ') + '，将在下次启动时自动应用（跳过重复下载）\n');
+      setUpdateStatus('ready', '更新待重启应用', 100, info.pending.map((p) => `${p.component} ${p.staged}`).join('；'), { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
+    } else {
+      pushLog('backend components up to date\n');
+      setUpdateStatus('idle', '已是最新版本', 100, '', { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
     }
-    const detail = summaries.length ? summaries.join('\n') : '新版本已下载。';
-    setUpdateStatus('ready', '更新已下载，等待重启', 100, detail, { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
-    pushLog('更新内容：\n' + detail + '\n将在下次启动时自动应用。\n');
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      try { mainWindow.flashFrame(false); } catch {}
-      try { tray && tray.displayBalloon({ iconType: 'info', title: 'DSH 更新已准备', content: detail + '\n重启应用后生效。' }); } catch {}
-    }
+    return info;
   } catch (e) {
-    setUpdateStatus('error', '更新失败', 0, e && e.message ? e.message : '未知错误', { current: updateStatus.current, latest: updateStatus.latest || '未知' });
+    setUpdateStatus('error', '检查更新失败', 0, e && e.message ? e.message : '未知错误', { current: updateStatus.current, latest: updateStatus.latest || '未知' });
     pushLog('[update] check failed: ' + (e && e.message) + '\n');
+    return null;
   } finally {
     silentBusy = false;
   }
 }
 
+/** Download updates — ONLY called after the user confirms in the dialog. */
+async function stageConfirmedUpdates(updates, info) {
+  if (silentBusy) return;
+  silentBusy = true;
+  setUpdateStatus('downloading', `开始下载 ${updates.length} 项更新`, 0, updates.map((u) => `${u.component} → ${u.latest}`).join('；'), { current: (info && info.current && info.current.dsh) || updateStatus.current, latest: (info && info.latest && info.latest.dsh) || updateStatus.latest });
+  const cbs = { onLog: (m) => pushLog('[update] ' + m + '\n'), onProgress: (p) => setUpdateStatus('downloading', '正在下载更新', Math.round((p || 0) * 100), updateStatus.detail) };
+  const summaries = [];
+  for (const u of updates) {
+    try {
+      if (u.component === 'dsh') {
+        const staged = await mgr.stageDsh(cbs, u.latest);
+        summaries.push(`DSH 后端 ${u.current || '无'} → ${staged.version}`);
+        if (u.changes && u.changes.length) summaries.push('上游更新：' + u.changes.slice(0, 3).join('；'));
+      } else if (u.component === 'node') {
+        await mgr.stageNode(cbs);
+        summaries.push(`Node 运行时 ${u.current || '无'} → ${u.latest}`);
+      }
+    } catch (e) { pushLog('[update] stage failed ' + u.component + ': ' + e.message + '\n'); }
+  }
+  if (shellUpdateVersion && autoUpdater) {
+    try { await autoUpdater.downloadUpdate(); summaries.push(`DSH Desktop ${shellUpdateVersion}`); } catch (e) { pushLog('[update] shell download failed: ' + e.message + '\n'); }
+  }
+  const detail = summaries.length ? summaries.join('\n') : '新版本已下载。';
+  setUpdateStatus('ready', '更新已下载，等待重启', 100, detail, { current: updateStatus.current, latest: updateStatus.latest });
+  pushLog('更新内容：\n' + detail + '\n将在下次启动时自动应用。\n');
+  silentBusy = false;
+  const r = await dialog.showMessageBox(mainWindow, {
+    type: 'info', buttons: ['立即重启并更新', '稍后'], defaultId: 0, cancelId: 1,
+    title: APP_NAME, message: '更新已下载完成',
+    detail: detail + '\n\n重启应用后生效。'
+  });
+  if (r.response === 0) restartApp();
+}
+
+/** Tray menu click on the version/update items — the single consent gate for updates. */
+async function handleUpdateMenuClick() {
+  if (silentBusy) {
+    dialog.showMessageBox(mainWindow, { type: 'info', buttons: ['知道了'], title: APP_NAME, message: '正在检查或下载更新', detail: '请稍候，当前更新操作完成后即可继续。' }).catch(() => {});
+    return;
+  }
+  showMainWindow();
+  if (updateStatus.state === 'ready') {
+    const r = await dialog.showMessageBox(mainWindow, {
+      type: 'info', buttons: ['立即重启并更新', '稍后'], defaultId: 0, cancelId: 1,
+      title: APP_NAME, message: '更新已就绪',
+      detail: (updateStatus.detail || '新版本已下载完成。') + '\n\n重启应用后生效。'
+    });
+    if (r.response === 0) restartApp();
+    return;
+  }
+  const info = await checkBackendUpdates({ includeNode: false });
+  if (!info) return;
+  if (!info.updates || !info.updates.length) {
+    if (info.pending && info.pending.length) {
+      setUpdateStatus('ready', '更新待重启应用', 100, info.pending.map((p) => `${p.component} ${p.staged}`).join('；'), { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
+      const r = await dialog.showMessageBox(mainWindow, {
+        type: 'info', buttons: ['立即重启并更新', '稍后'], defaultId: 0, cancelId: 1,
+        title: APP_NAME, message: '更新已就绪',
+        detail: info.pending.map((p) => `${p.component} → ${p.staged}`).join('\n') + '\n\n重启应用后生效。'
+      });
+      if (r.response === 0) restartApp();
+    } else {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info', buttons: ['知道了'], title: APP_NAME, message: '已是最新版本',
+        detail: `当前 DSH 后端：${info.current?.dsh || '未知'}\n最新版本：${info.latest?.dsh || '未知'}`
+      }).catch(() => {});
+    }
+    return;
+  }
+  const lines = info.updates.map((u) => `${u.component === 'dsh' ? 'DSH 后端' : u.component} ${u.current || '无'} → ${u.latest}`);
+  if (shellUpdateVersion) lines.push(`DSH Desktop 桌面版 → ${shellUpdateVersion}`);
+  const changes = info.updates.flatMap((u) => (u.changes || []).slice(0, 3).map((c) => `· ${c}`));
+  const r = await dialog.showMessageBox(mainWindow, {
+    type: 'question', buttons: ['下载并更新', '取消'], defaultId: 0, cancelId: 1,
+    title: APP_NAME, message: '发现新版本',
+    detail: lines.join('\n') + (changes.length ? '\n\n更新内容：\n' + changes.join('\n') : '') + '\n\n是否现在下载更新？下载完成后需要重启应用生效。'
+  });
+  if (r.response === 0) await stageConfirmedUpdates(info.updates, info);
+}
+
 function scheduleSilentUpdates() {
-  setTimeout(() => silentStageUpdates(), 20000);
-  setInterval(() => silentStageUpdates(), 6 * 3600 * 1000);
+  // Check-only cadence: announces new versions via the tray, never downloads.
+  setTimeout(() => checkBackendUpdates(), 20000);
+  setInterval(() => checkBackendUpdates(), 6 * 3600 * 1000);
 }
 
 function restartApp() {
@@ -616,7 +699,7 @@ function restartApp() {
 ipcMain.handle('app:get-version', () => app.getVersion());
 ipcMain.handle('backend:versions', () => { try { return mgr.currentVersions(); } catch { return null; } });
 ipcMain.handle('env:isolation', () => { try { return mgr.describeEnvIsolation(); } catch { return null; } });
-ipcMain.handle('backend:check-updates', () => silentStageUpdates({ includeNode: true }));
+ipcMain.handle('backend:check-updates', () => checkBackendUpdates({ includeNode: true }));
 ipcMain.handle('app:restart', () => restartApp());
 
 // ---------------------------------------------------------------------------
