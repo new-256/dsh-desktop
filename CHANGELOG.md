@@ -2,7 +2,16 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 风格；版本号与 `package.json` 保持一致。
 
-## [0.3.16] - 2026-09-03
+## [0.3.17] - 2026-09-04
+
+### 修复
+
+- 补齐主进程缺失的 `crashNotified` 声明，消除 `ReferenceError: crashNotified is not defined` 主进程崩溃。
+- 新增受控停止函数 `stopBackend()`：先解绑退出监听再结束进程，插件隔离轮测的主动停止不再被误判为后端崩溃。
+- 退出回调增加当前实例比对（`backend === child`），任何受控停止、重启、轮测都不会触发崩溃弹窗。
+- 插件隔离轮测全程在启动页显示进度（核心验证、逐个插件检查、兼容集启动）。
+- 核心后端验证失败时恢复完整原始插件配置，不再留下半隔离状态和悬挂的 `plugin-isolation.json`。
+
 
 ### 修复
 

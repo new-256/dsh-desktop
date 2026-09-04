@@ -55,6 +55,7 @@ let activeUrl = null;
 let isQuitting = false;
 let tray = null;
 let trayHintShown = false;
+let crashNotified = false;
 
 function pushLog(line) {
   const text = line == null ? '' : line.toString();
@@ -79,6 +80,15 @@ function killProcessTree(proc) {
     try { spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); return; } catch {}
   }
   try { proc.kill(); } catch {}
+}
+
+/** Controlled stop: detach listeners first so a deliberate kill is never misread as a crash. */
+function stopBackend() {
+  if (!backend) return;
+  const proc = backend;
+  backend = null;
+  try { proc.removeAllListeners('exit'); } catch {}
+  killProcessTree(proc);
 }
 
 function activePaths() { return mgr.P(); }
@@ -137,9 +147,10 @@ function spawnBackend() {
         reject(new Error(`后端进程提前退出（code=${code} signal=${signal}）。\n\n` +
           backendLogs.join('').split(/\r?\n/).slice(-30).join('\n')));
       } else {
-        // Backend died after boot.
+        // Backend died after boot. A controlled stop clears `backend` before
+        // killing, so only an exit of the CURRENT active instance is a crash.
         pushLog(`backend exited after boot code=${code} signal=${signal}\n`);
-        if (!isQuitting) handleBackendCrashed();
+        if (!isQuitting && backend === child) handleBackendCrashed();
       }
     });
   });
@@ -169,7 +180,7 @@ async function startBackendWithHealing() {
   }
   const fixed = mgr.repairProfileJunctions(p.dshHome);
   if (fixed > 0) pushLog(`自定义插件 junction 修复/重建：${fixed} 项。\n`);
-  if (backend) { killProcessTree(backend); backend = null; }
+  stopBackend();
   await new Promise((r) => setTimeout(r, 800));
 
   if ((qRes && qRes.quarantined) || fixed > 0) {
@@ -209,7 +220,7 @@ async function startBackendWithHealing() {
   } catch (e) {
     pushLog('plugin disable analysis failed: ' + (e && e.message) + '\n');
   }
-  if (backend) { killProcessTree(backend); backend = null; }
+  stopBackend();
   await new Promise((r) => setTimeout(r, 800));
 
   if (disabled.length) {
@@ -226,7 +237,7 @@ async function startBackendWithHealing() {
   const nodeChanged = await mgr.repairNodeForBackendFailure({
     onLog: (m) => pushLog('[node-repair] ' + m + '\n')
   });
-  if (backend) { killProcessTree(backend); backend = null; }
+  stopBackend();
 
   if (nodeChanged) {
     await new Promise((r) => setTimeout(r, 800));
@@ -246,16 +257,22 @@ async function startBackendWithPluginIsolation(shouldIsolate = false) {
   const isolation = mgr.preparePluginIsolation();
   if (!isolation.active || !isolation.plugins.length) return startBackendWithHealing();
   pushLog('检测到后端更新，先隔离全部第三方插件进行核心启动检查。\n');
+  updateSplash('正在验证核心后端（已临时隔离插件）…');
   let coreUrl;
   try {
     coreUrl = await startBackendWithHealing();
   } catch (error) {
+    // Core itself cannot boot: restore the FULL original plugin set before
+    // surfacing the error, so no half-applied isolation state is left behind.
     mgr.finishPluginIsolation(isolation.plugins.map((p) => ({ index: p.index, status: 'not-tested' })));
     throw error;
   }
-  if (backend) { killProcessTree(backend); backend = null; }
+  stopBackend();
   const statuses = [];
+  let done = 0;
   for (const plugin of isolation.plugins) {
+    done++;
+    updateSplash(`正在逐个检查插件（${done}/${isolation.plugins.length}）：${(plugin.ids || [])[0] || '未知插件'}`);
     mgr.enablePluginIsolationBlock(plugin.index);
     backendLogs = [];
     try {
@@ -268,11 +285,12 @@ async function startBackendWithPluginIsolation(shouldIsolate = false) {
       statuses.push({ index: plugin.index, status: 'failed', error: error.message });
       pushLog(`插件 ${plugin.ids.join(', ')} 启动失败，将保持禁用：${error.message}\n`);
     }
-    if (backend) { killProcessTree(backend); backend = null; }
+    stopBackend();
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   const report = mgr.finishPluginIsolation(statuses);
   backendLogs = [];
+  updateSplash('正在以兼容插件集启动 DSH…');
   const url = await startBackendWithHealing();
   const failed = (report?.plugins || []).filter((p) => p.status === 'failed');
   if (failed.length) {
