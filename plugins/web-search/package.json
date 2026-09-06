@@ -1,0 +1,19 @@
+{
+  "name": "web-search-panel",
+  "description": "DSH 网页搜索增强：多引擎搜索（DDG IA API / DDG HTML 抓取 / Bing 抓取 / Wikipedia API）+ web_fetch_url 抓取工具 + 设置→插件页配置卡片。host 逻辑在同目录 lib/index.mjs（经家级 cordis.patch.yml 的 file:// 行加载），本包 main 是 no-op 占位防止双实例。",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./lib/client-entry.mjs",
+  "exports": {
+    ".": "./lib/client-entry.mjs",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web"
+    }
+  },
+  "license": "MIT"
+}
