@@ -1,14 +1,18 @@
 // web-search — host half（家级 cordis.patch.yml 的 file:// 行加载，?v=N 热加载）。
 //
 // 注册内容：
-//   1. 模型工具 web_search_multi —— 26 引擎/渠道搜索，engine 可选 auto（默认，
-//      语言感知回退链）/ aggregate（并行多引擎 + RRF 融合去重）/ 免费抓取
-//      ddg-html / bing / baidu / so360 / brave / 免费开放 API ddg-api /
-//      wikipedia（语言感知）/ API-key 型 serper / tavily / brave-api / exa /
-//      垂直渠道 arxiv / openalex / crossref（学术）、github / npm / stackexchange /
-//      csdn（开发）、hn（社区）、news（新闻 RSS）、youtube / bilibili（视频）、
-//      images（图片）、wechat（微信公众号）、marginalia（独立索引）——垂直渠道
-//      与 aggregate 不参与 auto 链，需显式指定。
+//   1. 模型工具 web_search_multi —— 38 引擎/渠道搜索（8 大类）：
+//      【通用网页】auto（默认，语言感知回退链）/ ddg-html / bing / baidu / so360 /
+//      brave / ddg-api / wikipedia（语言感知）/ marginalia / serper / tavily /
+//      brave-api / exa（后四个 API-key 型）
+//      【聚合】aggregate（并行多引擎 + RRF 融合去重；复合语法 aggregate:子集）
+//      【学术文献】arxiv / openalex / crossref / pubmed / europepmc / dblp
+//      【开发者】github / npm / crates / dockerhub / stackexchange / mdn / csdn
+//      【新闻与社区】news / hn
+//      【媒体娱乐】youtube / bilibili / images / itunes
+//      【中文内容】wechat / zhidao
+//      【资料参考】wikidata / books / archive / maps
+//      横切能力：freshness 时效过滤（day/week/month/year）、复合聚合、语言感知。
 //   2. 模型工具 web_fetch_url —— 经 ctx.web.fetch() 抓取任意 URL（由家级
 //      web-fetch-http 行提供的官方 provider 执行，SSRF 防护/字节上限）。
 //   3. 11 个搜索引擎 provider 注册进 ctx.web。host 的 web 行仍把
@@ -484,6 +488,60 @@ function freshnessBaiduParam(f) {
 /** Google News RSS：query 追加 when:1d/7d/30d/365d。 */
 function freshnessGnewsSuffix(f) {
   return ({ day: '1d', week: '7d', month: '30d', year: '365d' })[f]
+}
+
+/**
+ * 百度知道：结果条目为 <a href="http://zhidao.baidu.com/question/ID.html"
+ * data-log="fm:as,pos:ti,...">标题</a>，摘要在其后 800 字符内的 answer 类元素里。
+ */
+function parseZhidaoHtml(html) {
+  const sources = []
+  const seen = new Set()
+  for (const m of html.matchAll(/<a[^>]+href="(https?:\/\/zhidao\.baidu\.com\/question\/[^"?]+)[^"]*"[^>]*data-log="fm:as,pos:ti[^"]*"[^>]*>([\s\S]*?)<\/a>/g)) {
+    const url = m[1]
+    if (seen.has(url)) continue
+    seen.add(url)
+    const title = stripTags(m[2])
+    if (!title) continue
+    const after = html.slice(m.index + m[0].length, m.index + m[0].length + 800)
+    const am = after.match(/<(?:dd|div|p)[^>]*class="[^"]*answer[^"]*"[^>]*>([\s\S]*?)<\/(?:dd|div|p)>/)
+    const snippet = am ? stripTags(am[1]) : undefined
+    sources.push({ url, title, snippet: snippet || undefined })
+  }
+  return sources
+}
+
+// ── 引擎分类（设置卡片分组 / 工具描述 / 健康端点用）─────────────────────────────
+const ENGINE_CATEGORY = {
+  // 通用网页（auto 链与显式通用）
+  'ddg-html': 'general', bing: 'general', baidu: 'general', so360: 'general', brave: 'general',
+  'ddg-api': 'general', wikipedia: 'general', marginalia: 'general',
+  serper: 'general', tavily: 'general', 'brave-api': 'general', exa: 'general',
+  // 聚合
+  aggregate: 'aggregate',
+  // 学术文献
+  arxiv: 'academic', openalex: 'academic', crossref: 'academic', pubmed: 'academic', europepmc: 'academic', dblp: 'academic',
+  // 开发者
+  github: 'dev', npm: 'dev', crates: 'dev', dockerhub: 'dev', stackexchange: 'dev', mdn: 'dev', csdn: 'dev',
+  // 新闻与社区
+  news: 'news', hn: 'news',
+  // 媒体娱乐
+  youtube: 'media', bilibili: 'media', images: 'media', itunes: 'media',
+  // 中文内容
+  wechat: 'chinese', zhidao: 'chinese',
+  // 资料参考
+  wikidata: 'reference', books: 'reference', archive: 'reference', maps: 'reference',
+}
+/** 分类 → 中文标签。 */
+const CATEGORY_LABELS = {
+  general: '通用网页',
+  aggregate: '聚合',
+  academic: '学术文献',
+  dev: '开发者',
+  news: '新闻与社区',
+  media: '媒体娱乐',
+  chinese: '中文内容',
+  reference: '资料参考',
 }
 
 function makeEngines(readSettings) {
@@ -1089,6 +1147,157 @@ function makeEngines(readSettings) {
         }
       },
     },
+    // ── 终轮扩展（学术 2 / 开发 4 / 中文 1 / 参考 2）────────────────────────────
+    dblp: {
+      label: 'dblp（计算机科学文献库）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://dblp.org/search/publ/api?q=${encodeURIComponent(query)}&format=json&h=${Math.min(max, 30)}`
+        const res = await httpGetJson(url, {}, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const hits = (res.data && res.data.result && res.data.result.hits && res.data.result.hits.hit) || []
+        if (hits.length === 0) throw new Error('dblp 无结果')
+        return {
+          sources: hits.slice(0, max).map((h) => {
+            const info = h.info || {}
+            const authors = info.authors && info.authors.author
+            const authorText = Array.isArray(authors) ? authors.map((a) => a.text).join(', ') : authors && authors.text ? authors.text : ''
+            return {
+              url: info.url || `https://dblp.org/search?q=${encodeURIComponent(query)}`,
+              title: info.title || 'Untitled',
+              snippet: [info.venue, info.year, authorText].filter(Boolean).join(' · ') || undefined,
+            }
+          }),
+        }
+      },
+    },
+    europepmc: {
+      label: 'Europe PMC（生物医学+预印本）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(query)}&format=json&pageSize=${Math.min(max, 25)}`
+        const res = await httpGetJson(url, {}, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const hits = (res.data && res.data.resultList && res.data.resultList.result) || []
+        if (hits.length === 0) throw new Error('Europe PMC 无结果')
+        return {
+          sources: hits.slice(0, max).map((h) => ({
+            url: h.id ? `https://europepmc.org/article/${h.source}/${h.id}` : 'https://europepmc.org/',
+            title: h.title || 'Untitled',
+            snippet: [h.journalTitle, h.pubYear].filter(Boolean).join(' · ') || undefined,
+          })),
+        }
+      },
+    },
+    crates: {
+      label: 'crates.io（Rust 包）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://crates.io/api/v1/crates?q=${encodeURIComponent(query)}&per_page=${Math.min(max, 25)}`
+        const res = await httpGetJson(url, { Accept: 'application/json' }, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const hits = (res.data && res.data.crates) || []
+        if (hits.length === 0) throw new Error('crates.io 无结果')
+        return {
+          sources: hits.slice(0, max).map((c) => ({
+            url: `https://crates.io/crates/${c.name}`,
+            title: `${c.name}@${c.max_stable_version || c.max_version || '?'}`,
+            snippet: [c.description, c.downloads != null ? `${c.downloads} 下载` : ''].filter(Boolean).join(' · ') || undefined,
+          })),
+        }
+      },
+    },
+    dockerhub: {
+      label: 'Docker Hub（容器镜像）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://hub.docker.com/v2/search/repositories/?query=${encodeURIComponent(query)}&page_size=${Math.min(max, 25)}`
+        const res = await httpGetJson(url, {}, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const hits = (res.data && res.data.results) || []
+        if (hits.length === 0) throw new Error('Docker Hub 无结果')
+        return {
+          sources: hits.slice(0, max).map((r) => ({
+            url: r.repo_name && r.repo_name.includes('/') ? `https://hub.docker.com/r/${r.repo_name}` : `https://hub.docker.com/_/${r.repo_name}`,
+            title: `${r.repo_name || '?'}${r.is_official ? ' [official]' : ''}${r.star_count != null ? ` ★${r.star_count}` : ''}`,
+            snippet: r.short_description || undefined,
+          })),
+        }
+      },
+    },
+    mdn: {
+      label: 'MDN（Web 开发文档）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://developer.mozilla.org/api/v1/search?q=${encodeURIComponent(query)}&locale=en-US`
+        const res = await httpGetJson(url, {}, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const docs = (res.data && res.data.documents) || []
+        if (docs.length === 0) throw new Error('MDN 无结果')
+        return {
+          sources: docs.slice(0, max).map((d) => ({
+            url: `https://developer.mozilla.org${d.mdn_url}`,
+            title: d.title || 'Untitled',
+            snippet: d.summary || undefined,
+          })),
+        }
+      },
+    },
+    zhidao: {
+      label: '百度知道（中文问答）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://zhidao.baidu.com/search?word=${encodeURIComponent(query)}`
+        let res = await httpGet(url, opts)
+        // 百度知道连续快速请求偶发 5xx 限流：退避 1.5s 重试一次
+        if ((!res.ok || res.error) && res.statusCode >= 500) {
+          await new Promise((r) => setTimeout(r, 1500))
+          res = await httpGet(url, opts)
+        }
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        if (/antispider/i.test(res.content)) throw new Error('百度知道触发反爬')
+        const sources = parseZhidaoHtml(res.content).slice(0, max)
+        if (sources.length === 0) throw new Error('百度知道无结果')
+        return { sources }
+      },
+    },
+    wikidata: {
+      label: 'Wikidata（结构化实体）',
+      vertical: true,
+      async run(query, max, opts) {
+        const lang = /[\u4e00-\u9fff]/.test(query) ? 'zh' : 'en'
+        const url = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(query)}&language=${lang}&format=json&limit=${Math.min(max, 50)}`
+        const res = await httpGetJson(url, {}, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const hits = (res.data && res.data.search) || []
+        if (hits.length === 0) throw new Error('Wikidata 无结果')
+        return {
+          sources: hits.slice(0, max).map((h) => ({
+            url: h.concepturi || `https://www.wikidata.org/wiki/${h.id}`,
+            title: `${h.label || h.id} (${h.id})`,
+            snippet: h.description || undefined,
+          })),
+        }
+      },
+    },
+    archive: {
+      label: 'Internet Archive（档案资料）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=description&rows=${Math.min(max, 25)}&output=json`
+        const res = await httpGetJson(url, {}, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const docs = (res.data && res.data.response && res.data.response.docs) || []
+        if (docs.length === 0) throw new Error('Internet Archive 无结果')
+        return {
+          sources: docs.slice(0, max).map((d) => ({
+            url: `https://archive.org/details/${d.identifier}`,
+            title: d.title || d.identifier,
+            snippet: Array.isArray(d.description) ? d.description[0] : d.description || undefined,
+          })),
+        }
+      },
+    },
   }
 
   // ── 聚合引擎（并行多引擎 + RRF 融合去重；闭包引用上方引擎表）───────────────
@@ -1205,6 +1414,14 @@ function resolvedSettings() {
     enableBooks: s.enableBooks !== false,
     enableItunes: s.enableItunes !== false,
     enableMaps: s.enableMaps !== false,
+    enableDblp: s.enableDblp !== false,
+    enableEuropepmc: s.enableEuropepmc !== false,
+    enableCrates: s.enableCrates !== false,
+    enableDockerhub: s.enableDockerhub !== false,
+    enableMdn: s.enableMdn !== false,
+    enableZhidao: s.enableZhidao !== false,
+    enableWikidata: s.enableWikidata !== false,
+    enableArchive: s.enableArchive !== false,
     apiInAuto: s.apiInAuto !== false,
     tavilyApiKey: typeof s.tavilyApiKey === 'string' ? s.tavilyApiKey.trim() : '',
     serperApiKey: typeof s.serperApiKey === 'string' ? s.serperApiKey.trim() : '',
@@ -1261,6 +1478,14 @@ function engineEnabled(id, s) {
   if (id === 'books') return s.enableBooks
   if (id === 'itunes') return s.enableItunes
   if (id === 'maps') return s.enableMaps
+  if (id === 'dblp') return s.enableDblp
+  if (id === 'europepmc') return s.enableEuropepmc
+  if (id === 'crates') return s.enableCrates
+  if (id === 'dockerhub') return s.enableDockerhub
+  if (id === 'mdn') return s.enableMdn
+  if (id === 'zhidao') return s.enableZhidao
+  if (id === 'wikidata') return s.enableWikidata
+  if (id === 'archive') return s.enableArchive
   // API 型引擎：有 key 即启用
   if (['serper', 'tavily', 'brave-api', 'exa'].includes(id)) return Boolean(apiKeyFor(id, s))
   return false
@@ -1478,6 +1703,14 @@ export function apply(ctx, config) {
           enableBooks: Schema.boolean().default(true).description('启用 Open Library 图书搜索（垂直渠道，engine=books）'),
           enableItunes: Schema.boolean().default(true).description('启用 iTunes 媒体搜索（垂直渠道，engine=itunes；音乐/电影/播客/应用）'),
           enableMaps: Schema.boolean().default(true).description('启用 OpenStreetMap 地点搜索（垂直渠道，engine=maps；返回坐标与 OSM 链接）'),
+          enableDblp: Schema.boolean().default(true).description('启用 dblp 计算机科学文献库（垂直渠道，engine=dblp）'),
+          enableEuropepmc: Schema.boolean().default(true).description('启用 Europe PMC 生物医学+预印本（垂直渠道，engine=europepmc）'),
+          enableCrates: Schema.boolean().default(true).description('启用 crates.io Rust 包搜索（垂直渠道，engine=crates）'),
+          enableDockerhub: Schema.boolean().default(true).description('启用 Docker Hub 镜像搜索（垂直渠道，engine=dockerhub）'),
+          enableMdn: Schema.boolean().default(true).description('启用 MDN Web 开发文档搜索（垂直渠道，engine=mdn）'),
+          enableZhidao: Schema.boolean().default(true).description('启用百度知道中文问答搜索（垂直渠道，engine=zhidao）'),
+          enableWikidata: Schema.boolean().default(true).description('启用 Wikidata 结构化实体搜索（垂直渠道，engine=wikidata；语言感知）'),
+          enableArchive: Schema.boolean().default(true).description('启用 Internet Archive 档案资料搜索（垂直渠道，engine=archive）'),
           apiInAuto: Schema.boolean().default(true).description('auto 链优先使用已配置 key 的 API 引擎（会消耗 API 配额，关闭则 auto 只用免费引擎）'),
           tavilyApiKey: Schema.string().default('').description('Tavily API key（api.tavily.com，配置后 tavily 引擎可用；获取：https://app.tavily.com）'),
           serperApiKey: Schema.string().default('').description('Serper.dev API key（google.serper.dev，Google 结果，配置后 serper 引擎可用；获取：https://serper.dev/signup）'),
@@ -1537,14 +1770,14 @@ export function apply(ctx, config) {
         ctx.tools.register({
           name: 'web_search_multi',
           description:
-            '多渠道网页搜索（30 引擎）。engine 可选：auto（默认，语言感知回退链）/ aggregate（并行多引擎 + RRF 融合去重；支持复合语法 "aggregate:引擎1,引擎2" 聚合任意子集，如 aggregate:arxiv,openalex,crossref 聚合学术三件套）/ 免费抓取 ddg-html、bing、baidu、so360、brave / 免费开放 API ddg-api、wikipedia（语言感知）/ API-key 型 serper、tavily、brave-api、exa / 垂直渠道 arxiv、openalex、crossref（学术）、pubmed（医学文献）、github、npm（代码/包）、stackexchange、csdn（问答/中文博客）、hn（科技社区）、news（新闻）、youtube、bilibili（视频）、images（图片）、itunes（音乐/电影/播客/应用）、books（图书）、maps（地点/坐标）、wechat（微信公众号）、marginalia（独立索引）——垂直渠道与 aggregate 需显式指定。freshness 可选 day/week/month/year 时效过滤（ddg-html/brave/baidu/news/aggregate 原生支持，其余忽略）。返回 sources（url/title/snippet）。当内置 web_search 结果不足、需要特定渠道或事实快答时优先使用本工具。配置见 设置→插件→网页搜索。',
+            '多渠道网页搜索（38 引擎，8 大类，按类选用）。【通用网页】auto（默认，语言感知回退链：中文 Bing→百度→360→DDG，英文 DDG HTML→Bing→Brave；key 引擎优先）/ ddg-html / bing / baidu / so360 / brave / ddg-api（事实快答）/ wikipedia（语言感知）/ marginalia / serper·tavily·brave-api·exa（API-key 型）。【聚合】aggregate（并行多引擎 + RRF 融合去重；复合语法 aggregate:引擎1,引擎2 聚合任意子集，如 aggregate:arxiv,openalex,crossref）。【学术文献】arxiv / openalex / crossref / pubmed / europepmc / dblp。【开发者】github / npm / crates（Rust）/ dockerhub / stackexchange / mdn / csdn。【新闻与社区】news（Bing/Google News RSS）/ hn。【媒体娱乐】youtube / bilibili / images（图片直链）/ itunes。【中文内容】wechat（微信公众号）/ zhidao（百度知道）。【资料参考】wikidata / books / archive / maps。freshness 可选 day/week/month/year 时效过滤（ddg-html/brave/baidu/news/aggregate 原生支持，其余忽略）。返回 sources（url/title/snippet）。当内置 web_search 结果不足、需要特定渠道或事实快答时优先使用本工具。配置见 设置→插件→网页搜索。',
           parameters: {
             type: 'object',
             additionalProperties: false,
             required: ['query'],
             properties: {
               query: { type: 'string', description: '搜索关键词。' },
-              engine: { type: 'string', description: '搜索引擎/渠道，默认 auto；支持复合聚合语法 aggregate:<id1>,<id2>' },
+              engine: { type: 'string', description: '搜索引擎/渠道（默认 auto；支持复合聚合语法 aggregate:<id1>,<id2>；38 引擎分 8 类，详见工具描述）' },
               maxResults: { type: 'integer', description: '返回条数上限（1-50，默认取设置值）。' },
               freshness: { type: 'string', enum: ['day', 'week', 'month', 'year'], description: '时效过滤：仅返回该时间窗口内的结果（ddg-html/brave/baidu/news/aggregate 原生支持，其他引擎忽略）。' },
             },
@@ -1617,9 +1850,9 @@ export function apply(ctx, config) {
           order: 106,
           text: [
             'Enhanced web tools are available:',
-            '- web_search_multi: multi-channel web search (30 engines). engine="auto" (default) uses a language-aware fallback chain (Chinese queries: Bing → Baidu → So360 → DDG; others: DDG HTML → Bing → Brave; API-key engines go first when configured). engine="aggregate" runs engines in PARALLEL and merges with Reciprocal Rank Fusion dedup (best recall); composite syntax "aggregate:<id1>,<id2>" aggregates ANY engine subset, e.g. aggregate:arxiv,openalex,crossref for academic. Explicit free engines: "ddg-api", "ddg-html", "bing", "baidu", "so360", "brave", "wikipedia" (language-aware). API-key engines: "serper", "tavily", "brave-api", "exa". VERTICAL channels (explicit engine only): "arxiv"/"openalex"/"crossref" (academic), "pubmed" (biomedical literature), "github"/"npm" (code/packages), "stackexchange"/"csdn" (Q&A/Chinese blogs), "hn" (Hacker News), "news" (news RSS), "youtube"/"bilibili" (video), "images" (Bing image search, direct image URLs), "itunes" (music/movies/podcasts/apps), "books" (Open Library), "maps" (OSM places, coordinates), "wechat" (WeChat articles), "marginalia" (niche index).',
+            '- web_search_multi: multi-channel web search (38 engines in 8 categories). [General web] engine="auto" (default; language-aware fallback chain: Chinese queries Bing→Baidu→So360→DDG, others DDG HTML→Bing→Brave; API-key engines first when configured), plus explicit "ddg-api"/"ddg-html"/"bing"/"baidu"/"so360"/"brave"/"wikipedia" (language-aware)/"marginalia", and API-key engines "serper"/"tavily"/"brave-api"/"exa". [Aggregate] "aggregate" runs engines in PARALLEL with Reciprocal Rank Fusion dedup; composite syntax "aggregate:<id1>,<id2>" aggregates ANY subset (e.g. aggregate:arxiv,openalex,crossref). [Academic] "arxiv"/"openalex"/"crossref"/"pubmed"/"europepmc"/"dblp". [Developer] "github"/"npm"/"crates" (Rust)/"dockerhub"/"stackexchange"/"mdn"/"csdn". [News & community] "news" (news RSS)/"hn". [Media] "youtube"/"bilibili"/"images" (direct image URLs)/"itunes". [Chinese content] "wechat" (WeChat articles)/"zhidao" (Baidu Q&A). [Reference] "wikidata"/"books" (Open Library)/"archive" (Internet Archive)/"maps" (OSM places).',
             'Optional freshness="day"/"week"/"month"/"year" filters recency (supported natively by ddg-html/brave/baidu/news/aggregate; others ignore it).',
-            'Pick engines by task: broad recall → aggregate; papers → arxiv/openalex/crossref (or aggregate:arxiv,openalex,crossref); biomedical → pubmed; repos/packages → github/npm; programming errors → stackexchange (csdn for Chinese); tech discussion → hn; current events → news (+freshness); images → images; music/movies → itunes; books → books; places → maps; Chinese articles/videos → wechat/bilibili.',
+            'Pick engines by task: broad recall → aggregate; papers → arxiv/openalex/crossref/dblp (biomedical → pubmed/europepmc; or aggregate:arxiv,openalex,crossref); code & packages → github/npm/crates/dockerhub; web-dev docs → mdn; programming errors → stackexchange (csdn for Chinese); tech discussion → hn; current events → news (+freshness); images → images; music/movies → itunes; books → books; places → maps; entities/facts → wikidata/ddg-api; Chinese Q&A/articles → zhidao/wechat; Chinese videos → bilibili; archived material → archive.',
             '- web_fetch_url: fetch any public URL and return text (HTML converted to markdown).',
             'Use web_search_multi when the built-in web_search returns insufficient results, when a specific engine/channel is needed, or for quick fact lookups; use web_fetch_url to read a source page after searching. Results carry url/title/snippet — cite URLs as markdown links.',
           ].join('\n'),
@@ -1646,9 +1879,18 @@ export function apply(ctx, config) {
               for (const [k, v] of Object.entries(s)) {
                 redacted[k] = k.endsWith('ApiKey') ? (v ? `***(${String(v).length} chars)` : '') : v
               }
+              // 按分类组织的引擎清单（含启用状态）
+              const enginesByCategory = {}
+              for (const id of Object.keys(ENGINE_CATEGORY)) {
+                const cat = ENGINE_CATEGORY[id]
+                if (!enginesByCategory[cat]) enginesByCategory[cat] = { label: CATEGORY_LABELS[cat] || cat, engines: [] }
+                enginesByCategory[cat].engines.push({ id, enabled: engineEnabled(id, s) })
+              }
               const body = JSON.stringify(
                 {
                   ok: true,
+                  engineCount: Object.keys(ENGINE_CATEGORY).length,
+                  categories: enginesByCategory,
                   settings: redacted,
                   schemaLoaded: Boolean(Schema),
                   turndownLoaded: Boolean(turndown),

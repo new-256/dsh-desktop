@@ -64,6 +64,14 @@ window.__ModuleLoader__.load({
 				enableBooks: true,
 				enableItunes: true,
 				enableMaps: true,
+				enableDblp: true,
+				enableEuropepmc: true,
+				enableCrates: true,
+				enableDockerhub: true,
+				enableMdn: true,
+				enableZhidao: true,
+				enableWikidata: true,
+				enableArchive: true,
 				apiInAuto: true,
 				tavilyApiKey: "",
 				serperApiKey: "",
@@ -84,27 +92,70 @@ window.__ModuleLoader__.load({
 				["enableWikipedia", "wikipedia", "Wikipedia API · 百科（中文查询→zh）"]
 			];
 
-			// 垂直渠道与聚合（不参与 auto 链，需在工具调用中显式指定 engine）
-			const VERTICAL_FIELDS = [
-				["enableAggregate", "aggregate", "aggregate · 并行多引擎 RRF 融合"],
-				["enableArxiv", "arxiv", "arXiv · 学术论文"],
-				["enableOpenalex", "openalex", "OpenAlex · 学术全景（2.5 亿作品）"],
-				["enableCrossref", "crossref", "Crossref · DOI/学术元数据"],
-				["enableGithub", "github", "GitHub · 代码仓库"],
-				["enableNpm", "npm", "npm · Node 包"],
-				["enableStackexchange", "stackexchange", "Stack Overflow · 编程问答"],
-				["enableCsdn", "csdn", "CSDN · 中文技术博客"],
-				["enableHn", "hn", "Hacker News · 科技社区"],
-				["enableNews", "news", "新闻 · Bing News RSS→Google 兜底"],
-				["enableYoutube", "youtube", "YouTube · 视频（需代理地区）"],
-				["enableBilibili", "bilibili", "哔哩哔哩 · 视频"],
-				["enableWechat", "wechat", "微信公众号 · 搜狗微信"],
-				["enableImages", "images", "Bing Images · 图片（返回直链）"],
-				["enableMaps", "maps", "OpenStreetMap · 地点/坐标"],
-				["enableItunes", "itunes", "iTunes · 音乐/电影/播客/应用"],
-				["enableBooks", "books", "Open Library · 图书"],
-				["enablePubmed", "pubmed", "PubMed · 生物医学文献"],
-				["enableMarginalia", "marginalia", "Marginalia · 独立小众索引"]
+			// 垂直渠道与聚合（不参与 auto 链，需在工具调用中显式指定 engine）——按类分组
+			const VERTICAL_GROUPS = [
+				{
+					label: "聚合",
+					fields: [
+						["enableAggregate", "aggregate", "aggregate · 并行多引擎 RRF 融合（支持 aggregate:a,b 复合语法）"]
+					]
+				},
+				{
+					label: "学术文献",
+					fields: [
+						["enableArxiv", "arxiv", "arXiv · 预印本"],
+						["enableOpenalex", "openalex", "OpenAlex · 学术全景（2.5 亿作品）"],
+						["enableCrossref", "crossref", "Crossref · DOI/元数据"],
+						["enablePubmed", "pubmed", "PubMed · 生物医学"],
+						["enableEuropepmc", "europepmc", "Europe PMC · 生物医学+预印本"],
+						["enableDblp", "dblp", "dblp · 计算机科学文献库"]
+					]
+				},
+				{
+					label: "开发者",
+					fields: [
+						["enableGithub", "github", "GitHub · 代码仓库"],
+						["enableNpm", "npm", "npm · Node 包"],
+						["enableCrates", "crates", "crates.io · Rust 包"],
+						["enableDockerhub", "dockerhub", "Docker Hub · 容器镜像"],
+						["enableStackexchange", "stackexchange", "Stack Overflow · 编程问答"],
+						["enableMdn", "mdn", "MDN · Web 开发文档"],
+						["enableCsdn", "csdn", "CSDN · 中文技术博客"]
+					]
+				},
+				{
+					label: "新闻与社区",
+					fields: [
+						["enableNews", "news", "新闻 · Bing News RSS→Google 兜底"],
+						["enableHn", "hn", "Hacker News · 科技社区"]
+					]
+				},
+				{
+					label: "媒体娱乐",
+					fields: [
+						["enableYoutube", "youtube", "YouTube · 视频（需代理地区）"],
+						["enableBilibili", "bilibili", "哔哩哔哩 · 视频"],
+						["enableImages", "images", "Bing Images · 图片（返回直链）"],
+						["enableItunes", "itunes", "iTunes · 音乐/电影/播客/应用"]
+					]
+				},
+				{
+					label: "中文内容",
+					fields: [
+						["enableWechat", "wechat", "微信公众号 · 搜狗微信"],
+						["enableZhidao", "zhidao", "百度知道 · 中文问答"]
+					]
+				},
+				{
+					label: "资料参考",
+					fields: [
+						["enableWikidata", "wikidata", "Wikidata · 结构化实体（语言感知）"],
+						["enableBooks", "books", "Open Library · 图书"],
+						["enableArchive", "archive", "Internet Archive · 档案资料"],
+						["enableMaps", "maps", "OpenStreetMap · 地点/坐标"],
+						["enableMarginalia", "marginalia", "Marginalia · 独立小众索引"]
+					]
+				}
 			];
 
 			// [field, 名称, 用途说明, 获取 key 链接, 免费额度提示（以官网为准）]
@@ -115,7 +166,7 @@ window.__ModuleLoader__.load({
 				["exaApiKey", "Exa", "神经/语义搜索 API", "https://dashboard.exa.ai", "注册送约 $10 额度"]
 			];
 
-			const ENGINE_IDS = ["auto", "aggregate", "ddg-html", "bing", "baidu", "so360", "brave", "ddg-api", "wikipedia", "arxiv", "openalex", "crossref", "pubmed", "github", "npm", "stackexchange", "csdn", "hn", "news", "youtube", "bilibili", "images", "maps", "itunes", "books", "wechat", "marginalia", "serper", "tavily", "brave-api", "exa"];
+			const ENGINE_IDS = ["auto", "aggregate", "ddg-html", "bing", "baidu", "so360", "brave", "ddg-api", "wikipedia", "marginalia", "arxiv", "openalex", "crossref", "pubmed", "europepmc", "dblp", "github", "npm", "crates", "dockerhub", "stackexchange", "mdn", "csdn", "news", "hn", "youtube", "bilibili", "images", "itunes", "wechat", "zhidao", "wikidata", "books", "archive", "maps", "serper", "tavily", "brave-api", "exa"];
 
 			const zh = {
 				title: "网页搜索（多引擎增强）",
@@ -408,25 +459,36 @@ window.__ModuleLoader__.load({
 						react.createElement("p", { className: "wsp-hint" }, t.autoChain)
 					),
 
-					// 垂直渠道开关（不参与 auto 链）
+					// 垂直渠道开关（不参与 auto 链）——按类分组渲染
 					react.createElement(
 						"div",
 						null,
 						react.createElement("div", { className: "wsp-row" }, react.createElement("label", null, t.verticals)),
-						react.createElement(
-							"div",
-							{ className: "wsp-engines" },
-							VERTICAL_FIELDS.map(([field, id, label]) =>
+						VERTICAL_GROUPS.map((group) =>
+							react.createElement(
+								"div",
+								{ key: group.label },
 								react.createElement(
-									"label",
-									{ key: field, className: "wsp-check" },
-									react.createElement("input", {
-										type: "checkbox",
-										checked: staged[field] !== false,
-										disabled: disabled,
-										onChange: (e) => set(field, e.target.checked)
-									}),
-									react.createElement("span", null, label)
+									"p",
+									{ className: "wsp-hint", style: { margin: "8px 0 2px" } },
+									`▸ ${group.label}`
+								),
+								react.createElement(
+									"div",
+									{ className: "wsp-engines" },
+									group.fields.map(([field, id, label]) =>
+										react.createElement(
+											"label",
+											{ key: field, className: "wsp-check" },
+											react.createElement("input", {
+												type: "checkbox",
+												checked: staged[field] !== false,
+												disabled: disabled,
+												onChange: (e) => set(field, e.target.checked)
+											}),
+											react.createElement("span", null, label)
+										)
+									)
 								)
 							)
 						)

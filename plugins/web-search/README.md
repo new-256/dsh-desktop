@@ -1,25 +1,22 @@
-# web-search — DSH 网页搜索增强插件（30 引擎/渠道）
+# web-search — DSH 网页搜索增强插件（38 引擎/渠道 · 8 大类）
 
 DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会话**注册多引擎网页搜索与 URL 抓取工具，并提供 设置→插件 页配置卡片。零依赖（单文件 ESM，host realm 全 Node 权限）。
 
-## 引擎清单
+## 引擎清单（按类）
 
-### 免费抓取型（浏览器模拟）
-| id | 引擎 | 说明 |
-|---|---|---|
-| `ddg-html` | DuckDuckGo HTML | `html.duckduckgo.com/html` 抓取，通用搜索 |
-| `bing` | Bing | `www.bing.com` 抓取；重定向 URL（`/ck/a` + `u=a1<base64>`）解码为真实 URL |
-| `baidu` | 百度 | `www.baidu.com/s` 抓取；容器 `mu` 属性直取真实 URL，中文覆盖最好 |
-| `so360` | 360 搜索 | `www.so.com` 抓取；`data-mdurl` 属性直取真实 URL |
-| `brave` | Brave | `search.brave.com` 抓取（仅 `data-type="web"` 结果），独立索引 |
+### 【通用网页】通用搜索与百科（auto 链来源）
+| id | 引擎 | 方式 | 说明 |
+|---|---|---|---|
+| `ddg-html` | DuckDuckGo HTML | 抓取 | 通用搜索 |
+| `bing` | Bing | 抓取 | 大陆可达；重定向 URL（`u=a1<base64>`）解码 |
+| `baidu` | 百度 | 抓取 | 容器 `mu` 属性直取真实 URL，中文覆盖最好 |
+| `so360` | 360 搜索 | 抓取 | `data-mdurl` 直取真实 URL |
+| `brave` | Brave | 抓取 | 仅 `data-type="web"` 结果，独立索引 |
+| `ddg-api` | DuckDuckGo IA | 开放 API | Instant Answer 事实快答（覆盖面窄，按设计如此） |
+| `wikipedia` | Wikipedia | 开放 API | **语言感知**（中文查询→zh.wikipedia） |
+| `marginalia` | Marginalia | 公共 API | 独立小众索引（内部保底 30s 超时；不参与 auto） |
 
-### 免费开放 API 型
-| id | 引擎 | 说明 |
-|---|---|---|
-| `ddg-api` | DuckDuckGo IA | Instant Answer API，事实/实体类快答（覆盖面窄，按设计如此） |
-| `wikipedia` | Wikipedia | MediaWiki `list=search` API，**语言感知**（中文查询→zh.wikipedia，其他→en） |
-
-### API-key 型（可选，设置页配 key 后启用）
+### 【通用网页 · API-key 型】（可选，设置页配 key 后启用）
 | id | 服务 | 获取 key | 免费额度* |
 |---|---|---|---|
 | `serper` | Serper.dev | https://serper.dev/signup | 注册送约 2500 次 |
@@ -27,34 +24,61 @@ DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会
 | `brave-api` | Brave Search API | https://brave.com/search/api/ | 约 2000 次/月 |
 | `exa` | Exa | https://dashboard.exa.ai | 注册送约 $10 |
 
-\* 免费额度以各官网当前政策为准。设置页每个 key 输入框旁有「获取 key ↗」直达链接。
+\* 免费额度以各官网当前政策为准。设置页每个 key 输入框旁有「获取 key ↗」直达链接。key 仅存本机 `settings.yaml`；`/web-search/health` 对 key 打码。
 
-key 仅存本机 `settings.yaml` 的 `web-search:` 节；`/web-search/health` 诊断端点对 key 打码。
+### 【聚合】
+| id | 说明 |
+|---|---|
+| `aggregate` | 并行多引擎 + Reciprocal Rank Fusion 融合去重排序，查全率最高（请求也最多）。**复合语法** `engine="aggregate:<id1>,<id2>,..."`（≤6 个）聚合任意子集，如 `aggregate:arxiv,openalex,crossref` 学术三件套、`aggregate:bing,brave,ddg-html` 通用三路；API-key 子引擎自动补 key |
 
-### 垂直渠道与聚合（不参与 auto 链，需显式指定 `engine=<id>`）
+### 【学术文献】
 | id | 渠道 | 方式 | 说明 |
 |---|---|---|---|
-| `aggregate` | **聚合搜索** | 并行 + RRF | 并行跑启用的免费通用引擎，Reciprocal Rank Fusion 融合去重排序，查全率最高（请求也最多） |
-| `arxiv` | arXiv | Atom API | 学术论文（标题/摘要/日期） |
-| `openalex` | OpenAlex | REST API | 学术全景索引（2.5 亿作品；DOI/年份/被引/期刊） |
-| `crossref` | Crossref | REST API | DOI 与学术元数据（期刊/年份；polite pool UA） |
-| `github` | GitHub | REST API | 代码仓库（星数/语言/描述；未认证限 10 次/分钟） |
-| `npm` | npm Registry | REST API | Node 包搜索（版本/描述） |
+| `arxiv` | arXiv | Atom API | 预印本（标题/摘要/日期） |
+| `openalex` | OpenAlex | REST API | 学术全景（2.5 亿作品；DOI/年份/被引/期刊） |
+| `crossref` | Crossref | REST API | DOI 与学术元数据（polite pool UA） |
+| `pubmed` | PubMed | eutils API | 生物医学文献（esearch→esummary 两步） |
+| `europepmc` | Europe PMC | REST API | 生物医学 + 预印本（期刊/年份） |
+| `dblp` | dblp | REST API | 计算机科学文献库（会议/期刊/作者/年份） |
+
+### 【开发者】
+| id | 渠道 | 方式 | 说明 |
+|---|---|---|---|
+| `github` | GitHub | REST API | 代码仓库（星数/语言；未认证限 10 次/分钟） |
+| `npm` | npm Registry | REST API | Node 包（版本/描述） |
+| `crates` | crates.io | REST API | Rust 包（版本/下载量） |
+| `dockerhub` | Docker Hub | REST API | 容器镜像（星数/官方标记） |
 | `stackexchange` | Stack Overflow | REST API | 编程问答（score/回答数/标签） |
-| `csdn` | CSDN | REST API | 中文技术博客搜索 |
+| `mdn` | MDN | 官方 API | Web 开发文档 |
+| `csdn` | CSDN | REST API | 中文技术博客 |
+
+### 【新闻与社区】
+| id | 渠道 | 方式 | 说明 |
+|---|---|---|---|
+| `news` | 新闻 | **RSS** | Bing News RSS（真实 URL 解码）→ Google News RSS 兜底（支持 `when:` 时效） |
 | `hn` | Hacker News | Algolia API | 科技社区讨论（分数/评论数） |
-| `news` | 新闻 | **RSS** | Bing News RSS（真实 URL 解码）→ Google News RSS 兜底 |
+
+### 【媒体娱乐】
+| id | 渠道 | 方式 | 说明 |
+|---|---|---|---|
 | `youtube` | YouTube | 页面内嵌 JSON | `ytInitialData` 花括号配对提取（标题/频道/时长/播放量） |
 | `bilibili` | 哔哩哔哩 | REST API | 视频搜索（UP主/简介） |
 | `images` | Bing Images | 抓取 | 图片搜索（`iusc` 卡片 `m` 属性解码，返回**图片直链** + 来源页） |
-| `maps` | OpenStreetMap | Nominatim API | 地点/地理编码搜索（坐标 + OSM 链接；语言感知） |
 | `itunes` | iTunes Store | Search API | 音乐/电影/播客/应用（种类中文化标注） |
-| `books` | Open Library | Search API | 图书（书名/作者/初版年份） |
-| `pubmed` | PubMed | eutils API | 生物医学文献（两步：esearch→esummary，期刊/日期/作者） |
-| `wechat` | 微信公众号 | 搜狗微信抓取 | 公众号文章（链接为 sogou 重定向，有时效） |
-| `marginalia` | Marginalia | 公共 API | 独立小众索引，发掘非主流页面（内部保底 30s 超时） |
 
-**复合聚合语法**：`engine="aggregate:<id1>,<id2>,..."` 聚合任意引擎子集（≤6 个），如 `aggregate:arxiv,openalex,crossref` 学术三件套并行搜索、`aggregate:bing,brave,ddg-html` 通用三路融合。
+### 【中文内容】
+| id | 渠道 | 方式 | 说明 |
+|---|---|---|---|
+| `wechat` | 微信公众号 | 搜狗微信抓取 | 公众号文章（链接为 sogou 重定向，有时效） |
+| `zhidao` | 百度知道 | 抓取 | 中文问答（`data-log` 结果锚点 + 邻近 answer 摘要） |
+
+### 【资料参考】
+| id | 渠道 | 方式 | 说明 |
+|---|---|---|---|
+| `wikidata` | Wikidata | 开放 API | 结构化实体（**语言感知**；实体 ID/描述） |
+| `books` | Open Library | Search API | 图书（书名/作者/初版年份） |
+| `archive` | Internet Archive | 高级搜索 API | 档案资料（图书/音视频/软件存档） |
+| `maps` | OpenStreetMap | Nominatim API | 地点/地理编码（坐标 + OSM 链接；语言感知；403/429 退避重试） |
 
 **时效过滤**：`freshness` 参数（`day`/`week`/`month`/`year`）由支持时效的引擎原生翻译——ddg-html（`df=`）、brave（`tf=`）、百度（`gpc=stf=`）、news（Google News `when:`）、aggregate（透传给子引擎）；其余引擎忽略。
 
@@ -63,7 +87,7 @@ key 仅存本机 `settings.yaml` 的 `web-search:` 节；`/web-search/health` �
 - **API 引擎优先**：配置了 key 且未关 `apiInAuto` 时，`serper → tavily → brave-api → exa` 排最前（消耗 API 配额，可在设置页关闭）
 - **中文查询**（含 CJK）：`bing → baidu → so360 → ddg-html → ddg-api → wikipedia`
 - **其他查询**：`ddg-html → bing → brave → ddg-api → wikipedia`
-- **垂直渠道与 aggregate 不参与 auto**：按任务显式选——查全率→`aggregate`（并行+RRF 融合）、论文→`arxiv`/`openalex`/`crossref`、代码→`github`/`npm`、报错→`stackexchange`/`csdn`、时事→`news`、图片→`images`、中文内容→`wechat`/`bilibili`
+- **垂直渠道与 aggregate 不参与 auto**：按任务显式选（选型指引见上方各类表格）
 - 显式指定 `defaultEngine` 时该引擎最先试；链上失败自动回退，总时间预算 60s
 - 各引擎可在设置页独立禁用；`site:`/`filetype:` 等查询操作符由各引擎原生支持
 
@@ -72,13 +96,13 @@ key 仅存本机 `settings.yaml` 的 `web-search:` 节；`/web-search/health` �
 - **`web_search_multi`**：多引擎搜索。参数 `query`（必填）、`engine`（默认 auto）、`maxResults`（1-50）。返回 `{sources: [{url,title,snippet}], engine, attempts, error?}`，渲染为 markdown 链接列表。
 - **`web_fetch_url`**：抓取任意公开 URL。经官方 `@deepseek-ai/dsh-web-fetch-http` provider（SSRF 防护/同源重定向/字节上限），HTML 自动转 markdown（turndown + gfm，从 harness 安装解析）。参数 `url`（必填）、`maxChars`（默认 20000）。
 
-另将 30 个引擎注册为 `ctx.web` search provider（host 的 `web` 行仍钉 `searchProvider: deepseek-official`，产品自带 `web_search` 不受影响；想切换时在家级 patch 覆写 `web` 行 config 即可）。
+另将 38 个引擎注册为 `ctx.web` search provider（host 的 `web` 行仍钉 `searchProvider: deepseek-official`，产品自带 `web_search` 不受影响；想切换时在家级 patch 覆写 `web` 行 config 即可）。
 
 ## 设置页
 
 **设置 → 插件 → 网页搜索**（client 半边，`settings.plugin.item` 键控槽位）：
 
-- 总开关 / 7 个免费引擎 + 19 个垂直渠道与聚合独立开关 / API key（4 个，密码框）/ `apiInAuto` 开关
+- 总开关 / 8 个免费通用引擎 + 27 个垂直渠道与聚合（**按 7 类分组**）独立开关 / API key（4 个，密码框）/ `apiInAuto` 开关
 - 默认引擎 / 返回条数 / 单引擎超时 / User-Agent
 - **测试引擎**按钮（调 `/web-search/test` 实测连通性）
 - 字段级「已覆盖默认值」标记；保存 = `scope.mutate`（原子，带 revision 乐观锁）→ 写 `settings.yaml` 热生效
