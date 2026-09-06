@@ -1,13 +1,14 @@
 // web-search — host half（家级 cordis.patch.yml 的 file:// 行加载，?v=N 热加载）。
 //
 // 注册内容：
-//   1. 模型工具 web_search_multi —— 19 引擎/渠道搜索，engine 可选 auto（默认，
-//      语言感知回退链）/ 免费抓取 ddg-html / bing / baidu / so360 / brave /
-//      免费开放 API ddg-api / wikipedia（语言感知）/ API-key 型 serper /
-//      tavily / brave-api / exa / 垂直渠道 arxiv（学术）/ github（代码）/
-//      stackexchange（问答）/ hn（科技社区）/ news（新闻 RSS）/ marginalia
-//      （独立索引）/ bilibili（视频）/ wechat（微信公众号）——垂直渠道不参与
-//      auto 链，需显式指定。
+//   1. 模型工具 web_search_multi —— 26 引擎/渠道搜索，engine 可选 auto（默认，
+//      语言感知回退链）/ aggregate（并行多引擎 + RRF 融合去重）/ 免费抓取
+//      ddg-html / bing / baidu / so360 / brave / 免费开放 API ddg-api /
+//      wikipedia（语言感知）/ API-key 型 serper / tavily / brave-api / exa /
+//      垂直渠道 arxiv / openalex / crossref（学术）、github / npm / stackexchange /
+//      csdn（开发）、hn（社区）、news（新闻 RSS）、youtube / bilibili（视频）、
+//      images（图片）、wechat（微信公众号）、marginalia（独立索引）——垂直渠道
+//      与 aggregate 不参与 auto 链，需显式指定。
 //   2. 模型工具 web_fetch_url —— 经 ctx.web.fetch() 抓取任意 URL（由家级
 //      web-fetch-http 行提供的官方 provider 执行，SSRF 防护/字节上限）。
 //   3. 11 个搜索引擎 provider 注册进 ctx.web。host 的 web 行仍把
@@ -441,8 +442,22 @@ function parseSogouWechat(html) {
  * 引擎表。每个引擎: { id, label, run(query, max, opts) → {sources, content?} }
  * label 用于工具输出与诊断。
  */
+/** URL 归一化（聚合去重键）：小写协议/主机、去 www.、去 hash、去常见跟踪参数、去尾斜杠。 */
+function normalizeUrl(raw) {
+  try {
+    const u = new URL(raw)
+    const host = u.hostname.toLowerCase().replace(/^www\./, '')
+    const path = u.pathname.replace(/\/+$/, '')
+    const params = [...u.searchParams].filter(([k]) => !/^(utm_|spm|from|vd_source|ref|referrer|si)/i.test(k))
+    const qs = params.map(([k, v]) => `${k}=${v}`).join('&')
+    return `${host}${path}${qs ? '?' + qs : ''}`
+  } catch {
+    return String(raw || '').toLowerCase()
+  }
+}
+
 function makeEngines(readSettings) {
-  return {
+  const engines = {
     'ddg-api': {
       label: 'DuckDuckGo Instant Answer API',
       async run(query, max, opts) {
@@ -725,7 +740,254 @@ function makeEngines(readSettings) {
         return { sources }
       },
     },
+    // ── 学术/开发/媒体垂直（第二轮扩展）───────────────────────────────────────
+    openalex: {
+      label: 'OpenAlex（学术全景索引，2.5 亿作品）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://api.openalex.org/works?search=${encodeURIComponent(query)}&per-page=${Math.min(max, 25)}`
+        const res = await httpGetJson(url, {}, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const hits = (res.data && res.data.results) || []
+        if (hits.length === 0) throw new Error('OpenAlex 无结果')
+        return {
+          sources: hits.slice(0, max).map((h) => ({
+            url: h.doi || h.id,
+            title: h.title || h.display_name || 'Untitled',
+            snippet:
+              [
+                h.publication_year ? String(h.publication_year) : '',
+                h.cited_by_count != null ? `被引 ${h.cited_by_count}` : '',
+                h.primary_location && h.primary_location.source ? h.primary_location.source.display_name : '',
+              ]
+                .filter(Boolean)
+                .join(' · ') || undefined,
+          })),
+        }
+      },
+    },
+    crossref: {
+      label: 'Crossref（DOI/学术元数据）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://api.crossref.org/works?query=${encodeURIComponent(query)}&rows=${Math.min(max, 20)}&select=title,URL,container-title,issued`
+        // Crossref polite pool：UA 带 mailto
+        const res = await httpGetJson(url, { 'User-Agent': 'dsh-web-search/1.0 (mailto:lcl19950110@outlook.com)' }, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const items = (res.data && res.data.message && res.data.message.items) || []
+        if (items.length === 0) throw new Error('Crossref 无结果')
+        return {
+          sources: items.slice(0, max).map((h) => ({
+            url: h.URL,
+            title: stripTags((h.title && h.title[0]) || ''),
+            snippet:
+              [
+                (h['container-title'] && h['container-title'][0]) || '',
+                h.issued && h.issued['date-parts'] && h.issued['date-parts'][0] && h.issued['date-parts'][0][0] ? String(h.issued['date-parts'][0][0]) : '',
+              ]
+                .filter(Boolean)
+                .join(' · ') || undefined,
+          })),
+        }
+      },
+    },
+    npm: {
+      label: 'npm（Node 包搜索）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(query)}&size=${Math.min(max, 25)}`
+        const res = await httpGetJson(url, {}, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const objects = (res.data && res.data.objects) || []
+        if (objects.length === 0) throw new Error('npm 无结果')
+        return {
+          sources: objects.slice(0, max).map((o) => {
+            const p = o.package || {}
+            return {
+              url: (p.links && p.links.npm) || `https://www.npmjs.com/package/${p.name}`,
+              title: `${p.name || '?'}@${p.version || '?'}`,
+              snippet: p.description || undefined,
+            }
+          }),
+        }
+      },
+    },
+    csdn: {
+      label: 'CSDN（中文技术博客）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://so.csdn.net/api/v3/search?q=${encodeURIComponent(query)}&t=all&p=1&s=0&tm=0&v=3&size=${Math.min(max * 2, 30)}`
+        const res = await httpGetJson(url, { Referer: 'https://so.csdn.net/' }, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const items = (res.data && res.data.result_vos) || []
+        const sources = items
+          .map((vo) => ({ vo, url: typeof vo.url === 'string' ? vo.url.split('?')[0] : '' }))
+          .filter((x) => /^https?:\/\//i.test(x.url))
+          .slice(0, max)
+          .map((x) => ({
+            url: x.url,
+            title: stripTags(x.vo.title || ''),
+            snippet: stripTags(x.vo.description || x.vo.digest || '') || undefined,
+          }))
+        if (sources.length === 0) throw new Error('CSDN 无结果')
+        return { sources }
+      },
+    },
+    youtube: {
+      label: 'YouTube（视频）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`
+        const res = await httpGet(url, { ...opts, headers: { 'Accept-Language': 'en-US,en;q=0.9' } })
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        // 提取页面内嵌 ytInitialData JSON（花括号配对扫描，页面 1MB+）
+        const idx = res.content.indexOf('ytInitialData')
+        if (idx < 0) throw new Error('YouTube 页面结构变化（未找到 ytInitialData）')
+        const start = res.content.indexOf('{', res.content.indexOf('=', idx))
+        let depth = 0
+        let end = -1
+        let inStr = false
+        let esc = false
+        for (let i = start; i < res.content.length; i++) {
+          const c = res.content[i]
+          if (esc) {
+            esc = false
+            continue
+          }
+          if (c === '\\') {
+            esc = true
+            continue
+          }
+          if (inStr) {
+            if (c === '"') inStr = false
+            continue
+          }
+          if (c === '"') {
+            inStr = true
+            continue
+          }
+          if (c === '{') depth++
+          else if (c === '}') {
+            depth--
+            if (depth === 0) {
+              end = i + 1
+              break
+            }
+          }
+        }
+        if (end < 0) throw new Error('ytInitialData 提取失败')
+        let data
+        try {
+          data = JSON.parse(res.content.slice(start, end))
+        } catch {
+          throw new Error('ytInitialData JSON 解析失败')
+        }
+        const sectionList = (((data.contents || {}).twoColumnSearchResultsRenderer || {}).primaryContents || {}).sectionListRenderer
+        const first = ((sectionList && sectionList.contents) || [])[0]
+        const items = (((first && first.itemSectionRenderer) || {}).contents) || []
+        const vids = items
+          .map((c) => c.videoRenderer)
+          .filter(Boolean)
+          .slice(0, max)
+        if (vids.length === 0) throw new Error('YouTube 无结果')
+        return {
+          sources: vids.map((v) => ({
+            url: `https://www.youtube.com/watch?v=${v.videoId}`,
+            title: (v.title && v.title.runs && v.title.runs[0] && v.title.runs[0].text) || '',
+            snippet:
+              [
+                v.ownerText && v.ownerText.runs && v.ownerText.runs[0] ? v.ownerText.runs[0].text : '',
+                v.lengthText && v.lengthText.simpleText,
+                v.viewCountText && v.viewCountText.simpleText,
+              ]
+                .filter(Boolean)
+                .join(' · ') || undefined,
+          })),
+        }
+      },
+    },
+    images: {
+      label: '图片搜索（Bing Images）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&form=HDRSC2`
+        const res = await httpGet(url, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        // 每张图是一张 <a class="iusc" m="{...}"> 卡片，m 属性 HTML 转义的 JSON：
+        // murl=图片直链 purl=来源页 t=标题
+        const sources = []
+        const seen = new Set()
+        for (const m of res.content.matchAll(/<a[^>]*class="iusc"[^>]*\sm="([^"]+)"/g)) {
+          let j
+          try {
+            j = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&'))
+          } catch {
+            continue
+          }
+          if (!j.murl || seen.has(j.murl)) continue
+          seen.add(j.murl)
+          sources.push({
+            url: j.murl,
+            title: stripTags(j.t || ''),
+            snippet: j.purl ? `来源页: ${j.purl}` : undefined,
+          })
+          if (sources.length >= max) break
+        }
+        if (sources.length === 0) throw new Error('图片搜索无结果')
+        return { sources }
+      },
+    },
   }
+
+  // ── 聚合引擎（并行多引擎 + RRF 融合去重；闭包引用上方引擎表）───────────────
+  engines.aggregate = {
+    label: '聚合搜索（并行多引擎 + RRF 融合去重）',
+    vertical: true,
+    async run(query, max, opts) {
+      const s = resolvedSettings()
+      const candidates = ['bing', 'ddg-html', 'brave', 'baidu', 'so360'].filter((id) => engines[id] && engineEnabled(id, s))
+      if (candidates.length < 2) throw new Error('聚合搜索需至少启用 2 个免费通用引擎')
+      // 每个子引擎多取一些结果给融合排序留量
+      const per = Math.min(Math.max(max * 2, 10), 20)
+      const results = await Promise.allSettled(candidates.map((id) => engines[id].run(query, per, opts)))
+      const K = 60 // Reciprocal Rank Fusion 常数
+      const seen = new Map()
+      const errors = []
+      let okCount = 0
+      results.forEach((r, i) => {
+        const id = candidates[i]
+        if (r.status !== 'fulfilled' || !r.value || !Array.isArray(r.value.sources)) {
+          errors.push(`${id}: ${r.status === 'rejected' ? String((r.reason && r.reason.message) || r.reason) : '无结果'}`)
+          return
+        }
+        okCount++
+        r.value.sources.forEach((src, rank) => {
+          if (!src || !src.url) return
+          const key = normalizeUrl(src.url)
+          const prev = seen.get(key)
+          if (prev) {
+            prev.score += 1 / (K + rank + 1)
+            prev.from.push(id)
+            if (!prev.entry.title && src.title) prev.entry.title = src.title
+            if (!prev.entry.snippet && src.snippet) prev.entry.snippet = src.snippet
+          } else {
+            seen.set(key, { entry: { url: src.url, title: src.title, snippet: src.snippet }, score: 1 / (K + rank + 1), from: [id] })
+          }
+        })
+      })
+      if (okCount === 0) throw new Error(`聚合搜索全部失败：${errors.join('；')}`)
+      const merged = [...seen.values()].sort((a, b) => b.score - a.score).slice(0, max)
+      return {
+        sources: merged.map((e) => ({
+          url: e.entry.url,
+          title: e.entry.title,
+          snippet: [e.from.length > 1 ? `[${e.from.length} 引擎命中]` : '', e.entry.snippet].filter(Boolean).join(' '),
+        })),
+      }
+    },
+  }
+
+  return engines
 }
 
 // auto 模式链（语言感知 + API 引擎优先）：
@@ -769,6 +1031,13 @@ function resolvedSettings() {
     enableMarginalia: s.enableMarginalia !== false,
     enableBilibili: s.enableBilibili !== false,
     enableWechat: s.enableWechat !== false,
+    enableOpenalex: s.enableOpenalex !== false,
+    enableCrossref: s.enableCrossref !== false,
+    enableNpm: s.enableNpm !== false,
+    enableCsdn: s.enableCsdn !== false,
+    enableYoutube: s.enableYoutube !== false,
+    enableImages: s.enableImages !== false,
+    enableAggregate: s.enableAggregate !== false,
     apiInAuto: s.apiInAuto !== false,
     tavilyApiKey: typeof s.tavilyApiKey === 'string' ? s.tavilyApiKey.trim() : '',
     serperApiKey: typeof s.serperApiKey === 'string' ? s.serperApiKey.trim() : '',
@@ -814,6 +1083,13 @@ function engineEnabled(id, s) {
   if (id === 'marginalia') return s.enableMarginalia
   if (id === 'bilibili') return s.enableBilibili
   if (id === 'wechat') return s.enableWechat
+  if (id === 'openalex') return s.enableOpenalex
+  if (id === 'crossref') return s.enableCrossref
+  if (id === 'npm') return s.enableNpm
+  if (id === 'csdn') return s.enableCsdn
+  if (id === 'youtube') return s.enableYoutube
+  if (id === 'images') return s.enableImages
+  if (id === 'aggregate') return s.enableAggregate
   // API 型引擎：有 key 即启用
   if (['serper', 'tavily', 'brave-api', 'exa'].includes(id)) return Boolean(apiKeyFor(id, s))
   return false
@@ -994,6 +1270,13 @@ export function apply(ctx, config) {
           enableMarginalia: Schema.boolean().default(true).description('启用 Marginalia 独立小众索引 API（垂直渠道，engine=marginalia）'),
           enableBilibili: Schema.boolean().default(true).description('启用哔哩哔哩视频搜索 API（垂直渠道，engine=bilibili）'),
           enableWechat: Schema.boolean().default(true).description('启用微信公众号文章搜索（搜狗微信抓取，垂直渠道，engine=wechat）'),
+          enableOpenalex: Schema.boolean().default(true).description('启用 OpenAlex 学术全景索引 API（垂直渠道，engine=openalex，2.5 亿学术作品）'),
+          enableCrossref: Schema.boolean().default(true).description('启用 Crossref DOI/学术元数据 API（垂直渠道，engine=crossref）'),
+          enableNpm: Schema.boolean().default(true).description('启用 npm 包搜索 API（垂直渠道，engine=npm）'),
+          enableCsdn: Schema.boolean().default(true).description('启用 CSDN 中文技术博客搜索（垂直渠道，engine=csdn）'),
+          enableYoutube: Schema.boolean().default(true).description('启用 YouTube 视频搜索（垂直渠道，engine=youtube；部分地区需代理）'),
+          enableImages: Schema.boolean().default(true).description('启用 Bing 图片搜索（垂直渠道，engine=images，返回图片直链）'),
+          enableAggregate: Schema.boolean().default(true).description('启用聚合搜索（engine=aggregate：并行多引擎 + RRF 融合去重，查全率最高但请求多）'),
           apiInAuto: Schema.boolean().default(true).description('auto 链优先使用已配置 key 的 API 引擎（会消耗 API 配额，关闭则 auto 只用免费引擎）'),
           tavilyApiKey: Schema.string().default('').description('Tavily API key（api.tavily.com，配置后 tavily 引擎可用；获取：https://app.tavily.com）'),
           serperApiKey: Schema.string().default('').description('Serper.dev API key（google.serper.dev，Google 结果，配置后 serper 引擎可用；获取：https://serper.dev/signup）'),
@@ -1053,14 +1336,14 @@ export function apply(ctx, config) {
         ctx.tools.register({
           name: 'web_search_multi',
           description:
-            '多渠道网页搜索（19 引擎）。engine 可选：auto（默认，语言感知回退链：中文 Bing→百度→360→DDG，英文 DDG HTML→Bing→Brave；配置了 API key 的引擎优先）/ 免费抓取 ddg-html、bing、baidu、so360、brave / 免费开放 API ddg-api（事实快答）、wikipedia（语言感知：中文→zh.wiki）/ API-key 型 serper（Google 结果）、tavily、brave-api、exa / 垂直渠道 arxiv（学术论文）、github（代码仓库）、stackexchange（编程问答）、hn（Hacker News）、news（新闻，Bing RSS→Google RSS）、marginalia（独立小众索引）、bilibili（B 站视频）、wechat（微信公众号文章）——垂直渠道需显式指定，不参与 auto。返回 sources（url/title/snippet）。当内置 web_search 结果不足、需要特定渠道或事实快答时优先使用本工具。配置见 设置→插件→网页搜索。',
+            '多渠道网页搜索（26 引擎）。engine 可选：auto（默认，语言感知回退链：中文 Bing→百度→360→DDG，英文 DDG HTML→Bing→Brave；配置了 API key 的引擎优先）/ aggregate（并行多引擎 + RRF 融合去重，查全率最高）/ 免费抓取 ddg-html、bing、baidu、so360、brave / 免费开放 API ddg-api（事实快答）、wikipedia（语言感知：中文→zh.wiki）/ API-key 型 serper（Google 结果）、tavily、brave-api、exa / 垂直渠道 arxiv、openalex、crossref（学术论文/元数据）、github、npm（代码/包）、stackexchange、csdn（编程问答/中文技术博客）、hn（科技社区）、news（新闻）、youtube、bilibili（视频）、images（Bing 图片，返回图片直链）、wechat（微信公众号）、marginalia（独立小众索引）——垂直渠道与 aggregate 需显式指定，不参与 auto。返回 sources（url/title/snippet）。当内置 web_search 结果不足、需要特定渠道或事实快答时优先使用本工具。配置见 设置→插件→网页搜索。',
           parameters: {
             type: 'object',
             additionalProperties: false,
             required: ['query'],
             properties: {
               query: { type: 'string', description: '搜索关键词。' },
-              engine: { type: 'string', enum: ['auto', 'ddg-api', 'ddg-html', 'bing', 'baidu', 'so360', 'brave', 'wikipedia', 'arxiv', 'github', 'stackexchange', 'hn', 'news', 'marginalia', 'bilibili', 'wechat', 'brave-api', 'tavily', 'serper', 'exa'], description: '搜索引擎/渠道，默认 auto（不含垂直渠道）。' },
+              engine: { type: 'string', enum: ['auto', 'aggregate', 'ddg-api', 'ddg-html', 'bing', 'baidu', 'so360', 'brave', 'wikipedia', 'arxiv', 'openalex', 'crossref', 'github', 'npm', 'stackexchange', 'csdn', 'hn', 'news', 'youtube', 'bilibili', 'images', 'wechat', 'marginalia', 'brave-api', 'tavily', 'serper', 'exa'], description: '搜索引擎/渠道，默认 auto（不含垂直渠道与 aggregate）。' },
               maxResults: { type: 'integer', description: '返回条数上限（1-50，默认取设置值）。' },
             },
           },
@@ -1132,8 +1415,8 @@ export function apply(ctx, config) {
           order: 106,
           text: [
             'Enhanced web tools are available:',
-            '- web_search_multi: multi-channel web search (19 engines). engine="auto" (default) uses a language-aware fallback chain (Chinese queries: Bing → Baidu → So360 → DDG; others: DDG HTML → Bing → Brave; API-key engines go first when configured). Explicit free engines: "ddg-api" (fact quick answers), "ddg-html", "bing", "baidu", "so360", "brave", "wikipedia" (language-aware). API-key engines: "serper" (Google results), "tavily", "brave-api", "exa". VERTICAL channels (explicit engine only, not in auto): "arxiv" (academic papers), "github" (code repos), "stackexchange" (programming Q&A), "hn" (Hacker News), "news" (Bing News RSS with Google News fallback), "marginalia" (independent niche index), "bilibili" (video), "wechat" (WeChat official-account articles).',
-            'Pick vertical engines when the task calls for them: papers → arxiv; repos/code → github; programming errors → stackexchange; tech discussion → hn; current events → news; Chinese articles/videos → wechat/bilibili.',
+            '- web_search_multi: multi-channel web search (26 engines). engine="auto" (default) uses a language-aware fallback chain (Chinese queries: Bing → Baidu → So360 → DDG; others: DDG HTML → Bing → Brave; API-key engines go first when configured). engine="aggregate" runs the enabled free general engines in PARALLEL and merges results with Reciprocal Rank Fusion dedup (best recall). Explicit free engines: "ddg-api" (fact quick answers), "ddg-html", "bing", "baidu", "so360", "brave", "wikipedia" (language-aware). API-key engines: "serper" (Google results), "tavily", "brave-api", "exa". VERTICAL channels (explicit engine only, not in auto): "arxiv" / "openalex" / "crossref" (academic papers & metadata), "github" / "npm" (code & packages), "stackexchange" / "csdn" (programming Q&A / Chinese tech blogs), "hn" (Hacker News), "news" (Bing News RSS with Google News fallback), "youtube" / "bilibili" (video), "images" (Bing image search, returns direct image URLs), "wechat" (WeChat official-account articles), "marginalia" (independent niche index).',
+            'Pick engines by task: broad recall → aggregate; papers → arxiv/openalex/crossref; repos/packages → github/npm; programming errors → stackexchange (or csdn for Chinese); tech discussion → hn; current events → news; images → images; Chinese articles/videos → wechat/bilibili.',
             '- web_fetch_url: fetch any public URL and return text (HTML converted to markdown).',
             'Use web_search_multi when the built-in web_search returns insufficient results, when a specific engine/channel is needed, or for quick fact lookups; use web_fetch_url to read a source page after searching. Results carry url/title/snippet — cite URLs as markdown links.',
           ].join('\n'),
