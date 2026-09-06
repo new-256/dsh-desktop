@@ -1,18 +1,20 @@
 // web-search — host half（家级 cordis.patch.yml 的 file:// 行加载，?v=N 热加载）。
 //
 // 注册内容：
-//   1. 模型工具 web_search_multi —— 38 引擎/渠道搜索（8 大类）：
-//      【通用网页】auto（默认，语言感知回退链）/ ddg-html / bing / baidu / so360 /
-//      brave / ddg-api / wikipedia（语言感知）/ marginalia / serper / tavily /
-//      brave-api / exa（后四个 API-key 型）
-//      【聚合】aggregate（并行多引擎 + RRF 融合去重；复合语法 aggregate:子集）
+//   1. 模型工具 web_search_multi —— 38 引擎/渠道搜索（8 大类）+ auto 智能路由：
+//      auto 时由 DSH 分析查询特性（语言/领域/意图/时效）自动选择合适引擎或
+//      多引擎并行 RRF 融合（smart(intent):e1+e2），路由失败回退语言感知链。
+//      【通用网页】ddg-html / bing / baidu / so360 / brave / ddg-api /
+//      wikipedia（语言感知）/ marginalia / serper / tavily / brave-api / exa
+//      （后四个 API-key 型）
+//      【聚合】aggregate（并行 + RRF；复合语法 aggregate:子集）
 //      【学术文献】arxiv / openalex / crossref / pubmed / europepmc / dblp
 //      【开发者】github / npm / crates / dockerhub / stackexchange / mdn / csdn
 //      【新闻与社区】news / hn
 //      【媒体娱乐】youtube / bilibili / images / itunes
 //      【中文内容】wechat / zhidao
 //      【资料参考】wikidata / books / archive / maps
-//      横切能力：freshness 时效过滤（day/week/month/year）、复合聚合、语言感知。
+//      横切能力：智能路由、freshness 时效过滤、复合聚合、语言感知。
 //   2. 模型工具 web_fetch_url —— 经 ctx.web.fetch() 抓取任意 URL（由家级
 //      web-fetch-http 行提供的官方 provider 执行，SSRF 防护/字节上限）。
 //   3. 11 个搜索引擎 provider 注册进 ctx.web。host 的 web 行仍把
@@ -1322,8 +1324,7 @@ function makeEngines(readSettings) {
           return engines[id].run(query, per, subOpts)
         })
       )
-      const K = 60 // Reciprocal Rank Fusion 常数
-      const seen = new Map()
+      const subResults = []
       const errors = []
       let okCount = 0
       results.forEach((r, i) => {
@@ -1333,33 +1334,51 @@ function makeEngines(readSettings) {
           return
         }
         okCount++
-        r.value.sources.forEach((src, rank) => {
-          if (!src || !src.url) return
-          const key = normalizeUrl(src.url)
-          const prev = seen.get(key)
-          if (prev) {
-            prev.score += 1 / (K + rank + 1)
-            prev.from.push(id)
-            if (!prev.entry.title && src.title) prev.entry.title = src.title
-            if (!prev.entry.snippet && src.snippet) prev.entry.snippet = src.snippet
-          } else {
-            seen.set(key, { entry: { url: src.url, title: src.title, snippet: src.snippet }, score: 1 / (K + rank + 1), from: [id] })
-          }
-        })
+        subResults.push({ id, sources: r.value.sources })
       })
       if (okCount === 0) throw new Error(`聚合搜索全部失败：${errors.join('；')}`)
-      const merged = [...seen.values()].sort((a, b) => b.score - a.score).slice(0, max)
-      return {
-        sources: merged.map((e) => ({
-          url: e.entry.url,
-          title: e.entry.title,
-          snippet: [e.from.length > 1 ? `[${e.from.length} 引擎命中]` : '', e.entry.snippet].filter(Boolean).join(' '),
-        })),
-      }
+      const merged = rrfMerge(subResults, max)
+      if (merged.sources.length === 0) throw new Error('聚合搜索无有效结果')
+      return merged
     },
   }
 
   return engines
+}
+
+/**
+ * Reciprocal Rank Fusion 融合并去重（aggregate 与智能路由共用）。
+ * @param {Array<{id: string, sources: Array}>} subResults 各引擎结果
+ * @param {number} max 融合后条数上限
+ * @returns {{sources: Array}} 融合结果，多引擎交叉命中标注 [N 引擎命中]
+ */
+function rrfMerge(subResults, max) {
+  const K = 60 // RRF 常数
+  const seen = new Map()
+  for (const { id, sources } of subResults) {
+    if (!Array.isArray(sources)) continue
+    sources.forEach((src, rank) => {
+      if (!src || !src.url) return
+      const key = normalizeUrl(src.url)
+      const prev = seen.get(key)
+      if (prev) {
+        prev.score += 1 / (K + rank + 1)
+        if (!prev.from.includes(id)) prev.from.push(id)
+        if (!prev.entry.title && src.title) prev.entry.title = src.title
+        if (!prev.entry.snippet && src.snippet) prev.entry.snippet = src.snippet
+      } else {
+        seen.set(key, { entry: { url: src.url, title: src.title, snippet: src.snippet }, score: 1 / (K + rank + 1), from: [id] })
+      }
+    })
+  }
+  const merged = [...seen.values()].sort((a, b) => b.score - a.score).slice(0, max)
+  return {
+    sources: merged.map((e) => ({
+      url: e.entry.url,
+      title: e.entry.title,
+      snippet: [e.from.length > 1 ? `[${e.from.length} 引擎命中]` : '', e.entry.snippet].filter(Boolean).join(' '),
+    })),
+  }
 }
 
 // auto 模式链（语言感知 + API 引擎优先）：
@@ -1374,6 +1393,103 @@ const EN_AUTO_ORDER = ['ddg-html', 'bing', 'brave', 'ddg-api', 'wikipedia']
 /** auto 链总时间预算（毫秒）：超时后不再尝试剩余引擎，避免工具超时。 */
 const AUTO_TIME_BUDGET_MS = 60000
 
+// ── 智能路由（auto：DSH 分析查询特性 → 选合适引擎或多引擎并行融合）─────────────
+
+/** 意图检测模式（顺序敏感：越靠前越优先，越具体越靠前）。 */
+const INTENT_PATTERNS = [
+  // 评测/推荐（高置信购物比较信号）优先于学术：『深度学习框架评测』要实用对比而非论文；
+  // 但『对比学习』『literature review』等学术词不含这些强信号，仍正确走学术路由。
+  ['research-strong', /(评测|测评|哪个好|哪家好|推荐|优缺点|性价比|best |top ?\d)/i],
+  ['academic-bio', /(医学|药学|药物|疾病|症状|诊断|治疗|临床|病理|基因|蛋白|病毒|疫苗|肿瘤|癌症|medic|disease|symptom|drug|clinic|patholog|gene|protein|virus|vaccine|cancer|tumor|health)/i],
+  ['academic-cs', /(计算机|算法|神经网络|大模型|机器学习|深度学习|自然语言|computer|algorithm|neural|deep learning|machine learning|llm|nlp|transformer|gpt|inference)/i],
+  ['academic', /(论文|文献|综述|期刊|学报|研究进展|学术|paper|research|study|survey|journal|proceedings|arxiv|doi|literature|citation|preprint)/i],
+  ['code-error', /(报错|出错|异常|崩溃|失败|failed|error|exception|traceback|stack ?trace|bug|debug|cannot |unable to|segmentation)/i],
+  ['web-dev', /(css|html|javascript|dom|浏览器兼容|前端|frontend|web ?api|mdn)/i],
+  ['package', /(npm|yarn|pnpm|node ?包|cargo add|rust ?crate|docker|容器|镜像|image ?pull|pip ?install|包管理|依赖)/i],
+  ['code', /(代码|编程|实现|函数|框架|源码|github|repository|开源|javascript|typescript|python|rust|golang|java|spring|react|vue|cpp|c\+\+)/i],
+  ['news', /(新闻|快讯|报道|发布会|最新消息|时政|breaking|news|headline|press ?release)/i],
+  ['image', /(图片|高清图|壁纸|照片|配图|示意图|image|photo|picture|wallpaper|illustration|logo)/i],
+  ['video', /(视频|教程视频|动画|纪录片|电影|剧集|番剧|video|tutorial|youtube|bilibili|b站|anime|movie|film|watch)/i],
+  ['place', /(在哪|在哪里|位置|地图|地址|怎么走|路线|where is|location|map|route|directions|导航)/i],
+  ['wechat', /(公众号|微信文章|深度好文)/],
+  ['zh-qa', /(什么是|是什么|为什么|怎么回事|怎么办|如何|怎么|哪个好|有区别|谁)/],
+  ['entity', /(是什么|介绍|简介|what is|what's|who is|overview|introduction)/i],
+  ['research', /(对比|比较|评测|哪个好|推荐|优缺点|comparison|review|best |top \d|vs\.?\b)/i],
+]
+
+/** 从查询词推断时效（仅作用于支持 freshness 的引擎；显式参数优先）。 */
+function deriveFreshness(query) {
+  if (/(今天|今日|刚刚|几小时|today|just now|hours ago|breaking)/.test(query)) return 'day'
+  if (/(本周|这周|this week|past week)/.test(query)) return 'week'
+  if (/(最近|近期|本月|最新|latest|recent|new (model|release|version|feature))/i.test(query)) return 'month'
+  if (/(今年|this year|202\d 年)/.test(query)) return 'year'
+  return undefined
+}
+
+/**
+ * 分析查询特性。
+ * @returns {{lang: 'zh'|'en', intent: string, freshness?: string}}
+ */
+function analyzeQuery(query) {
+  const zh = /[\u4e00-\u9fff]/.test(query)
+  let intent = 'general'
+  for (const [name, re] of INTENT_PATTERNS) {
+    if (re.test(query)) {
+      intent = name
+      break
+    }
+  }
+  // 英文实体式短查询（无空格/无问句）→ 实体快查；中文短词同样适用
+  if (intent === 'general' && query.trim().length <= 12 && !/\s/.test(query.trim())) intent = 'entity'
+  // 英文 web-dev 意图命中 mdn 优先
+  return { lang: zh ? 'zh' : 'en', intent, freshness: deriveFreshness(query) }
+}
+
+/**
+ * 按特性路由：返回引擎集与执行模式。
+ *   mode: 'parallel'（多引擎并行 + RRF 融合）/ 'single'（单引擎）/ 'aggregate'（默认聚合）
+ *   路由命中的引擎被禁用/失败时回退传统 auto 链。
+ * @returns {{intent: string, mode: string, engines: string[], freshness?: string}}
+ */
+function routeFor(profile) {
+  const zh = profile.lang === 'zh'
+  switch (profile.intent) {
+    case 'academic-bio':
+      return { intent: 'academic-bio', mode: 'parallel', engines: ['pubmed', 'europepmc'] }
+    case 'academic-cs':
+      return { intent: 'academic-cs', mode: 'parallel', engines: ['arxiv', 'dblp', 'openalex'] }
+    case 'academic':
+      return { intent: 'academic', mode: 'parallel', engines: ['openalex', 'crossref', 'arxiv'] }
+    case 'code-error':
+      return { intent: 'code-error', mode: 'parallel', engines: zh ? ['csdn', 'stackexchange'] : ['stackexchange', 'github'] }
+    case 'web-dev':
+      return { intent: 'web-dev', mode: 'parallel', engines: ['mdn', 'stackexchange'] }
+    case 'package':
+      return { intent: 'package', mode: 'parallel', engines: ['github', 'npm', 'dockerhub'] }
+    case 'code':
+      return { intent: 'code', mode: 'parallel', engines: zh ? ['csdn', 'github', 'stackexchange'] : ['github', 'stackexchange'] }
+    case 'news':
+      return { intent: 'news', mode: 'single', engines: ['news'], freshness: profile.freshness }
+    case 'image':
+      return { intent: 'image', mode: 'single', engines: ['images'] }
+    case 'video':
+      return { intent: 'video', mode: 'parallel', engines: zh ? ['bilibili', 'youtube'] : ['youtube'] }
+    case 'place':
+      return { intent: 'place', mode: 'single', engines: ['maps'] }
+    case 'wechat':
+      return { intent: 'wechat', mode: 'single', engines: ['wechat'] }
+    case 'zh-qa':
+      return { intent: 'zh-qa', mode: 'single', engines: ['zhidao'] }
+    case 'entity':
+      return { intent: 'entity', mode: 'parallel', engines: ['ddg-api', 'wikidata', 'wikipedia'] }
+    case 'research-strong':
+    case 'research':
+      return { intent: 'research', mode: 'aggregate', engines: ['aggregate'] }
+    default:
+      return { intent: 'general', mode: 'chain', engines: [] }
+  }
+}
+
 // ── 设置解析 ────────────────────────────────────────────────────────────────
 
 /** 组合行 config（BASE 层兜底）。 */
@@ -1387,6 +1503,7 @@ function resolvedSettings() {
   const s = { ...(fromScope || entryConfig) }
   return {
     enabled: s.enabled !== false,
+    smartRouting: s.smartRouting !== false,
     defaultEngine: s.defaultEngine || 'auto',
     enableDdgApi: s.enableDdgApi !== false,
     enableDdgHtml: s.enableDdgHtml !== false,
@@ -1509,7 +1626,7 @@ async function runSearch(query, engineArg, maxResultsArg, signal, freshness) {
   const opts = { timeoutMs: s.timeoutMs, userAgent: s.userAgent, signal, freshness: FRESHNESS_MS[freshness] ? freshness : undefined }
 
   const attempts = []
-  const tryEngine = async (id) => {
+  const tryEngine = async (id, perMax) => {
     const engine = engines[id]
     if (!engine) {
       attempts.push({ engine: id, ok: false, error: 'unknown engine' })
@@ -1521,7 +1638,7 @@ async function runSearch(query, engineArg, maxResultsArg, signal, freshness) {
     }
     try {
       const engineOpts = engine.needsKey ? { ...opts, apiKey: apiKeyFor(id, s) } : opts
-      const r = await engine.run(query, max, engineOpts)
+      const r = await engine.run(query, perMax || max, engineOpts)
       noteEngine(id, undefined)
       attempts.push({ engine: id, ok: true, count: r.sources.length })
       return r
@@ -1571,6 +1688,41 @@ async function runSearch(query, engineArg, maxResultsArg, signal, freshness) {
     // 显式引擎失败时把原因提升到 error 字段（否则模型只见 "No results found."）
     const failure = r.sources.length === 0 ? attempts.filter((a) => a.engine === engineArg && !a.ok).map((a) => a.error).join('; ') : undefined
     return { ...r, sources: r.sources.slice(0, max), truncated: r.sources.length > max, engine: engineArg, attempts, error: failure || undefined }
+  }
+
+  // ── 智能路由（auto 默认开启；可在设置关闭回退传统链）─────────────────────────
+  // 分析查询特性（语言/领域/意图/时效）→ 选合适引擎或多引擎并行 RRF 融合；
+  // 路由引擎被禁用或全部失败时回退传统 auto 链。
+  if (s.smartRouting !== false) {
+    const profile = analyzeQuery(query)
+    const route = routeFor(profile)
+    if (route.mode !== 'chain' && !(s.defaultEngine && s.defaultEngine !== 'auto')) {
+      // 路由派生的时效（显式 freshness 参数优先）
+      if (!opts.freshness && route.freshness) opts.freshness = route.freshness
+      const usable = route.engines.filter((id) => engines[id] && engineEnabled(id, s))
+      if (route.mode === 'parallel' && usable.length >= 1) {
+        const per = Math.min(Math.max(max * 2, 10), 20)
+        const rs = await Promise.all(usable.map((id) => tryEngine(id, per)))
+        const subResults = usable
+          .map((id, i) => ({ id, r: rs[i] }))
+          .filter((x) => x.r && Array.isArray(x.r.sources) && x.r.sources.length > 0)
+          .map((x) => ({ id: x.id, sources: x.r.sources }))
+        if (subResults.length > 0) {
+          const merged = rrfMerge(subResults, max)
+          if (merged.sources.length > 0) {
+            const okIds = subResults.map((x) => x.id)
+            return { ...merged, truncated: false, engine: `smart(${route.intent}):${okIds.join('+')}`, attempts }
+          }
+        }
+        // 并行结果为空 → 落到传统链兜底
+      } else if ((route.mode === 'single' || route.mode === 'aggregate') && usable.length >= 1) {
+        const r = await tryEngine(usable[0])
+        if (r && r.sources.length > 0) {
+          return { ...r, sources: r.sources.slice(0, max), truncated: r.sources.length > max, engine: `smart(${route.intent}):${usable[0]}`, attempts }
+        }
+        // 单引擎路由失败 → 落到传统链兜底
+      }
+    }
   }
 
   // auto 链：defaultEngine 显式指定 → 最先；否则 API 引擎（有 key 且未关 apiInAuto）
@@ -1676,7 +1828,8 @@ export function apply(ctx, config) {
       if (Schema) {
         schema = Schema.object({
           enabled: Schema.boolean().default(true).description('总开关：关闭后 web_search_multi 返回禁用提示'),
-          defaultEngine: Schema.union(['auto', 'ddg-api', 'ddg-html', 'bing', 'baidu', 'so360', 'brave', 'wikipedia', 'brave-api', 'tavily', 'serper', 'exa']).default('auto').description('默认引擎；auto = 语言感知回退链（中文：Bing→百度→360→DDG→…；英文：DDG HTML→Bing→Brave→…；配置了 API key 的引擎优先）'),
+          smartRouting: Schema.boolean().default(true).description('auto 智能路由：由 DSH 分析查询特性（语言/领域/意图/时效）自动选择合适引擎或多引擎并行 RRF 融合；关闭则回退传统语言感知回退链'),
+          defaultEngine: Schema.union(['auto', ...Object.keys(ENGINE_CATEGORY)]).default('auto').description('默认引擎；auto = 智能路由（按查询特性自动选引擎/并行融合）+ 回退链；显式指定其他引擎时跳过智能路由'),
           enableDdgApi: Schema.boolean().default(true).description('启用 DuckDuckGo Instant Answer API（事实/实体类快答）'),
           enableDdgHtml: Schema.boolean().default(true).description('启用 DuckDuckGo HTML 抓取（通用搜索）'),
           enableBing: Schema.boolean().default(true).description('启用 Bing 抓取（大陆可达的通用搜索）'),
@@ -1770,7 +1923,7 @@ export function apply(ctx, config) {
         ctx.tools.register({
           name: 'web_search_multi',
           description:
-            '多渠道网页搜索（38 引擎，8 大类，按类选用）。【通用网页】auto（默认，语言感知回退链：中文 Bing→百度→360→DDG，英文 DDG HTML→Bing→Brave；key 引擎优先）/ ddg-html / bing / baidu / so360 / brave / ddg-api（事实快答）/ wikipedia（语言感知）/ marginalia / serper·tavily·brave-api·exa（API-key 型）。【聚合】aggregate（并行多引擎 + RRF 融合去重；复合语法 aggregate:引擎1,引擎2 聚合任意子集，如 aggregate:arxiv,openalex,crossref）。【学术文献】arxiv / openalex / crossref / pubmed / europepmc / dblp。【开发者】github / npm / crates（Rust）/ dockerhub / stackexchange / mdn / csdn。【新闻与社区】news（Bing/Google News RSS）/ hn。【媒体娱乐】youtube / bilibili / images（图片直链）/ itunes。【中文内容】wechat（微信公众号）/ zhidao（百度知道）。【资料参考】wikidata / books / archive / maps。freshness 可选 day/week/month/year 时效过滤（ddg-html/brave/baidu/news/aggregate 原生支持，其余忽略）。返回 sources（url/title/snippet）。当内置 web_search 结果不足、需要特定渠道或事实快答时优先使用本工具。配置见 设置→插件→网页搜索。',
+            '多渠道网页搜索（38 引擎 · 8 大类 · auto 智能路由）。engine 默认 auto：由 DSH 分析查询特性（语言/领域/意图/时效）自动路由——学术论文→arxiv/openalex/crossref 并行融合、生物医学→pubmed+europepmc、报错→stackexchange(+csdn)、包管理→github+npm+dockerhub、新闻→news（自动推断时效）、图片→images、视频→bilibili+youtube、地点→maps、中文问答→zhidao、实体快查→ddg-api+wikidata+wikipedia 并行、对比评测→aggregate；通用查询→语言感知回退链（中文 Bing→百度→360→DDG，英文 DDG→Bing→Brave；key 引擎优先）。也可显式指定：【通用】ddg-html/bing/baidu/so360/brave/ddg-api/wikipedia/marginalia/serper·tavily·brave-api·exa（key 型）【聚合】aggregate（RRF 融合；复合语法 aggregate:id1,id2）【学术】arxiv/openalex/crossref/pubmed/europepmc/dblp【开发】github/npm/crates/dockerhub/stackexchange/mdn/csdn【新闻社区】news/hn【媒体】youtube/bilibili/images/itunes【中文】wechat/zhidao【参考】wikidata/books/archive/maps。freshness 可选 day/week/month/year（部分引擎原生支持）。返回 sources（url/title/snippet），engine 字段显示实际路由（如 smart(academic):arxiv+openalex）。配置见 设置→插件→网页搜索。',
           parameters: {
             type: 'object',
             additionalProperties: false,
@@ -1850,9 +2003,8 @@ export function apply(ctx, config) {
           order: 106,
           text: [
             'Enhanced web tools are available:',
-            '- web_search_multi: multi-channel web search (38 engines in 8 categories). [General web] engine="auto" (default; language-aware fallback chain: Chinese queries Bing→Baidu→So360→DDG, others DDG HTML→Bing→Brave; API-key engines first when configured), plus explicit "ddg-api"/"ddg-html"/"bing"/"baidu"/"so360"/"brave"/"wikipedia" (language-aware)/"marginalia", and API-key engines "serper"/"tavily"/"brave-api"/"exa". [Aggregate] "aggregate" runs engines in PARALLEL with Reciprocal Rank Fusion dedup; composite syntax "aggregate:<id1>,<id2>" aggregates ANY subset (e.g. aggregate:arxiv,openalex,crossref). [Academic] "arxiv"/"openalex"/"crossref"/"pubmed"/"europepmc"/"dblp". [Developer] "github"/"npm"/"crates" (Rust)/"dockerhub"/"stackexchange"/"mdn"/"csdn". [News & community] "news" (news RSS)/"hn". [Media] "youtube"/"bilibili"/"images" (direct image URLs)/"itunes". [Chinese content] "wechat" (WeChat articles)/"zhidao" (Baidu Q&A). [Reference] "wikidata"/"books" (Open Library)/"archive" (Internet Archive)/"maps" (OSM places).',
-            'Optional freshness="day"/"week"/"month"/"year" filters recency (supported natively by ddg-html/brave/baidu/news/aggregate; others ignore it).',
-            'Pick engines by task: broad recall → aggregate; papers → arxiv/openalex/crossref/dblp (biomedical → pubmed/europepmc; or aggregate:arxiv,openalex,crossref); code & packages → github/npm/crates/dockerhub; web-dev docs → mdn; programming errors → stackexchange (csdn for Chinese); tech discussion → hn; current events → news (+freshness); images → images; music/movies → itunes; books → books; places → maps; entities/facts → wikidata/ddg-api; Chinese Q&A/articles → zhidao/wechat; Chinese videos → bilibili; archived material → archive.',
+            '- web_search_multi: multi-channel web search (38 engines, 8 categories, SMART ROUTING). engine="auto" (default) lets DSH analyze the query and route automatically: academic papers → arxiv/openalex/crossref in parallel (merged with RRF); biomedical → pubmed+europepmc; code errors → stackexchange(+csdn for Chinese); packages → github+npm+dockerhub; news → news engine (auto-derived freshness); images → images; video → bilibili+youtube; places → maps; Chinese Q&A → zhidao; entity lookups → ddg-api+wikidata+wikipedia in parallel; comparisons/reviews → aggregate; general queries → language-aware fallback chain (Chinese: Bing→Baidu→So360→DDG; others: DDG→Bing→Brave; API-key engines first when configured). The returned engine field shows the actual route, e.g. smart(academic):arxiv+openalex. Explicit engines remain available: [General] ddg-api/ddg-html/bing/baidu/so360/brave/wikipedia/marginalia + serper/tavily/brave-api/exa (API-key); [Aggregate] aggregate (composite syntax aggregate:<id1>,<id2>); [Academic] arxiv/openalex/crossref/pubmed/europepmc/dblp; [Developer] github/npm/crates/dockerhub/stackexchange/mdn/csdn; [News] news/hn; [Media] youtube/bilibili/images/itunes; [Chinese] wechat/zhidao; [Reference] wikidata/books/archive/maps.',
+            'Usually just call with query and let auto route. Pass an explicit engine when you need a specific channel; freshness="day"/"week"/"month"/"year" for recency on engines that support it.',
             '- web_fetch_url: fetch any public URL and return text (HTML converted to markdown).',
             'Use web_search_multi when the built-in web_search returns insufficient results, when a specific engine/channel is needed, or for quick fact lookups; use web_fetch_url to read a source page after searching. Results carry url/title/snippet — cite URLs as markdown links.',
           ].join('\n'),

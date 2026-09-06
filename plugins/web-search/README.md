@@ -1,6 +1,33 @@
-# web-search — DSH 网页搜索增强插件（38 引擎/渠道 · 8 大类）
+# web-search — DSH 网页搜索增强插件（38 引擎 · 8 大类 · auto 智能路由）
 
 DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会话**注册多引擎网页搜索与 URL 抓取工具，并提供 设置→插件 页配置卡片。零依赖（单文件 ESM，host realm 全 Node 权限）。
+
+## auto 智能路由（默认开启）
+
+`engine=auto`（默认）时由 **DSH 分析查询特性**（语言/领域/意图/时效）自动选择合适引擎或多引擎**并行同步搜索 + RRF 融合**，模型无需手动选引擎：
+
+| 查询特性（自动识别） | 路由 | 模式 |
+|---|---|---|
+| 生物医学（疾病/基因/药物/临床…） | `pubmed + europepmc` | 并行融合 |
+| 计算机科学（算法/神经网络/LLM…） | `arxiv + dblp + openalex` | 并行融合 |
+| 学术（论文/文献/研究…） | `openalex + crossref + arxiv` | 并行融合 |
+| 报错/异常（error/traceback/报错…） | 中文 `csdn+stackexchange`；英文 `stackexchange+github` | 并行融合 |
+| Web 前端（css/html/dom…） | `mdn + stackexchange` | 并行融合 |
+| 包管理（npm/cargo/docker…） | `github + npm + dockerhub` | 并行融合 |
+| 代码/实现（框架/语言名…） | 中文 `csdn+github+stackexchange`；英文 `github+stackexchange` | 并行融合 |
+| 新闻（新闻/快讯/最新消息…） | `news`（自动推断时效：今天→day、最近→month…） | 单引擎 |
+| 图片（图片/壁纸/image…） | `images` | 单引擎 |
+| 视频（视频/教程/movie…） | 中文 `bilibili+youtube`；英文 `youtube` | 并行融合 |
+| 地点（在哪/地图/路线…） | `maps` | 单引擎 |
+| 公众号（公众号/微信文章…） | `wechat` | 单引擎 |
+| 中文问答（什么是/为什么/怎么…） | `zhidao` | 单引擎 |
+| 实体快查（短词无修饰） | `ddg-api + wikidata + wikipedia` | 并行融合 |
+| 对比评测（对比/哪个好/best/vs…） | `aggregate`（免费通用引擎并行） | 聚合 |
+| 通用查询 | 语言感知回退链（中文 Bing→百度→360→DDG；英文 DDG→Bing→Brave；key 引擎优先） | 串行链 |
+
+- 路由引擎被禁用或无结果时**自动回退传统链**，永不空手而归
+- 返回的 `engine` 字段显示实际路由（如 `smart(academic):arxiv+openalex+crossref`），多引擎交叉命中标注 `[N 引擎命中]`
+- 设置页可关闭智能路由（`smartRouting` 开关）回退传统链；`defaultEngine` 显式指定非 auto 时智能路由让位
 
 ## 引擎清单（按类）
 

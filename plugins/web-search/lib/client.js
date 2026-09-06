@@ -37,6 +37,7 @@ window.__ModuleLoader__.load({
 			// 与 host 半边 schema 相同的默认值（卡片「恢复默认」用；host 是权威）。
 			const DEFAULTS = {
 				enabled: true,
+				smartRouting: true,
 				defaultEngine: "auto",
 				enableDdgApi: true,
 				enableDdgHtml: true,
@@ -172,6 +173,7 @@ window.__ModuleLoader__.load({
 				title: "网页搜索（多引擎增强）",
 				description: "web_search_multi / web_fetch_url 工具的引擎与参数。保存后立即生效（写入 settings.yaml 的 web-search 节）。",
 				enabled: "启用网页搜索",
+				smartRouting: "auto 智能路由（分析查询特性→自动选引擎/多引擎并行融合；关闭则回退传统链）",
 				engines: "免费搜索引擎（auto 回退链仅使用启用项）",
 				verticals: "垂直渠道（不参与 auto，需在工具调用中显式指定 engine）",
 				defaultEngine: "默认引擎",
@@ -205,6 +207,7 @@ window.__ModuleLoader__.load({
 				title: "Web Search (multi-engine)",
 				description: "Engines and parameters for the web_search_multi / web_fetch_url tools. Saved live into the web-search section of settings.yaml.",
 				enabled: "Enable web search",
+				smartRouting: "auto smart routing (analyze query traits → pick engine or parallel fan-out; off = legacy chain)",
 				engines: "Free search engines (auto chain uses enabled ones only)",
 				verticals: "Vertical channels (not in auto; pass engine=<id> explicitly)",
 				defaultEngine: "Default engine",
@@ -432,6 +435,20 @@ window.__ModuleLoader__.load({
 							onChange: (e) => set("enabled", e.target.checked)
 						}),
 						react.createElement(Ov, { show: Object.prototype.hasOwnProperty.call(userLayer, "enabled"), label: t.overridden })
+					),
+
+					// 智能路由开关
+					react.createElement(
+						"div",
+						{ className: "wsp-row" },
+						react.createElement("label", null, t.smartRouting),
+						react.createElement("input", {
+							type: "checkbox",
+							checked: staged.smartRouting !== false,
+							disabled: disabled,
+							onChange: (e) => set("smartRouting", e.target.checked)
+						}),
+						react.createElement(Ov, { show: Object.prototype.hasOwnProperty.call(userLayer, "smartRouting"), label: t.overridden })
 					),
 
 					// 引擎开关
