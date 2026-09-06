@@ -45,6 +45,14 @@ window.__ModuleLoader__.load({
 				enableSo360: true,
 				enableBrave: true,
 				enableWikipedia: true,
+				enableArxiv: true,
+				enableGithub: true,
+				enableStackexchange: true,
+				enableHn: true,
+				enableNews: true,
+				enableMarginalia: true,
+				enableBilibili: true,
+				enableWechat: true,
 				apiInAuto: true,
 				tavilyApiKey: "",
 				serperApiKey: "",
@@ -62,7 +70,19 @@ window.__ModuleLoader__.load({
 				["enableDdgHtml", "ddg-html", "DuckDuckGo HTML 抓取 · 通用搜索"],
 				["enableBrave", "brave", "Brave 抓取 · 独立索引"],
 				["enableDdgApi", "ddg-api", "DuckDuckGo IA API · 事实快答"],
-				["enableWikipedia", "wikipedia", "Wikipedia API · 百科（部分地区不可达）"]
+				["enableWikipedia", "wikipedia", "Wikipedia API · 百科（中文查询→zh）"]
+			];
+
+			// 垂直渠道（不参与 auto 链，需在工具调用中显式指定 engine）
+			const VERTICAL_FIELDS = [
+				["enableArxiv", "arxiv", "arXiv · 学术论文"],
+				["enableGithub", "github", "GitHub · 代码仓库"],
+				["enableStackexchange", "stackexchange", "Stack Overflow · 编程问答"],
+				["enableHn", "hn", "Hacker News · 科技社区"],
+				["enableNews", "news", "新闻 · Bing News RSS→Google 兜底"],
+				["enableBilibili", "bilibili", "哔哩哔哩 · 视频"],
+				["enableWechat", "wechat", "微信公众号 · 搜狗微信"],
+				["enableMarginalia", "marginalia", "Marginalia · 独立小众索引"]
 			];
 
 			// [field, 名称, 用途说明, 获取 key 链接, 免费额度提示（以官网为准）]
@@ -73,13 +93,14 @@ window.__ModuleLoader__.load({
 				["exaApiKey", "Exa", "神经/语义搜索 API", "https://dashboard.exa.ai", "注册送约 $10 额度"]
 			];
 
-			const ENGINE_IDS = ["auto", "ddg-html", "bing", "baidu", "so360", "brave", "ddg-api", "wikipedia", "serper", "tavily", "brave-api", "exa"];
+			const ENGINE_IDS = ["auto", "ddg-html", "bing", "baidu", "so360", "brave", "ddg-api", "wikipedia", "arxiv", "github", "stackexchange", "hn", "news", "marginalia", "bilibili", "wechat", "serper", "tavily", "brave-api", "exa"];
 
 			const zh = {
 				title: "网页搜索（多引擎增强）",
 				description: "web_search_multi / web_fetch_url 工具的引擎与参数。保存后立即生效（写入 settings.yaml 的 web-search 节）。",
 				enabled: "启用网页搜索",
 				engines: "免费搜索引擎（auto 回退链仅使用启用项）",
+				verticals: "垂直渠道（不参与 auto，需在工具调用中显式指定 engine）",
 				defaultEngine: "默认引擎",
 				engineAuto: "auto（语言感知回退）",
 				maxResults: "默认返回条数（1-50）",
@@ -112,6 +133,7 @@ window.__ModuleLoader__.load({
 				description: "Engines and parameters for the web_search_multi / web_fetch_url tools. Saved live into the web-search section of settings.yaml.",
 				enabled: "Enable web search",
 				engines: "Free search engines (auto chain uses enabled ones only)",
+				verticals: "Vertical channels (not in auto; pass engine=<id> explicitly)",
 				defaultEngine: "Default engine",
 				engineAuto: "auto (language-aware fallback)",
 				maxResults: "Default result count (1-50)",
@@ -362,6 +384,30 @@ window.__ModuleLoader__.load({
 							)
 						),
 						react.createElement("p", { className: "wsp-hint" }, t.autoChain)
+					),
+
+					// 垂直渠道开关（不参与 auto 链）
+					react.createElement(
+						"div",
+						null,
+						react.createElement("div", { className: "wsp-row" }, react.createElement("label", null, t.verticals)),
+						react.createElement(
+							"div",
+							{ className: "wsp-engines" },
+							VERTICAL_FIELDS.map(([field, id, label]) =>
+								react.createElement(
+									"label",
+									{ key: field, className: "wsp-check" },
+									react.createElement("input", {
+										type: "checkbox",
+										checked: staged[field] !== false,
+										disabled: disabled,
+										onChange: (e) => set(field, e.target.checked)
+									}),
+									react.createElement("span", null, label)
+								)
+							)
+						)
 					),
 
 					// API-key 引擎区（每行带「获取 key ↗」注册链接 + 免费额度提示）

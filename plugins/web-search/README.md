@@ -1,4 +1,4 @@
-# web-search — DSH 网页搜索增强插件（11 引擎）
+# web-search — DSH 网页搜索增强插件（19 引擎/渠道）
 
 DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会话**注册多引擎网页搜索与 URL 抓取工具，并提供 设置→插件 页配置卡片。零依赖（单文件 ESM，host realm 全 Node 权限）。
 
@@ -17,7 +17,7 @@ DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会
 | id | 引擎 | 说明 |
 |---|---|---|
 | `ddg-api` | DuckDuckGo IA | Instant Answer API，事实/实体类快答（覆盖面窄，按设计如此） |
-| `wikipedia` | Wikipedia | MediaWiki `list=search` API，百科条目（部分地区网络不可达） |
+| `wikipedia` | Wikipedia | MediaWiki `list=search` API，**语言感知**（中文查询→zh.wikipedia，其他→en） |
 
 ### API-key 型（可选，设置页配 key 后启用）
 | id | 服务 | 获取 key | 免费额度* |
@@ -31,26 +31,39 @@ DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会
 
 key 仅存本机 `settings.yaml` 的 `web-search:` 节；`/web-search/health` 诊断端点对 key 打码。
 
+### 垂直渠道（不参与 auto 链，需显式指定 `engine=<id>`）
+| id | 渠道 | 方式 | 说明 |
+|---|---|---|---|
+| `arxiv` | arXiv | Atom API | 学术论文（标题/摘要/日期） |
+| `github` | GitHub | REST API | 代码仓库（星数/语言/描述；未认证限 10 次/分钟） |
+| `stackexchange` | Stack Overflow | REST API | 编程问答（score/回答数/标签） |
+| `hn` | Hacker News | Algolia API | 科技社区讨论（分数/评论数） |
+| `news` | 新闻 | **RSS** | Bing News RSS（真实 URL 解码）→ Google News RSS 兜底 |
+| `bilibili` | 哔哩哔哩 | REST API | 视频搜索（UP主/简介） |
+| `wechat` | 微信公众号 | 搜狗微信抓取 | 公众号文章（链接为 sogou 重定向，有时效） |
+| `marginalia` | Marginalia | 公共 API | 独立小众索引，发掘非主流页面 |
+
 ## auto 引擎链（语言感知）
 
 - **API 引擎优先**：配置了 key 且未关 `apiInAuto` 时，`serper → tavily → brave-api → exa` 排最前（消耗 API 配额，可在设置页关闭）
 - **中文查询**（含 CJK）：`bing → baidu → so360 → ddg-html → ddg-api → wikipedia`
 - **其他查询**：`ddg-html → bing → brave → ddg-api → wikipedia`
+- **垂直渠道不参与 auto**：按任务显式选 `arxiv`（论文）/`github`（代码）/`stackexchange`（报错）/`hn`（科技讨论）/`news`（时事）/`wechat`/`bilibili`（中文内容）
 - 显式指定 `defaultEngine` 时该引擎最先试；链上失败自动回退，总时间预算 60s
-- 各引擎可在设置页独立禁用
+- 各引擎可在设置页独立禁用；`site:`/`filetype:` 等查询操作符由各引擎原生支持
 
 ## 注册的模型工具
 
 - **`web_search_multi`**：多引擎搜索。参数 `query`（必填）、`engine`（默认 auto）、`maxResults`（1-50）。返回 `{sources: [{url,title,snippet}], engine, attempts, error?}`，渲染为 markdown 链接列表。
 - **`web_fetch_url`**：抓取任意公开 URL。经官方 `@deepseek-ai/dsh-web-fetch-http` provider（SSRF 防护/同源重定向/字节上限），HTML 自动转 markdown（turndown + gfm，从 harness 安装解析）。参数 `url`（必填）、`maxChars`（默认 20000）。
 
-另将 11 个引擎注册为 `ctx.web` search provider（host 的 `web` 行仍钉 `searchProvider: deepseek-official`，产品自带 `web_search` 不受影响；想切换时在家级 patch 覆写 `web` 行 config 即可）。
+另将 19 个引擎注册为 `ctx.web` search provider（host 的 `web` 行仍钉 `searchProvider: deepseek-official`，产品自带 `web_search` 不受影响；想切换时在家级 patch 覆写 `web` 行 config 即可）。
 
 ## 设置页
 
 **设置 → 插件 → 网页搜索**（client 半边，`settings.plugin.item` 键控槽位）：
 
-- 总开关 / 7 个免费引擎独立开关 / API key（4 个，密码框）/ `apiInAuto` 开关
+- 总开关 / 7 个免费引擎 + 8 个垂直渠道独立开关 / API key（4 个，密码框）/ `apiInAuto` 开关
 - 默认引擎 / 返回条数 / 单引擎超时 / User-Agent
 - **测试引擎**按钮（调 `/web-search/test` 实测连通性）
 - 字段级「已覆盖默认值」标记；保存 = `scope.mutate`（原子，带 revision 乐观锁）→ 写 `settings.yaml` 热生效
