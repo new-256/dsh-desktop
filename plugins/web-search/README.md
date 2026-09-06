@@ -20,12 +20,14 @@ DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会
 | `wikipedia` | Wikipedia | MediaWiki `list=search` API，百科条目（部分地区网络不可达） |
 
 ### API-key 型（可选，设置页配 key 后启用）
-| id | 服务 | 说明 |
-|---|---|---|
-| `serper` | [Serper.dev](https://serper.dev) | **Google 结果** API，质量最高 |
-| `tavily` | [Tavily](https://tavily.com) | LLM 优化搜索 API |
-| `brave-api` | [Brave Search API](https://brave.com/search/api/) | 官方 API（与抓取版独立） |
-| `exa` | [Exa](https://exa.ai) | 神经/语义搜索 API |
+| id | 服务 | 获取 key | 免费额度* |
+|---|---|---|---|
+| `serper` | Serper.dev | https://serper.dev/signup | 注册送约 2500 次 |
+| `tavily` | Tavily | https://app.tavily.com | 约 1000 次/月 |
+| `brave-api` | Brave Search API | https://brave.com/search/api/ | 约 2000 次/月 |
+| `exa` | Exa | https://dashboard.exa.ai | 注册送约 $10 |
+
+\* 免费额度以各官网当前政策为准。设置页每个 key 输入框旁有「获取 key ↗」直达链接。
 
 key 仅存本机 `settings.yaml` 的 `web-search:` 节；`/web-search/health` 诊断端点对 key 打码。
 

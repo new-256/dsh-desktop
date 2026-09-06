@@ -65,11 +65,12 @@ window.__ModuleLoader__.load({
 				["enableWikipedia", "wikipedia", "Wikipedia API · 百科（部分地区不可达）"]
 			];
 
+			// [field, 名称, 用途说明, 获取 key 链接, 免费额度提示（以官网为准）]
 			const API_KEY_FIELDS = [
-				["serperApiKey", "Serper.dev", "Google 结果 API"],
-				["tavilyApiKey", "Tavily", "LLM 优化搜索 API"],
-				["braveApiKey", "Brave Search API", "官方 API（与抓取版独立）"],
-				["exaApiKey", "Exa", "神经/语义搜索 API"]
+				["serperApiKey", "Serper.dev", "Google 结果 API", "https://serper.dev/signup", "注册送约 2500 次免费查询"],
+				["tavilyApiKey", "Tavily", "LLM 优化搜索 API", "https://app.tavily.com", "免费档约 1000 次/月"],
+				["braveApiKey", "Brave Search API", "官方 API（与抓取版独立）", "https://brave.com/search/api/", "免费档约 2000 次/月"],
+				["exaApiKey", "Exa", "神经/语义搜索 API", "https://dashboard.exa.ai", "注册送约 $10 额度"]
 			];
 
 			const ENGINE_IDS = ["auto", "ddg-html", "bing", "baidu", "so360", "brave", "ddg-api", "wikipedia", "serper", "tavily", "brave-api", "exa"];
@@ -87,6 +88,8 @@ window.__ModuleLoader__.load({
 				apiSection: "API-key 型引擎（可选，配置 key 后启用）",
 				apiInAuto: "auto 链优先使用已配置 key 的 API 引擎（消耗配额）",
 				apiKeyNote: "key 仅存本机 settings.yaml；/web-search/health 已打码。API 引擎质量最高（Serper=Google 结果）。",
+				getKey: "获取 key",
+				freeTierNote: "免费额度以官网为准",
 				save: "保存",
 				saving: "保存中…",
 				discard: "放弃修改",
@@ -117,6 +120,8 @@ window.__ModuleLoader__.load({
 				apiSection: "API-key engines (optional, enabled once a key is set)",
 				apiInAuto: "Prefer keyed API engines in the auto chain (burns quota)",
 				apiKeyNote: "Keys stay in the local settings.yaml; /web-search/health masks them. API engines have the best quality (Serper = Google results).",
+				getKey: "Get key",
+				freeTierNote: "Free tiers per official sites",
 				save: "Save",
 				saving: "Saving…",
 				discard: "Discard",
@@ -161,7 +166,9 @@ window.__ModuleLoader__.load({
 				".wsp-status--err{color:var(--dsw-alias-state-error-primary,#e5484d)}",
 				".wsp-test{display:grid;gap:6px;padding:10px;border-radius:8px;background:var(--dsw-alias-interactive-bg-muted,rgba(127,127,127,.07));font-size:12px;line-height:1.5}",
 				".wsp-test a{color:var(--dsw-alias-state-accent-primary,#3b82f6);text-decoration:none}",
-				".wsp-hint{font-size:11px;color:var(--dsw-alias-label-caption,#8b8b8b)}"
+				".wsp-hint{font-size:11px;color:var(--dsw-alias-label-caption,#8b8b8b)}",
+				".wsp-link{color:var(--dsw-alias-state-accent-primary,#3b82f6);text-decoration:none;font-size:12px;white-space:nowrap}",
+				".wsp-link:hover{text-decoration:underline}"
 			].join("");
 			if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=\"web-search-panel\"]") === null) {
 				const tag = document.createElement("style");
@@ -357,7 +364,7 @@ window.__ModuleLoader__.load({
 						react.createElement("p", { className: "wsp-hint" }, t.autoChain)
 					),
 
-					// API-key 引擎区
+					// API-key 引擎区（每行带「获取 key ↗」注册链接 + 免费额度提示）
 					react.createElement(
 						"div",
 						null,
@@ -365,14 +372,21 @@ window.__ModuleLoader__.load({
 						react.createElement(
 							"div",
 							{ style: { display: "grid", gap: "6px" } },
-							API_KEY_FIELDS.map(([field, name, desc]) =>
+							API_KEY_FIELDS.map(([field, name, desc, url, freeNote]) =>
 								row(
-									`${name} API key`,
+									[
+										`${name} API key `,
+										react.createElement(
+											"a",
+											{ key: url, href: url, target: "_blank", rel: "noreferrer", className: "wsp-link", title: url },
+											`${t.getKey} ↗`
+										)
+									],
 									react.createElement("input", {
 										className: "wsp-input",
 										type: "password",
-										style: { flex: "1", minWidth: "220px" },
-										placeholder: desc,
+										style: { flex: "1", minWidth: "200px" },
+										placeholder: freeNote ? `${desc} · ${freeNote}` : desc,
 										autoComplete: "off",
 										value: staged[field] == null ? "" : staged[field],
 										disabled: disabled,
@@ -392,7 +406,7 @@ window.__ModuleLoader__.load({
 								}),
 								react.createElement("span", null, t.apiInAuto)
 							),
-							react.createElement("p", { className: "wsp-hint" }, t.apiKeyNote)
+							react.createElement("p", { className: "wsp-hint" }, t.apiKeyNote, "（", t.freeTierNote, "）")
 						)
 					),
 
