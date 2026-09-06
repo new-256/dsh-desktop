@@ -1178,6 +1178,51 @@ function analyzeBackendFailure(home, logText) {
 }
 
 /**
+ * Detect home-level patch entries that CONFLICT at the Cordis loader level:
+ *   1. "duplicate loader entry id: <id>" — the id already exists in dsh-base's
+ *      built-in patch (or twice in the user patch). The user-side entry must go.
+ *   2. "package <pkg> resolves from multiple active Loader sources" — a bare
+ *      package-name entry duplicates a file:// host entry whose package.json
+ *      already provides the same client package. The bare-name entry must go.
+ * These are config conflicts, not missing sources: profile quarantine and
+ * Node repair can never fix them. Returns [{ id, name, reason }].
+ */
+function analyzeConfigEntryConflicts(home, logText) {
+  const out = [];
+  if (!logText) return out;
+  const patchPath = path.join(home, 'cordis.patch.yml');
+  if (!fs.existsSync(patchPath)) return out;
+  let yamlText;
+  try { yamlText = fs.readFileSync(patchPath, 'utf8'); } catch { return out; }
+
+  const dupIds = new Set();
+  const multiPkgs = new Set();
+  let m;
+  const dupRe = /duplicate loader entry id:\s*(\S+)/g;
+  while ((m = dupRe.exec(logText)) !== null) dupIds.add(m[1]);
+  const multiRe = /package (\S+) resolves from multiple active Loader sources/g;
+  while ((m = multiRe.exec(logText)) !== null) multiPkgs.add(m[1]);
+  if (!dupIds.size && !multiPkgs.size) return out;
+
+  const seen = new Set();
+  for (const block of parseHomePatchBlocks(yamlText)) {
+    for (const entry of block.entries) {
+      if (!entry.id || seen.has(entry.id)) continue;
+      let reason = null;
+      if (dupIds.has(entry.id)) {
+        reason = `loader 条目 id「${entry.id}」与内置或已有条目重复`;
+      } else if (entry.name) {
+        const bare = entry.name.split('?')[0].replace(/^['"]|['"]$/g, '');
+        if (multiPkgs.has(bare)) reason = `前端包「${bare}」被多个加载源同时提供`;
+      }
+      if (reason) { seen.add(entry.id); out.push({ id: entry.id, name: entry.name, reason }); }
+    }
+  }
+  if (out.length) log('config entry conflicts detected:', out.map((e) => e.id).join(', '));
+  return out;
+}
+
+/**
  * Comment out the top-level patch blocks containing the given plugin ids in the
  * HOME-level cordis.patch.yml, after backing the file up. Returns
  * { disabled: [ids], backup: <path|null> }.
@@ -1498,7 +1543,7 @@ module.exports = {
   P, activeRoot, dshHome, requestedBackendVersion, clearRequestedBackendVersion,
   ensureSeeded, migrateProjectionCache, applyStaged, ensureNodeMeetsRequirement,
   repairProfileJunctions, quarantineProfiles, repairNodeForBackendFailure, nodeRequirement,
-  analyzeBackendFailure, disableBrokenPatchPlugins,
+  analyzeBackendFailure, disableBrokenPatchPlugins, analyzeConfigEntryConflicts,
   // main.js spawns the backend with this dedicated/isolated environment.
   buildDedicatedEnv, describeEnvIsolation, enableCorepack,
   currentVersions, stagedVersions, checkForUpdates,

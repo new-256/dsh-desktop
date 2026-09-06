@@ -183,6 +183,43 @@ async function startBackendWithHealing() {
     pushLog('first backend start failed; attempting self-heal (junction repair + profile quarantine)\n');
   }
 
+  // Escalation 0: home-level patch entries that CONFLICT at the Cordis loader
+  // level (duplicate loader id / multi-source client package). These are config
+  // problems — profile quarantine and Node repair can never fix them, so
+  // handle them FIRST: back up the patch, comment out just the conflicting
+  // entries, tell the user, and retry immediately.
+  try {
+    const conflicts = mgr.analyzeConfigEntryConflicts(p.dshHome, backendLogs.join(''));
+    if (conflicts.length) {
+      const res = mgr.disableBrokenPatchPlugins(p.dshHome, conflicts);
+      const disabledConflicts = (res && res.disabled) || [];
+      if (disabledConflicts.length) {
+        pushLog(`禁用冲突的插件配置条目：${conflicts.map((c) => `${c.id}（${c.reason}）`).join('；')}，原配置已备份：${res.backup}。\n`);
+        try {
+          const r0 = await dialog.showMessageBox(null, {
+            type: 'warning', buttons: ['继续启动', '退出'], defaultId: 0, cancelId: 1,
+            title: APP_NAME,
+            message: '已禁用冲突的插件配置条目',
+            detail: '以下插件配置与内置组件冲突，已临时禁用，应用将继续启动：\n\n' +
+              conflicts.map((c) => `${c.id}：${c.reason}`).join('\n') +
+              `\n\n原配置已备份到：\n${res.backup}\n\n如需恢复，请对照备份文件修改 cordis.patch.yml。`
+          });
+          if (r0.response === 1) { isQuitting = true; app.exit(0); return; }
+        } catch {}
+        stopBackend();
+        await new Promise((r) => setTimeout(r, 800));
+        try {
+          pushLog('retrying backend after disabling conflicting patch entries…\n');
+          return await spawnBackend();
+        } catch (retryErr0) {
+          pushLog('backend start failed after conflict disable\n');
+        }
+      }
+    }
+  } catch (e) {
+    pushLog('conflict analysis failed: ' + (e && e.message) + '\n');
+  }
+
   // Escalation 1: quarantine the broken profiles dir (dsh rebuilds a fresh
   // tree on retry) and repair/rebuild custom plugin junctions, so bare-name
   // plugins injected by the home-level patch keep resolving after the wipe.
@@ -248,7 +285,13 @@ async function startBackendWithHealing() {
     }
   }
 
-  // Escalation 3: repair Node runtime if spawn still fails.
+  // Escalation 3: repair Node runtime if spawn still fails — but never for
+  // plugin-tree/config load failures: reinstalling Node cannot fix a config
+  // error, it would just waste a download of the very same runtime.
+  if (/plugin tree failed to load/.test(backendLogs.join(''))) {
+    pushLog('跳过 Node 运行时修复：失败源于插件配置加载，与 Node 运行时无关。\n');
+    throw firstErr;
+  }
   pushLog('attempting Node runtime repair escalation…\n');
   const nodeChanged = await mgr.repairNodeForBackendFailure({
     onLog: (m) => pushLog('[node-repair] ' + m + '\n')
