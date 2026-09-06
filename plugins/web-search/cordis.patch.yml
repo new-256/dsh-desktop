@@ -1,0 +1,17 @@
+# web-search-panel 自身即 profile bundle：`dsh plugin --profile web add web-search-panel`
+# 后由 dsh 自动加入 dsh.profile.bundles 层栈（声明于 package.json 的 dsh.bundle.patch），
+# 本补丁随之组合进树——用户无需手改任何 YAML。
+#
+# 行说明：
+#   web-search        host 半（工具注册/搜索引擎/健康路由），经 exports "./host" 加载
+#   web-search-client client 半（设置卡片），裸包名加载 no-op main，Web 客户端按
+#                     dsh.client.platform=web 经 exports "./client" 装载组合脚本
+- insert:
+    - id: web-search
+      name: web-search-panel/host
+      config:
+        maxResults: 10
+        timeoutMs: 20000
+
+    - id: web-search-client
+      name: web-search-panel

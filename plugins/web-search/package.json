@@ -1,19 +1,46 @@
 {
   "name": "web-search-panel",
-  "description": "DSH 网页搜索增强：多引擎搜索（DDG IA API / DDG HTML 抓取 / Bing 抓取 / Wikipedia API）+ web_fetch_url 抓取工具 + 设置→插件页配置卡片。host 逻辑在同目录 lib/index.mjs（经家级 cordis.patch.yml 的 file:// 行加载），本包 main 是 no-op 占位防止双实例。",
-  "version": "1.0.0",
-  "private": true,
+  "description": "DSH (DeepSeek Harness) 网页搜索增强插件：38 引擎/渠道 · 8 大类 · auto 智能路由（查询特性分析→自动选引擎/多引擎并行 RRF 融合）+ web_fetch_url 抓取 + 设置页配置卡片。一条命令安装：dsh plugin --profile web add web-search-panel",
+  "version": "1.1.0",
   "type": "module",
   "main": "./lib/client-entry.mjs",
   "exports": {
     ".": "./lib/client-entry.mjs",
     "./client": "./lib/client.js",
+    "./host": "./lib/index.mjs",
+    "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
+  "files": [
+    "lib/index.mjs",
+    "lib/client.js",
+    "lib/client-entry.mjs",
+    "cordis.patch.yml",
+    "README.md"
+  ],
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web"
     }
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "web-search",
+    "search-engine",
+    "search"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/new-256/dsh-web-search.git"
   },
   "license": "MIT"
 }

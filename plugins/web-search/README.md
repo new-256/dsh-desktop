@@ -134,32 +134,56 @@ DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会
 - **测试引擎**按钮（调 `/web-search/test` 实测连通性）
 - 字段级「已覆盖默认值」标记；保存 = `scope.mutate`（原子，带 revision 乐观锁）→ 写 `settings.yaml` 热生效
 
-## 安装（本仓库布局）
+## 安装
 
-```
-plugins/web-search/
-├── package.json        # name: web-search-panel；dsh.client 声明；main = no-op 占位
-├── lib/index.mjs       # host 半边（file:// 行加载）
-├── lib/client.js       # client 半边（设置卡片，浏览器花名册加载）
-└── lib/client-entry.mjs# 包 main 占位（防 host 半边双实例）
+### 方式一：npm 安装（推荐，一条命令）
+
+```sh
+dsh plugin --profile web add web-search-panel
 ```
 
-家级 `cordis.patch.yml` 添加三行（junction `dsh-home/node_modules/web-search-panel` → 本目录）：
+本包自带 `dsh.bundle.patch` 声明（profile bundle），`dsh plugin` 安装后**自动**加入 `dsh.profile.bundles` 层栈并组合行——无需手改任何 YAML。重启 web 档案（或 `patchReload: live` 自动生效）即可使用：
+
+- 模型获得 `web_search_multi`（38 引擎智能路由搜索）与 `web_fetch_url`
+- 设置→插件 出现「网页搜索」配置卡片（引擎开关 / API key / 智能路由开关）
+
+前置条件：[pnpm](https://pnpm.io) 在 PATH 上（`dsh plugin` 经 pnpm 安装；`npm i -g pnpm` 或 corepack）。更新：`dsh plugin --profile web update web-search-panel`；卸载：`dsh plugin --profile web remove web-search-panel`。
+
+本地路径/源码安装同理：`dsh plugin --profile web add <本目录绝对路径>`。
+
+### 方式二：手动安装（无 pnpm 备选）
+
+在档案目录安装包并手写行（`$DSH_HOME/profiles/web`）：
+
+```sh
+cd "$DSH_HOME/profiles/web" && npm install web-search-panel
+```
+
+档案 `cordis.patch.yml`（或家级 `$DSH_HOME/cordis.patch.yml`）添加：
 
 ```yaml
 - insert:
     - id: web-search
-      name: file:///C:/Users/<you>/Desktop/DSH/plugins/web-search/lib/index.mjs?v=1
+      name: web-search-panel/host
       config:
         maxResults: 10
         timeoutMs: 20000
     - id: web-search-client
       name: web-search-panel
-    - id: web-fetch-http
-      name: '@deepseek-ai/dsh-web-fetch-http'
 ```
 
-新增行需重启 DSH；之后改 `lib/index.mjs` bump `?v=N` 热加载，改 `lib/client.js` 刷新浏览器即生效。
+### 开发布局（本仓库）
+
+```
+plugins/web-search/
+├── package.json        # name: web-search-panel；dsh.bundle.patch + dsh.client 声明
+├── cordis.patch.yml    # bundle 自带组合补丁（npm 安装时自动生效）
+├── lib/index.mjs       # host 半边（exports "./host"；开发期 file:// 行加载）
+├── lib/client.js       # client 半边（设置卡片，exports "./client"）
+└── lib/client-entry.mjs# 包 main 占位（防 host 半边双实例）
+```
+
+开发期家级 `cordis.patch.yml` 用 `file://` 行直连源码（junction `dsh-home/node_modules/web-search-panel` → 本目录）；新增行需重启 DSH，改 `lib/index.mjs` bump `?v=N` 热加载，改 `lib/client.js` 刷新浏览器即生效。发布流程：同步至 [new-256/dsh-web-search](https://github.com/new-256/dsh-web-search) 后 `npm publish`。
 
 ## 诊断
 
@@ -171,6 +195,6 @@ plugins/web-search/
 
 - **host realm 全 Node 权限**：本插件经家级 patch 的 `file://` 行加载（非动态沙箱插件），与官方 `dsh-web-search-deepseek` 同权——抓取引擎用全局 `fetch`；`schemastery`（设置 schema）与 `turndown`（HTML→markdown）经 `createRequire(process.argv[1])` 从 harness 安装解析，升级换目录依然有效
 - **DDG IA 的 202**：该 API 正常时也可能回 HTTP 202（Accepted），必须接受一切 2xx
-- **双面包结构**：裸包名行（client）与 `file://` 行（host）分别加载包的两个入口，包 `main` 是 no-op 防止 host 半边被加载两次（settings namespace 重名会直接失败）
+- **双面包结构**：裸包名行（client）与子路径行 `web-search-panel/host`（host）分别加载包的两个入口，包 `main` 是 no-op 防止 host 半边被加载两次（settings namespace 重名会直接失败）；子路径经 exports `"./host"` 解析，npm 安装与 file:// 开发行同构
 - **工具参数用完整 JSON Schema**（非沙箱 `defineTool` DSL）
 - 搜狗（antispider 拦截）、Ecosia（403）、Startpage/SearXNG 公共实例（Anubis 验证/JSON 禁用）、Mojeek（静默空结果）经实测不可用，未收录
