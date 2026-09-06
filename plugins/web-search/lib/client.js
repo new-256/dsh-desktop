@@ -60,6 +60,10 @@ window.__ModuleLoader__.load({
 				enableYoutube: true,
 				enableImages: true,
 				enableAggregate: true,
+				enablePubmed: true,
+				enableBooks: true,
+				enableItunes: true,
+				enableMaps: true,
 				apiInAuto: true,
 				tavilyApiKey: "",
 				serperApiKey: "",
@@ -96,6 +100,10 @@ window.__ModuleLoader__.load({
 				["enableBilibili", "bilibili", "哔哩哔哩 · 视频"],
 				["enableWechat", "wechat", "微信公众号 · 搜狗微信"],
 				["enableImages", "images", "Bing Images · 图片（返回直链）"],
+				["enableMaps", "maps", "OpenStreetMap · 地点/坐标"],
+				["enableItunes", "itunes", "iTunes · 音乐/电影/播客/应用"],
+				["enableBooks", "books", "Open Library · 图书"],
+				["enablePubmed", "pubmed", "PubMed · 生物医学文献"],
 				["enableMarginalia", "marginalia", "Marginalia · 独立小众索引"]
 			];
 
@@ -107,7 +115,7 @@ window.__ModuleLoader__.load({
 				["exaApiKey", "Exa", "神经/语义搜索 API", "https://dashboard.exa.ai", "注册送约 $10 额度"]
 			];
 
-			const ENGINE_IDS = ["auto", "aggregate", "ddg-html", "bing", "baidu", "so360", "brave", "ddg-api", "wikipedia", "arxiv", "openalex", "crossref", "github", "npm", "stackexchange", "csdn", "hn", "news", "youtube", "bilibili", "images", "wechat", "marginalia", "serper", "tavily", "brave-api", "exa"];
+			const ENGINE_IDS = ["auto", "aggregate", "ddg-html", "bing", "baidu", "so360", "brave", "ddg-api", "wikipedia", "arxiv", "openalex", "crossref", "pubmed", "github", "npm", "stackexchange", "csdn", "hn", "news", "youtube", "bilibili", "images", "maps", "itunes", "books", "wechat", "marginalia", "serper", "tavily", "brave-api", "exa"];
 
 			const zh = {
 				title: "网页搜索（多引擎增强）",

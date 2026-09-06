@@ -1,4 +1,4 @@
-# web-search — DSH 网页搜索增强插件（26 引擎/渠道）
+# web-search — DSH 网页搜索增强插件（30 引擎/渠道）
 
 DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会话**注册多引擎网页搜索与 URL 抓取工具，并提供 设置→插件 页配置卡片。零依赖（单文件 ESM，host realm 全 Node 权限）。
 
@@ -47,8 +47,16 @@ key 仅存本机 `settings.yaml` 的 `web-search:` 节；`/web-search/health` �
 | `youtube` | YouTube | 页面内嵌 JSON | `ytInitialData` 花括号配对提取（标题/频道/时长/播放量） |
 | `bilibili` | 哔哩哔哩 | REST API | 视频搜索（UP主/简介） |
 | `images` | Bing Images | 抓取 | 图片搜索（`iusc` 卡片 `m` 属性解码，返回**图片直链** + 来源页） |
+| `maps` | OpenStreetMap | Nominatim API | 地点/地理编码搜索（坐标 + OSM 链接；语言感知） |
+| `itunes` | iTunes Store | Search API | 音乐/电影/播客/应用（种类中文化标注） |
+| `books` | Open Library | Search API | 图书（书名/作者/初版年份） |
+| `pubmed` | PubMed | eutils API | 生物医学文献（两步：esearch→esummary，期刊/日期/作者） |
 | `wechat` | 微信公众号 | 搜狗微信抓取 | 公众号文章（链接为 sogou 重定向，有时效） |
 | `marginalia` | Marginalia | 公共 API | 独立小众索引，发掘非主流页面（内部保底 30s 超时） |
+
+**复合聚合语法**：`engine="aggregate:<id1>,<id2>,..."` 聚合任意引擎子集（≤6 个），如 `aggregate:arxiv,openalex,crossref` 学术三件套并行搜索、`aggregate:bing,brave,ddg-html` 通用三路融合。
+
+**时效过滤**：`freshness` 参数（`day`/`week`/`month`/`year`）由支持时效的引擎原生翻译——ddg-html（`df=`）、brave（`tf=`）、百度（`gpc=stf=`）、news（Google News `when:`）、aggregate（透传给子引擎）；其余引擎忽略。
 
 ## auto 引擎链（语言感知）
 
@@ -64,13 +72,13 @@ key 仅存本机 `settings.yaml` 的 `web-search:` 节；`/web-search/health` �
 - **`web_search_multi`**：多引擎搜索。参数 `query`（必填）、`engine`（默认 auto）、`maxResults`（1-50）。返回 `{sources: [{url,title,snippet}], engine, attempts, error?}`，渲染为 markdown 链接列表。
 - **`web_fetch_url`**：抓取任意公开 URL。经官方 `@deepseek-ai/dsh-web-fetch-http` provider（SSRF 防护/同源重定向/字节上限），HTML 自动转 markdown（turndown + gfm，从 harness 安装解析）。参数 `url`（必填）、`maxChars`（默认 20000）。
 
-另将 26 个引擎注册为 `ctx.web` search provider（host 的 `web` 行仍钉 `searchProvider: deepseek-official`，产品自带 `web_search` 不受影响；想切换时在家级 patch 覆写 `web` 行 config 即可）。
+另将 30 个引擎注册为 `ctx.web` search provider（host 的 `web` 行仍钉 `searchProvider: deepseek-official`，产品自带 `web_search` 不受影响；想切换时在家级 patch 覆写 `web` 行 config 即可）。
 
 ## 设置页
 
 **设置 → 插件 → 网页搜索**（client 半边，`settings.plugin.item` 键控槽位）：
 
-- 总开关 / 7 个免费引擎 + 15 个垂直渠道与聚合独立开关 / API key（4 个，密码框）/ `apiInAuto` 开关
+- 总开关 / 7 个免费引擎 + 19 个垂直渠道与聚合独立开关 / API key（4 个，密码框）/ `apiInAuto` 开关
 - 默认引擎 / 返回条数 / 单引擎超时 / User-Agent
 - **测试引擎**按钮（调 `/web-search/test` 实测连通性）
 - 字段级「已覆盖默认值」标记；保存 = `scope.mutate`（原子，带 revision 乐观锁）→ 写 `settings.yaml` 热生效

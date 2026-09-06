@@ -143,7 +143,7 @@ async function httpGet(url, { timeoutMs, userAgent, signal, headers }) {
 /**
  * GET 请求带自定义头 + JSON 解析（API 型引擎用），返回 {ok, statusCode, data?, error?}。
  */
-async function httpGetJson(url, headers, { timeoutMs, signal }) {
+async function httpGetJson(url, headers, { timeoutMs, signal, userAgent }) {
   const ctrl = new AbortController()
   const t = timeoutMs > 0 ? setTimeout(() => ctrl.abort(), timeoutMs) : undefined
   const onOuter = () => ctrl.abort()
@@ -152,7 +152,9 @@ async function httpGetJson(url, headers, { timeoutMs, signal }) {
     else signal.addEventListener('abort', onOuter, { once: true })
   }
   try {
-    const res = await fetch(url, { headers, signal: ctrl.signal, redirect: 'follow' })
+    // 默认 UA + Accept: application/json（部分 API 拒绝无 UA 请求，如 Nominatim）；
+    // 调用方可通过 headers 覆盖（如 Crossref polite pool 的 mailto UA）。
+    const res = await fetch(url, { headers: { 'User-Agent': userAgent || DEFAULT_UA, Accept: 'application/json', ...(headers || {}) }, signal: ctrl.signal, redirect: 'follow' })
     const text = await res.text()
     let data
     try { data = JSON.parse(text) } catch { data = undefined }
@@ -171,7 +173,7 @@ async function httpGetJson(url, headers, { timeoutMs, signal }) {
 /**
  * POST JSON（API 型引擎用），返回 {ok, statusCode, data?, error?}。
  */
-async function httpPostJson(url, body, headers, { timeoutMs, signal }) {
+async function httpPostJson(url, body, headers, { timeoutMs, signal, userAgent }) {
   const ctrl = new AbortController()
   const t = timeoutMs > 0 ? setTimeout(() => ctrl.abort(), timeoutMs) : undefined
   const onOuter = () => ctrl.abort()
@@ -182,7 +184,7 @@ async function httpPostJson(url, body, headers, { timeoutMs, signal }) {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...headers },
+      headers: { 'User-Agent': userAgent || DEFAULT_UA, 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(body),
       signal: ctrl.signal,
       redirect: 'follow',
@@ -456,6 +458,34 @@ function normalizeUrl(raw) {
   }
 }
 
+// ── 时效过滤（freshness）→ 各引擎原生参数映射 ─────────────────────────────────
+// 支持的引擎在 URL 上追加原生参数；不支持的原样忽略。值：day/week/month/year。
+const FRESHNESS_MS = { day: 86400000, week: 7 * 86400000, month: 30 * 86400000, year: 365 * 86400000 }
+
+/** DDG HTML：df=d/w/m/y。 */
+function freshnessDdg(f) {
+  return f === 'day' ? 'd' : f === 'week' ? 'w' : f === 'month' ? 'm' : f === 'year' ? 'y' : undefined
+}
+
+/** Brave：tf=pd/pw/pm/py。 */
+function freshnessBrave(f) {
+  return ({ day: 'pd', week: 'pw', month: 'pm', year: 'py' })[f]
+}
+
+/** 百度：gpc=stf=<start>,<end>（unix 秒）。 */
+function freshnessBaiduParam(f) {
+  const ms = FRESHNESS_MS[f]
+  if (!ms) return undefined
+  const end = Math.floor(Date.now() / 1000)
+  const start = end - Math.floor(ms / 1000)
+  return `stf=${start},${end}`
+}
+
+/** Google News RSS：query 追加 when:1d/7d/30d/365d。 */
+function freshnessGnewsSuffix(f) {
+  return ({ day: '1d', week: '7d', month: '30d', year: '365d' })[f]
+}
+
 function makeEngines(readSettings) {
   const engines = {
     'ddg-api': {
@@ -475,7 +505,8 @@ function makeEngines(readSettings) {
     'ddg-html': {
       label: 'DuckDuckGo HTML',
       async run(query, max, opts) {
-        const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
+        const df = freshnessDdg(opts.freshness)
+        const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}${df ? `&df=${df}` : ''}`
         const res = await httpGet(url, opts)
         if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
         const sources = parseDdgHtml(res.content).slice(0, max)
@@ -517,7 +548,8 @@ function makeEngines(readSettings) {
     baidu: {
       label: '百度',
       async run(query, max, opts) {
-        const url = `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${clampInt(max, 10, 10, 20)}`
+        const gpc = freshnessBaiduParam(opts.freshness)
+        const url = `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${clampInt(max, 10, 10, 20)}${gpc ? `&gpc=${encodeURIComponent(gpc)}` : ''}`
         const res = await httpGet(url, opts)
         if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
         const sources = parseBaiduHtml(res.content).slice(0, max)
@@ -539,7 +571,8 @@ function makeEngines(readSettings) {
     brave: {
       label: 'Brave',
       async run(query, max, opts) {
-        const url = `https://search.brave.com/search?q=${encodeURIComponent(query)}`
+        const tf = freshnessBrave(opts.freshness)
+        const url = `https://search.brave.com/search?q=${encodeURIComponent(query)}${tf ? `&tf=${tf}` : ''}`
         const res = await httpGet(url, opts)
         if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
         const sources = parseBraveHtml(res.content).slice(0, max)
@@ -684,8 +717,10 @@ function makeEngines(readSettings) {
             if (sources.length > 0) return { sources }
           }
         } catch { /* 落到 Google News */ }
-        // 兜底：Google News RSS（链接是 google 重定向，点击可用）
-        const url2 = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans`
+        // 兜底：Google News RSS（链接是 google 重定向，点击可用；支持 when: 时效）
+        const w = freshnessGnewsSuffix(opts.freshness)
+        const q2 = w ? `${query} when:${w}` : query
+        const url2 = `https://news.google.com/rss/search?q=${encodeURIComponent(q2)}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans`
         const res2 = await httpGet(url2, opts)
         if (!res2.ok || res2.error) throw new Error(res2.error || `HTTP ${res2.statusCode}`)
         const sources = parseRssItems(res2.content).slice(0, max)
@@ -937,19 +972,147 @@ function makeEngines(readSettings) {
         return { sources }
       },
     },
+    // ── 生活/知识垂直（第三轮扩展）────────────────────────────────────────────
+    pubmed: {
+      label: 'PubMed（生物医学文献）',
+      vertical: true,
+      async run(query, max, opts) {
+        // 两步：esearch 拿 PMID 列表 → esummary 拿标题/期刊/日期（限 3 次/秒，两步串行没问题）
+        const n = Math.min(max, 20)
+        const r1 = await httpGetJson(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query)}&retmode=json&retmax=${n}`, {}, opts)
+        if (!r1.ok || r1.error) throw new Error(r1.error || `HTTP ${r1.statusCode}`)
+        const ids = (r1.data && r1.data.esearchresult && r1.data.esearchresult.idlist) || []
+        if (ids.length === 0) throw new Error('PubMed 无结果')
+        const r2 = await httpGetJson(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${ids.join(',')}&retmode=json`, {}, opts)
+        if (!r2.ok || r2.error) throw new Error(r2.error || `HTTP ${r2.statusCode}`)
+        const result = (r2.data && r2.data.result) || {}
+        const sources = ids
+          .map((id) => result[id])
+          .filter(Boolean)
+          .map((a, i) => ({
+            url: `https://pubmed.ncbi.nlm.nih.gov/${ids[i]}/`,
+            title: a.title || `PMID ${ids[i]}`,
+            snippet:
+              [
+                a.source,
+                a.pubdate,
+                Array.isArray(a.authors) ? a.authors.slice(0, 3).map((x) => x.name).join(', ') : '',
+              ]
+                .filter(Boolean)
+                .join(' · ') || undefined,
+          }))
+        if (sources.length === 0) throw new Error('PubMed 摘要获取失败')
+        return { sources }
+      },
+    },
+    books: {
+      label: 'Open Library（图书）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=${Math.min(max, 20)}&fields=title,author_name,first_publish_year,key`
+        const res = await httpGetJson(url, {}, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const docs = (res.data && res.data.docs) || []
+        if (docs.length === 0) throw new Error('Open Library 无结果')
+        return {
+          sources: docs.slice(0, max).map((d) => ({
+            url: `https://openlibrary.org${d.key}`,
+            title: d.title || 'Untitled',
+            snippet:
+              [
+                Array.isArray(d.author_name) ? d.author_name.slice(0, 3).join(', ') : '',
+                d.first_publish_year ? `初版 ${d.first_publish_year}` : '',
+              ]
+                .filter(Boolean)
+                .join(' · ') || undefined,
+          })),
+        }
+      },
+    },
+    itunes: {
+      label: 'iTunes（音乐/电影/播客/应用）',
+      vertical: true,
+      async run(query, max, opts) {
+        const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&limit=${Math.min(max, 25)}`
+        const res = await httpGetJson(url, {}, opts)
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const results = (res.data && res.data.results) || []
+        if (results.length === 0) throw new Error('iTunes 无结果')
+        const KIND_ZH = {
+          song: '歌曲',
+          'feature-movie': '电影',
+          podcast: '播客',
+          'podcast-episode': '播客单集',
+          software: '应用',
+          ebook: '电子书',
+          audiobook: '有声书',
+          'music-video': 'MV',
+          'tv-episode': '剧集',
+        }
+        return {
+          sources: results.slice(0, max).map((r) => ({
+            url: r.trackViewUrl,
+            title: r.trackName || r.collectionName || '?',
+            snippet:
+              [
+                KIND_ZH[r.kind] || r.kind || '',
+                r.artistName || '',
+                r.releaseDate ? String(r.releaseDate).slice(0, 10) : '',
+              ]
+                .filter(Boolean)
+                .join(' · ') || undefined,
+          })),
+        }
+      },
+    },
+    maps: {
+      label: 'OpenStreetMap 地点搜索',
+      vertical: true,
+      async run(query, max, opts) {
+        const lang = /[\u4e00-\u9fff]/.test(query) ? 'zh' : 'en'
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=${Math.min(max, 10)}&accept-language=${lang}`
+        let res = await httpGetJson(url, {}, opts)
+        // Nominatim 限 1 请求/秒：403/429 时退避 1.5s 重试一次
+        if ((!res.ok || res.error) && (res.statusCode === 403 || res.statusCode === 429)) {
+          await new Promise((r) => setTimeout(r, 1500))
+          res = await httpGetJson(url, {}, opts)
+        }
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const items = Array.isArray(res.data) ? res.data : []
+        if (items.length === 0) throw new Error('地点搜索无结果')
+        return {
+          sources: items.slice(0, max).map((p) => ({
+            url: `https://www.openstreetmap.org/${p.osm_type}/${p.osm_id}`,
+            title: String(p.display_name || '').split(',').slice(0, 2).join(','),
+            snippet: `坐标 ${p.lat},${p.lon} · ${p.class}/${p.type}`,
+          })),
+        }
+      },
+    },
   }
 
   // ── 聚合引擎（并行多引擎 + RRF 融合去重；闭包引用上方引擎表）───────────────
+  // 支持复合语法：engine="aggregate:a,b,c" 时聚合指定引擎子集（runSearch 解析
+  // 后经 opts.aggregateList 传入）；默认聚合启用的免费通用引擎。
   engines.aggregate = {
     label: '聚合搜索（并行多引擎 + RRF 融合去重）',
     vertical: true,
     async run(query, max, opts) {
       const s = resolvedSettings()
-      const candidates = ['bing', 'ddg-html', 'brave', 'baidu', 'so360'].filter((id) => engines[id] && engineEnabled(id, s))
-      if (candidates.length < 2) throw new Error('聚合搜索需至少启用 2 个免费通用引擎')
-      // 每个子引擎多取一些结果给融合排序留量
+      const requested = Array.isArray(opts.aggregateList) ? opts.aggregateList.filter((id) => engines[id] && id !== 'aggregate') : []
+      const candidates = (requested.length > 0
+        ? requested
+        : ['bing', 'ddg-html', 'brave', 'baidu', 'so360']
+      ).filter((id) => engines[id] && engineEnabled(id, s))
+      if (candidates.length < 1) throw new Error('聚合搜索无可用引擎（子引擎被禁用或无效）')
+      // 每个子引擎多取一些结果给融合排序留量；API-key 子引擎补 apiKey
       const per = Math.min(Math.max(max * 2, 10), 20)
-      const results = await Promise.allSettled(candidates.map((id) => engines[id].run(query, per, opts)))
+      const results = await Promise.allSettled(
+        candidates.map((id) => {
+          const subOpts = engines[id].needsKey ? { ...opts, apiKey: apiKeyFor(id, s) } : opts
+          return engines[id].run(query, per, subOpts)
+        })
+      )
       const K = 60 // Reciprocal Rank Fusion 常数
       const seen = new Map()
       const errors = []
@@ -1038,6 +1201,10 @@ function resolvedSettings() {
     enableYoutube: s.enableYoutube !== false,
     enableImages: s.enableImages !== false,
     enableAggregate: s.enableAggregate !== false,
+    enablePubmed: s.enablePubmed !== false,
+    enableBooks: s.enableBooks !== false,
+    enableItunes: s.enableItunes !== false,
+    enableMaps: s.enableMaps !== false,
     apiInAuto: s.apiInAuto !== false,
     tavilyApiKey: typeof s.tavilyApiKey === 'string' ? s.tavilyApiKey.trim() : '',
     serperApiKey: typeof s.serperApiKey === 'string' ? s.serperApiKey.trim() : '',
@@ -1090,6 +1257,10 @@ function engineEnabled(id, s) {
   if (id === 'youtube') return s.enableYoutube
   if (id === 'images') return s.enableImages
   if (id === 'aggregate') return s.enableAggregate
+  if (id === 'pubmed') return s.enablePubmed
+  if (id === 'books') return s.enableBooks
+  if (id === 'itunes') return s.enableItunes
+  if (id === 'maps') return s.enableMaps
   // API 型引擎：有 key 即启用
   if (['serper', 'tavily', 'brave-api', 'exa'].includes(id)) return Boolean(apiKeyFor(id, s))
   return false
@@ -1099,16 +1270,18 @@ function engineEnabled(id, s) {
 
 /**
  * 执行一次搜索。engine 为 'auto' 时按语言感知链在已启用引擎间回退。
+ * engine 支持复合聚合语法 "aggregate:<id1>,<id2>,..."（聚合指定引擎子集）。
+ * freshness（day/week/month/year）由支持时效过滤的引擎原生翻译（其余忽略）。
  * @returns {Promise<{content?: string, sources: Array, truncated: boolean, engine: string, attempts: Array}>}
  */
-async function runSearch(query, engineArg, maxResultsArg, signal) {
+async function runSearch(query, engineArg, maxResultsArg, signal, freshness) {
   const s = resolvedSettings()
   if (!s.enabled) {
     return { sources: [], truncated: false, engine: 'none', attempts: [], error: '网页搜索已在设置中禁用（设置→插件→网页搜索）' }
   }
   const engines = makeEngines(s)
   const max = clampInt(maxResultsArg ?? s.maxResults, s.maxResults, 1, 50)
-  const opts = { timeoutMs: s.timeoutMs, userAgent: s.userAgent, signal }
+  const opts = { timeoutMs: s.timeoutMs, userAgent: s.userAgent, signal, freshness: FRESHNESS_MS[freshness] ? freshness : undefined }
 
   const attempts = []
   const tryEngine = async (id) => {
@@ -1136,6 +1309,30 @@ async function runSearch(query, engineArg, maxResultsArg, signal) {
   }
 
   const ALL_ENGINES = [...Object.keys(engines)]
+
+  // 复合聚合语法："aggregate:arxiv,openalex,crossref" → 引擎 aggregate + 子集列表
+  let aggregateList
+  if (typeof engineArg === 'string' && engineArg.startsWith('aggregate:')) {
+    const subs = engineArg
+      .slice('aggregate:'.length)
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .slice(0, 6)
+    const bad = subs.filter((x) => !engines[x] || x === 'aggregate' || x === 'auto')
+    if (subs.length === 0 || bad.length > 0) {
+      return {
+        sources: [],
+        truncated: false,
+        engine: engineArg,
+        attempts: [],
+        error: `聚合子引擎无效：${bad.join(', ') || '(空)'}。语法 aggregate:<id1>,<id2>（可用引擎：${ALL_ENGINES.join(', ')}）`,
+      }
+    }
+    aggregateList = subs
+    engineArg = 'aggregate'
+    opts.aggregateList = aggregateList
+  }
 
   if (engineArg && engineArg !== 'auto') {
     if (!engines[engineArg]) {
@@ -1276,7 +1473,11 @@ export function apply(ctx, config) {
           enableCsdn: Schema.boolean().default(true).description('启用 CSDN 中文技术博客搜索（垂直渠道，engine=csdn）'),
           enableYoutube: Schema.boolean().default(true).description('启用 YouTube 视频搜索（垂直渠道，engine=youtube；部分地区需代理）'),
           enableImages: Schema.boolean().default(true).description('启用 Bing 图片搜索（垂直渠道，engine=images，返回图片直链）'),
-          enableAggregate: Schema.boolean().default(true).description('启用聚合搜索（engine=aggregate：并行多引擎 + RRF 融合去重，查全率最高但请求多）'),
+          enableAggregate: Schema.boolean().default(true).description('启用聚合搜索（engine=aggregate：并行多引擎 + RRF 融合去重，查全率最高但请求多；支持复合语法 aggregate:引擎1,引擎2 聚合任意子集）'),
+          enablePubmed: Schema.boolean().default(true).description('启用 PubMed 生物医学文献搜索（垂直渠道，engine=pubmed）'),
+          enableBooks: Schema.boolean().default(true).description('启用 Open Library 图书搜索（垂直渠道，engine=books）'),
+          enableItunes: Schema.boolean().default(true).description('启用 iTunes 媒体搜索（垂直渠道，engine=itunes；音乐/电影/播客/应用）'),
+          enableMaps: Schema.boolean().default(true).description('启用 OpenStreetMap 地点搜索（垂直渠道，engine=maps；返回坐标与 OSM 链接）'),
           apiInAuto: Schema.boolean().default(true).description('auto 链优先使用已配置 key 的 API 引擎（会消耗 API 配额，关闭则 auto 只用免费引擎）'),
           tavilyApiKey: Schema.string().default('').description('Tavily API key（api.tavily.com，配置后 tavily 引擎可用；获取：https://app.tavily.com）'),
           serperApiKey: Schema.string().default('').description('Serper.dev API key（google.serper.dev，Google 结果，配置后 serper 引擎可用；获取：https://serper.dev/signup）'),
@@ -1336,15 +1537,16 @@ export function apply(ctx, config) {
         ctx.tools.register({
           name: 'web_search_multi',
           description:
-            '多渠道网页搜索（26 引擎）。engine 可选：auto（默认，语言感知回退链：中文 Bing→百度→360→DDG，英文 DDG HTML→Bing→Brave；配置了 API key 的引擎优先）/ aggregate（并行多引擎 + RRF 融合去重，查全率最高）/ 免费抓取 ddg-html、bing、baidu、so360、brave / 免费开放 API ddg-api（事实快答）、wikipedia（语言感知：中文→zh.wiki）/ API-key 型 serper（Google 结果）、tavily、brave-api、exa / 垂直渠道 arxiv、openalex、crossref（学术论文/元数据）、github、npm（代码/包）、stackexchange、csdn（编程问答/中文技术博客）、hn（科技社区）、news（新闻）、youtube、bilibili（视频）、images（Bing 图片，返回图片直链）、wechat（微信公众号）、marginalia（独立小众索引）——垂直渠道与 aggregate 需显式指定，不参与 auto。返回 sources（url/title/snippet）。当内置 web_search 结果不足、需要特定渠道或事实快答时优先使用本工具。配置见 设置→插件→网页搜索。',
+            '多渠道网页搜索（30 引擎）。engine 可选：auto（默认，语言感知回退链）/ aggregate（并行多引擎 + RRF 融合去重；支持复合语法 "aggregate:引擎1,引擎2" 聚合任意子集，如 aggregate:arxiv,openalex,crossref 聚合学术三件套）/ 免费抓取 ddg-html、bing、baidu、so360、brave / 免费开放 API ddg-api、wikipedia（语言感知）/ API-key 型 serper、tavily、brave-api、exa / 垂直渠道 arxiv、openalex、crossref（学术）、pubmed（医学文献）、github、npm（代码/包）、stackexchange、csdn（问答/中文博客）、hn（科技社区）、news（新闻）、youtube、bilibili（视频）、images（图片）、itunes（音乐/电影/播客/应用）、books（图书）、maps（地点/坐标）、wechat（微信公众号）、marginalia（独立索引）——垂直渠道与 aggregate 需显式指定。freshness 可选 day/week/month/year 时效过滤（ddg-html/brave/baidu/news/aggregate 原生支持，其余忽略）。返回 sources（url/title/snippet）。当内置 web_search 结果不足、需要特定渠道或事实快答时优先使用本工具。配置见 设置→插件→网页搜索。',
           parameters: {
             type: 'object',
             additionalProperties: false,
             required: ['query'],
             properties: {
               query: { type: 'string', description: '搜索关键词。' },
-              engine: { type: 'string', enum: ['auto', 'aggregate', 'ddg-api', 'ddg-html', 'bing', 'baidu', 'so360', 'brave', 'wikipedia', 'arxiv', 'openalex', 'crossref', 'github', 'npm', 'stackexchange', 'csdn', 'hn', 'news', 'youtube', 'bilibili', 'images', 'wechat', 'marginalia', 'brave-api', 'tavily', 'serper', 'exa'], description: '搜索引擎/渠道，默认 auto（不含垂直渠道与 aggregate）。' },
+              engine: { type: 'string', description: '搜索引擎/渠道，默认 auto；支持复合聚合语法 aggregate:<id1>,<id2>' },
               maxResults: { type: 'integer', description: '返回条数上限（1-50，默认取设置值）。' },
+              freshness: { type: 'string', enum: ['day', 'week', 'month', 'year'], description: '时效过滤：仅返回该时间窗口内的结果（ddg-html/brave/baidu/news/aggregate 原生支持，其他引擎忽略）。' },
             },
           },
           output: { schema: OUTPUT_SCHEMA, render: (_args, value) => [{ type: 'text', text: renderSearchOutput(value) }] },
@@ -1353,7 +1555,7 @@ export function apply(ctx, config) {
           async execute(args, exec) {
             const query = String(args.query || '').trim()
             if (!query) return { sources: [], truncated: false, engine: 'none', error: 'query is required' }
-            return await runSearch(query, args.engine, args.maxResults, exec && exec.signal)
+            return await runSearch(query, args.engine, args.maxResults, exec && exec.signal, args.freshness)
           },
         }),
       'web-search: web_search_multi tool'
@@ -1415,8 +1617,9 @@ export function apply(ctx, config) {
           order: 106,
           text: [
             'Enhanced web tools are available:',
-            '- web_search_multi: multi-channel web search (26 engines). engine="auto" (default) uses a language-aware fallback chain (Chinese queries: Bing → Baidu → So360 → DDG; others: DDG HTML → Bing → Brave; API-key engines go first when configured). engine="aggregate" runs the enabled free general engines in PARALLEL and merges results with Reciprocal Rank Fusion dedup (best recall). Explicit free engines: "ddg-api" (fact quick answers), "ddg-html", "bing", "baidu", "so360", "brave", "wikipedia" (language-aware). API-key engines: "serper" (Google results), "tavily", "brave-api", "exa". VERTICAL channels (explicit engine only, not in auto): "arxiv" / "openalex" / "crossref" (academic papers & metadata), "github" / "npm" (code & packages), "stackexchange" / "csdn" (programming Q&A / Chinese tech blogs), "hn" (Hacker News), "news" (Bing News RSS with Google News fallback), "youtube" / "bilibili" (video), "images" (Bing image search, returns direct image URLs), "wechat" (WeChat official-account articles), "marginalia" (independent niche index).',
-            'Pick engines by task: broad recall → aggregate; papers → arxiv/openalex/crossref; repos/packages → github/npm; programming errors → stackexchange (or csdn for Chinese); tech discussion → hn; current events → news; images → images; Chinese articles/videos → wechat/bilibili.',
+            '- web_search_multi: multi-channel web search (30 engines). engine="auto" (default) uses a language-aware fallback chain (Chinese queries: Bing → Baidu → So360 → DDG; others: DDG HTML → Bing → Brave; API-key engines go first when configured). engine="aggregate" runs engines in PARALLEL and merges with Reciprocal Rank Fusion dedup (best recall); composite syntax "aggregate:<id1>,<id2>" aggregates ANY engine subset, e.g. aggregate:arxiv,openalex,crossref for academic. Explicit free engines: "ddg-api", "ddg-html", "bing", "baidu", "so360", "brave", "wikipedia" (language-aware). API-key engines: "serper", "tavily", "brave-api", "exa". VERTICAL channels (explicit engine only): "arxiv"/"openalex"/"crossref" (academic), "pubmed" (biomedical literature), "github"/"npm" (code/packages), "stackexchange"/"csdn" (Q&A/Chinese blogs), "hn" (Hacker News), "news" (news RSS), "youtube"/"bilibili" (video), "images" (Bing image search, direct image URLs), "itunes" (music/movies/podcasts/apps), "books" (Open Library), "maps" (OSM places, coordinates), "wechat" (WeChat articles), "marginalia" (niche index).',
+            'Optional freshness="day"/"week"/"month"/"year" filters recency (supported natively by ddg-html/brave/baidu/news/aggregate; others ignore it).',
+            'Pick engines by task: broad recall → aggregate; papers → arxiv/openalex/crossref (or aggregate:arxiv,openalex,crossref); biomedical → pubmed; repos/packages → github/npm; programming errors → stackexchange (csdn for Chinese); tech discussion → hn; current events → news (+freshness); images → images; music/movies → itunes; books → books; places → maps; Chinese articles/videos → wechat/bilibili.',
             '- web_fetch_url: fetch any public URL and return text (HTML converted to markdown).',
             'Use web_search_multi when the built-in web_search returns insufficient results, when a specific engine/channel is needed, or for quick fact lookups; use web_fetch_url to read a source page after searching. Results carry url/title/snippet — cite URLs as markdown links.',
           ].join('\n'),
