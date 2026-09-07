@@ -873,6 +873,40 @@ if (!gotLock) {
       mgr.repairProfileJunctions(mgr.dshHome());
       const iso = mgr.describeEnvIsolation();
       pushLog(`env isolation: stripped ${iso.strippedVars.length} var(s), dropped ${iso.droppedPathEntries.length} foreign PATH entr(ies), DSH_HOME=${iso.dshHome}\n`);
+      // 4.5) Pre-flight: ONE-PASS scan for loader id conflicts that would crash
+      // the cold start. The Cordis loader reports only the FIRST duplicate it
+      // meets, so crash-retry healing surfaces one conflict per boot; this
+      // scan catches them all up front and fixes them surgically (only the
+      // conflicting entry is disabled — sibling entries stay active).
+      try {
+        const preConflicts = mgr.findLoaderIdConflicts();
+        if (preConflicts.length) {
+          diag('启动预检发现冲突条目:', preConflicts);
+          pushLog(`启动预检：发现 ${preConflicts.length} 个冲突的插件配置条目，正在自动禁用…\n`);
+          const fix = mgr.applyLoaderConflictFixes(preConflicts);
+          if (fix.fixed.length) {
+            updateSplash('已自动禁用冲突的插件配置条目…');
+            const total = fix.fixed.reduce((n, f) => n + f.ids.length, 0);
+            pushLog(`启动预检：已禁用 ${total} 个冲突条目（各文件已备份）。\n`);
+            if (!autoStartHidden) {
+              const r = await dialog.showMessageBox(null, {
+                type: 'warning', buttons: ['继续启动', '退出'], defaultId: 0, cancelId: 1,
+                title: APP_NAME,
+                message: '已禁用冲突的插件配置条目',
+                detail: '以下插件配置与 DSH 内置组件或官方安装重复，重复声明会导致启动失败，已自动禁用：\n\n' +
+                  preConflicts.map((c) => `${c.id}：${c.reason}`).join('\n') +
+                  '\n\n其余插件不受影响。原配置已备份（后缀 .bak），可恢复后手动调整。\n详情见桌面日志：DSH-Desktop-日志.txt'
+              });
+              if (r.response === 1) { isQuitting = true; app.exit(0); return; }
+            }
+          }
+        } else {
+          diag('启动预检：无冲突条目');
+        }
+      } catch (e) {
+        pushLog('启动预检失败（跳过，不影响启动）: ' + (e && e.message) + '\n');
+        diag('启动预检异常:', e);
+      }
       // 5) Start backend (self-heals and retries on profile/symlink errors).
       diag('步骤5 启动后端');
       const url = await startBackendWithPluginIsolation(shouldIsolatePlugins);

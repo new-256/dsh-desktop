@@ -1077,8 +1077,10 @@ function failingSpecifiersFromLogs(logText) {
 }
 
 /**
- * Parse the home-level cordis.patch.yml into top-level `- insert:` blocks,
- * each with sub-entries [{ id, name }]. Returns [] if nothing can be parsed.
+ * Parse a cordis.patch.yml into top-level `- insert:` blocks, each with
+ * sub-entries [{ id, name, lineStart, lineEnd }] where lineStart/lineEnd are
+ * 0-based line indexes covering exactly that entry (its id/name/config lines,
+ * NOT the whole block). Returns [] if nothing can be parsed.
  */
 function parseHomePatchBlocks(yamlText) {
   const lines = String(yamlText || '').split(/\r?\n/);
@@ -1093,7 +1095,9 @@ function parseHomePatchBlocks(yamlText) {
     if (!cur) continue;
     const idm = /^\s*-\s+id:\s*(\S+)/.exec(lines[i]);
     if (idm) {
-      cur.entries.push({ id: idm[1], name: null });
+      // Close the previous entry's range at this entry's first line.
+      if (cur.entries.length) cur.entries[cur.entries.length - 1].lineEnd = i;
+      cur.entries.push({ id: idm[1], name: null, lineStart: i, lineEnd: lines.length });
     } else if (cur.entries.length) {
       const last = cur.entries[cur.entries.length - 1];
       if (last.name === null) {
@@ -1105,6 +1109,16 @@ function parseHomePatchBlocks(yamlText) {
   if (cur) blocks.push(cur);
   for (let i = 0; i < blocks.length; i++) {
     blocks[i].end = i + 1 < blocks.length ? blocks[i + 1].start : lines.length;
+  }
+  // Trim each entry's range to its last meaningful line (drop trailing blank
+  // lines and foreign comment banners so disabling never touches more than
+  // the entry itself).
+  const meaningful = (l) => l && l.trim() !== '' && !l.trimStart().startsWith('#');
+  for (const block of blocks) {
+    for (const entry of block.entries) {
+      entry.lineEnd = Math.min(entry.lineEnd, block.end);
+      while (entry.lineEnd > entry.lineStart + 1 && !meaningful(lines[entry.lineEnd - 1])) entry.lineEnd--;
+    }
   }
   return blocks;
 }
@@ -1223,14 +1237,13 @@ function analyzeConfigEntryConflicts(home, logText) {
 }
 
 /**
- * Comment out the top-level patch blocks containing the given plugin ids in the
- * HOME-level cordis.patch.yml, after backing the file up. Returns
+ * Comment out ONLY the given plugin entry id(s) inside a cordis.patch.yml —
+ * entry-level granularity: sibling entries in the same `- insert:` block are
+ * left untouched. Backs the file up first. Returns
  * { disabled: [ids], backup: <path|null> }.
  */
-function disableBrokenPatchPlugins(home, brokenEntries) {
-  const patchPath = path.join(home, 'cordis.patch.yml');
-  const ids = (brokenEntries || []).map((e) => e && e.id).filter(Boolean);
-  if (!ids.length || !fs.existsSync(patchPath)) return { disabled: [], backup: null };
+function disablePatchEntriesInFile(patchPath, ids) {
+  if (!ids || !ids.length || !fs.existsSync(patchPath)) return { disabled: [], backup: null };
 
   let yamlText;
   try { yamlText = fs.readFileSync(patchPath, 'utf8'); } catch (e) { log('read patch failed:', e.message); return { disabled: [], backup: null }; }
@@ -1241,28 +1254,165 @@ function disableBrokenPatchPlugins(home, brokenEntries) {
   const hit = new Set();
 
   for (const block of blocks) {
-    const blockIds = block.entries.map((en) => en.id).filter((id) => want.has(id));
-    if (!blockIds.length) continue;
-    blockIds.forEach((id) => hit.add(id));
-    for (let i = block.start; i < block.end; i++) {
-      const l = lines[i];
-      if (l.startsWith('#')) continue;
-      lines[i] = l.trim() === '' ? '#' : '# ' + l;
+    let disabledInBlock = 0;
+    for (const entry of block.entries) {
+      if (!want.has(entry.id)) continue;
+      hit.add(entry.id);
+      disabledInBlock++;
+      for (let i = entry.lineStart; i < entry.lineEnd; i++) {
+        const l = lines[i];
+        if (l.trimStart().startsWith('#')) continue;
+        lines[i] = l.trim() === '' ? '#' : '#' + l; // keep indentation for easy manual restore
+      }
+    }
+    // If EVERY active entry of the block got disabled, comment the block's
+    // `- insert:` line too — a bare `- insert:` with nothing under it would
+    // become a null insert for the loader.
+    if (block.entries.length > 0 && disabledInBlock === block.entries.length) {
+      const l = lines[block.start];
+      if (l && !l.trimStart().startsWith('#')) lines[block.start] = '#' + l;
     }
   }
 
   if (!hit.size) return { disabled: [], backup: null };
 
   const ts = formatDateTimestamp();
-  const backup = path.join(home, `cordis.patch.yml.disabled-${ts}.bak`);
+  const backup = patchPath + `.disabled-${ts}.bak`;
   try { fs.copyFileSync(patchPath, backup); } catch (e) { log('backup patch failed:', e.message); return { disabled: [], backup: null }; }
 
   let out = lines.join(eol);
   if (!lines.some((l) => /^\s*- insert:/.test(l))) out += eol + '[]' + eol; // keep a valid (empty) patch array
   try { fs.writeFileSync(patchPath, out); } catch (e) { log('write patch failed:', e.message); return { disabled: [], backup: null }; }
 
-  log(`disabled home-patch plugins: ${[...hit].join(', ')} (backup: ${backup})`);
+  log(`disabled patch entries in ${path.basename(path.dirname(patchPath))}: ${[...hit].join(', ')} (backup: ${backup})`);
   return { disabled: [...hit], backup };
+}
+
+/**
+ * Comment out the given plugin entries in the HOME-level cordis.patch.yml
+ * (entry-level granularity), after backing the file up.
+ */
+function disableBrokenPatchPlugins(home, brokenEntries) {
+  const patchPath = path.join(home, 'cordis.patch.yml');
+  const ids = (brokenEntries || []).map((e) => e && e.id).filter(Boolean);
+  return disablePatchEntriesInFile(patchPath, ids);
+}
+
+// --------------------------------------------------------------------------
+// boot-time pre-flight: ONE-PASS loader id conflict scan
+// The Cordis loader fails fast on the FIRST duplicate id it meets, so healing
+// via crash-retry surfaces one conflict per boot (2026-09-08 incident:
+// web-fetch-http on first boot, comfyui-bridge only on retry). This scan
+// catches every future cold-start conflict up front, before the first spawn.
+// --------------------------------------------------------------------------
+
+/** Entry ids declared by the ACTIVE dsh-base bundle patch (the builtin set). */
+function builtinPatchIds() {
+  const ids = new Set();
+  try {
+    // P().dshPkg = <backend>/dsh/node_modules/@deepseek-ai/dsh/package.json
+    // dsh-base is a SIBLING package of dsh under the same @deepseek-ai scope.
+    const basePatch = path.join(path.dirname(path.dirname(P().dshPkg)), 'dsh-base', 'cordis.patch.yml');
+    if (fs.existsSync(basePatch)) {
+      const text = fs.readFileSync(basePatch, 'utf8');
+      for (const m of text.matchAll(/^\s*-\s+id:\s*(\S+)/gm)) ids.add(m[1]);
+    }
+  } catch (e) { log('read base patch failed:', e.message); }
+  return ids;
+}
+
+/** Bundles registered per profile: Map(profileName -> Set(packageName)). */
+function profileBundles(home) {
+  const out = new Map();
+  const profilesDir = path.join(home, 'profiles');
+  let dirs = [];
+  try { dirs = fs.readdirSync(profilesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return out; }
+  for (const name of dirs) {
+    if (name === 'node_modules') continue;
+    const pkg = readJson(path.join(profilesDir, name, 'package.json'), null);
+    const bundles = pkg && pkg.dsh && pkg.dsh.profile && Array.isArray(pkg.dsh.profile.bundles) ? pkg.dsh.profile.bundles : [];
+    if (bundles.length) out.set(name, new Set(bundles.map(String)));
+  }
+  return out;
+}
+
+/**
+ * Pre-flight scan for loader id conflicts that WILL crash the next cold start:
+ *   a) patch entry id already declared builtin by the active dsh-base patch
+ *      (e.g. web-fetch-http after dsh-base absorbed it)
+ *   b) the same id declared twice in one patch file
+ *   c) a patch entry whose package name is ALSO registered as a profile
+ *      bundle — double registration via manual patch + official
+ *      `dsh plugin add` (e.g. comfyui-bridge incident)
+ * Home-patch entries are checked against every profile's bundles (the home
+ * patch applies to all profiles); a profile patch only against its own.
+ * Returns [{ file, id, name, reason }].
+ */
+function findLoaderIdConflicts() {
+  const out = [];
+  const home = dshHome();
+  const baseIds = builtinPatchIds();
+  const bundles = profileBundles(home);
+  const allBundlePkgs = new Set();
+  for (const set of bundles.values()) for (const b of set) allBundlePkgs.add(b);
+  const homePatchPath = path.join(home, 'cordis.patch.yml');
+  const profilesDir = path.join(home, 'profiles');
+
+  const patchFiles = [homePatchPath];
+  try {
+    for (const d of fs.readdirSync(profilesDir, { withFileTypes: true })) {
+      if (!d.isDirectory() || d.name === 'node_modules') continue;
+      patchFiles.push(path.join(profilesDir, d.name, 'cordis.patch.yml'));
+    }
+  } catch {}
+
+  for (const patchPath of patchFiles) {
+    if (!fs.existsSync(patchPath)) continue;
+    let yamlText;
+    try { yamlText = fs.readFileSync(patchPath, 'utf8'); } catch { continue; }
+    const isHome = patchPath === homePatchPath;
+    const profileName = isHome ? null : path.basename(path.dirname(patchPath));
+    const ownBundles = isHome ? allBundlePkgs : (bundles.get(profileName) || new Set());
+    const seenInFile = new Map();
+    for (const block of parseHomePatchBlocks(yamlText)) {
+      for (const entry of block.entries) {
+        if (!entry.id) continue;
+        const prev = (seenInFile.get(entry.id) || 0) + 1;
+        seenInFile.set(entry.id, prev);
+        if (baseIds.has(entry.id)) {
+          out.push({ file: patchPath, id: entry.id, name: entry.name, reason: `条目 id「${entry.id}」已由 DSH 内置提供，重复声明会让启动直接失败` });
+        } else if (prev > 1) {
+          out.push({ file: patchPath, id: entry.id, name: entry.name, reason: `条目 id「${entry.id}」在同一文件里声明了两次` });
+        } else if (entry.name) {
+          const bare = entry.name.split('?')[0].replace(/^['"]|['"]$/g, '');
+          if (bare && ownBundles.has(bare)) {
+            out.push({ file: patchPath, id: entry.id, name: entry.name, reason: `插件「${bare}」已通过官方通道安装（profile bundle），补丁里再注册一次会冲突` });
+          }
+        }
+      }
+    }
+  }
+  if (out.length) log('pre-flight loader id conflicts:', out.map((c) => `${c.id}(${c.reason})`).join(' | '));
+  return out;
+}
+
+/**
+ * Apply entry-level disables for pre-flight conflicts, grouped per file.
+ * Returns { fixed: [{ file, ids, backup }] }.
+ */
+function applyLoaderConflictFixes(conflicts) {
+  const byFile = new Map();
+  for (const c of conflicts || []) {
+    if (!c || !c.file || !c.id) continue;
+    if (!byFile.has(c.file)) byFile.set(c.file, new Set());
+    byFile.get(c.file).add(c.id);
+  }
+  const fixed = [];
+  for (const [file, ids] of byFile) {
+    const res = disablePatchEntriesInFile(file, [...ids]);
+    if (res.disabled.length) fixed.push({ file, ids: res.disabled, backup: res.backup });
+  }
+  return { fixed };
 }
 
 function stagedVersions() {
@@ -1544,6 +1694,7 @@ module.exports = {
   ensureSeeded, migrateProjectionCache, applyStaged, ensureNodeMeetsRequirement,
   repairProfileJunctions, quarantineProfiles, repairNodeForBackendFailure, nodeRequirement,
   analyzeBackendFailure, disableBrokenPatchPlugins, analyzeConfigEntryConflicts,
+  findLoaderIdConflicts, applyLoaderConflictFixes, disablePatchEntriesInFile,
   // main.js spawns the backend with this dedicated/isolated environment.
   buildDedicatedEnv, describeEnvIsolation, enableCorepack,
   currentVersions, stagedVersions, checkForUpdates,
