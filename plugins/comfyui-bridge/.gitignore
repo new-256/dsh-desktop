@@ -1,0 +1,7 @@
+# 运行时缓存(模型库发现结果),不入库不发包
+.comfyui-bridge-cache.json
+
+# 依赖
+node_modules/
+
+.migrate-backup-*/

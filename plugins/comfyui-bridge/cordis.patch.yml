@@ -1,0 +1,21 @@
+# dsh-comfyui-bridge — bundle 补丁层
+#
+# 本文件由 DSH 插件系统在安装后自动作为 profile 的 bundle 层挂载:
+#   dsh plugin --profile web add dsh-comfyui-bridge        (npm registry)
+#   dsh plugin --profile web add <本包本地路径>              (本地安装)
+# 声明位置: package.json 的 dsh.bundle.patch。
+#
+# 行内容只放通用默认值(与 lib/index.mjs 内置默认一致)。
+# 机器特定配置(如 modelsDir)请写在用户层补丁
+#   Windows: %APPDATA%\DSH Desktop\dsh-home\cordis.patch.yml
+# 的同 id 行里 — 用户层后应用,按行 id 整体覆盖本行 config。
+# modelsDir 缺省时插件会自动发现(运行进程扫描 → 全盘扫描 →
+# extra_model_paths.yaml),通常无需配置。
+- insert:
+    - id: comfyui-bridge
+      name: dsh-comfyui-bridge
+      config:
+        baseUrl: http://127.0.0.1:8188
+        outputsDir: comfyui-outputs
+        defaultTimeoutSec: 1800
+        pollIntervalMs: 2000
