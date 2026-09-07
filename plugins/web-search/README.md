@@ -164,23 +164,24 @@ cd "$DSH_HOME/profiles/web" && npm install web-search-panel
 ```yaml
 - insert:
     - id: web-search
-      name: web-search-panel/host
+      name: web-search-panel
       config:
         maxResults: 10
         timeoutMs: 20000
-    - id: web-search-client
-      name: web-search-panel
 ```
+
+> 单行即可：包 `main` 即 host 半边，设置卡片由包的 `dsh.client` 声明自动装载。
+> **勿加**第二行裸包名 client 行——同包双源会触发新版 client-modules 的
+> `multiple active Loader sources` 致命冲突。
 
 ### 开发布局（本仓库）
 
 ```
 plugins/web-search/
-├── package.json        # name: web-search-panel；dsh.bundle.patch + dsh.client 声明
-├── cordis.patch.yml    # bundle 自带组合补丁（npm 安装时自动生效）
-├── lib/index.mjs       # host 半边（exports "./host"；开发期 file:// 行加载）
-├── lib/client.js       # client 半边（设置卡片，exports "./client"）
-└── lib/client-entry.mjs# 包 main 占位（防 host 半边双实例）
+├── package.json        # name: web-search-panel；main = host；dsh.bundle.patch + dsh.client 声明
+├── cordis.patch.yml    # bundle 自带组合补丁（npm 安装时自动生效，单行）
+├── lib/index.mjs       # host 半边（main / exports "." 与 "./host"；开发期 file:// 行加载）
+└── lib/client.js       # client 半边（设置卡片，exports "./client"）
 ```
 
 开发期家级 `cordis.patch.yml` 用 `file://` 行直连源码（junction `dsh-home/node_modules/web-search-panel` → 本目录）；新增行需重启 DSH，改 `lib/index.mjs` bump `?v=N` 热加载，改 `lib/client.js` 刷新浏览器即生效。发布流程：同步至 [new-256/dsh-web-search](https://github.com/new-256/dsh-web-search) 后 `npm publish`。

@@ -2,16 +2,14 @@
 # 后由 dsh 自动加入 dsh.profile.bundles 层栈（声明于 package.json 的 dsh.bundle.patch），
 # 本补丁随之组合进树——用户无需手改任何 YAML。
 #
-# 行说明：
-#   web-search        host 半（工具注册/搜索引擎/健康路由），经 exports "./host" 加载
-#   web-search-client client 半（设置卡片），裸包名加载 no-op main，Web 客户端按
-#                     dsh.client.platform=web 经 exports "./client" 装载组合脚本
+# 单行设计（2026-09-08 起）：唯一行 name = 裸包名，package.json 的 main 即 host 半
+# （lib/index.mjs：工具注册/搜索引擎/健康路由）；客户端 bundle 由包的 dsh.client
+# 声明 + exports "./client" 提供，client-modules 从这同一行解析——无需也不得另加
+# 裸包名 client 行：两行会被新版 client-modules 判「multiple active Loader
+# sources」致命冲突。
 - insert:
     - id: web-search
-      name: web-search-panel/host
+      name: web-search-panel
       config:
         maxResults: 10
         timeoutMs: 20000
-
-    - id: web-search-client
-      name: web-search-panel
