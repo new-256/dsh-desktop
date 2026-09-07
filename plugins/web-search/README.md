@@ -179,12 +179,12 @@ cd "$DSH_HOME/profiles/web" && npm install web-search-panel
 ```
 plugins/web-search/
 ├── package.json        # name: web-search-panel；main = host；dsh.bundle.patch + dsh.client 声明
-├── cordis.patch.yml    # bundle 自带组合补丁（npm 安装时自动生效，单行）
-├── lib/index.mjs       # host 半边（main / exports "." 与 "./host"；开发期 file:// 行加载）
+├── cordis.patch.yml    # bundle 自带组合补丁（安装时自动生效，单行）
+├── lib/index.mjs       # host 半边（main / exports "." 与 "./host"）
 └── lib/client.js       # client 半边（设置卡片，exports "./client"）
 ```
 
-开发期家级 `cordis.patch.yml` 用 `file://` 行直连源码（junction `dsh-home/node_modules/web-search-panel` → 本目录）；新增行需重启 DSH，改 `lib/index.mjs` bump `?v=N` 热加载，改 `lib/client.js` 刷新浏览器即生效。发布流程：同步至 [new-256/dsh-web-search](https://github.com/new-256/dsh-web-search) 后 `npm publish`。
+开发安装与用户安装同一条命令：`dsh plugin --profile web add <本目录绝对路径>`——pnpm 以 `link:` 依赖直连源码，改 `lib/index.mjs` 重启 DSH 生效，改 `lib/client.js` 刷新浏览器即生效；包内 `cordis.patch.yml` / `package.json` 变更同样重启生效。发布流程：同步至 [new-256/dsh-web-search](https://github.com/new-256/dsh-web-search) 后 `npm publish`。
 
 ## 诊断
 
@@ -194,8 +194,8 @@ plugins/web-search/
 
 ## 设计说明
 
-- **host realm 全 Node 权限**：本插件经家级 patch 的 `file://` 行加载（非动态沙箱插件），与官方 `dsh-web-search-deepseek` 同权——抓取引擎用全局 `fetch`；`schemastery`（设置 schema）与 `turndown`（HTML→markdown）经 `createRequire(process.argv[1])` 从 harness 安装解析，升级换目录依然有效
+- **host realm 全 Node 权限**：本插件经标准包安装（bundle 层组合，与其他插件同通道），与官方 `dsh-web-search-deepseek` 同权——抓取引擎用全局 `fetch`；`schemastery`（设置 schema）与 `turndown`（HTML→markdown）经 `createRequire(process.argv[1])` 从 harness 安装解析，升级换目录依然有效
 - **DDG IA 的 202**：该 API 正常时也可能回 HTTP 202（Accepted），必须接受一切 2xx
-- **双面包结构**：裸包名行（client）与子路径行 `web-search-panel/host`（host）分别加载包的两个入口，包 `main` 是 no-op 防止 host 半边被加载两次（settings namespace 重名会直接失败）；子路径经 exports `"./host"` 解析，npm 安装与 file:// 开发行同构
+- **单行双面结构**：唯一行 `name: web-search-panel`（裸包名），`main` 即 host 半边；客户端 bundle 由包的 `dsh.client` 声明 + `exports "./client"` 经 client-modules 从同一行服务。⚠ 勿加第二条指向本包的行（如子路径 client 行）——同包双源会触发新版 client-modules 的 `multiple active Loader sources` 致命冲突
 - **工具参数用完整 JSON Schema**（非沙箱 `defineTool` DSL）
 - 搜狗（antispider 拦截）、Ecosia（403）、Startpage/SearXNG 公共实例（Anubis 验证/JSON 禁用）、Mojeek（静默空结果）经实测不可用，未收录
