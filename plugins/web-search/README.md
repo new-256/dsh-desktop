@@ -193,6 +193,33 @@ plugins/web-search/
 - `GET /web-search/test?q=...&engine=...` — 实测单个引擎
 - 浏览器控制台 `window.__webSearchPanel` — client 半边诊断（注册/渲染计数）
 
+## 排障
+
+### 升级 DSH 后插件“消失”（health 404、插件清单无 web-search）
+
+DSH 升级流程（applyStaged）会重写 `profiles/web/package.json`，可能抹掉 `dsh.profile.bundles` 登记与 `web-search-panel` 依赖——插件不报错但完全不加载。症状：
+
+- `GET /web-search/health` → 404
+- 设置→插件 清单里只剩官方内置 `web-search-deepseek`，无 `web-search → web-search-panel`
+- 插件管理器「用户插件」分类为空
+
+**恢复（一条命令，与首次安装相同）：**
+
+```bash
+dsh plugin --profile web add web-search-panel
+# 本机以本地路径安装过（未发 npm）时：
+dsh plugin --profile web add <插件源码绝对路径>
+```
+
+验证 `profiles/web/package.json` 恢复两项后**重启 DSH**：
+
+```json
+"dependencies": { "web-search-panel": "link:<源码路径>" },
+"dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "web-search-panel"] } }
+```
+
+重启后 `GET /web-search/health` 应返回 `engineCount: 39`。
+
 ## 设计说明
 
 - **host realm 全 Node 权限**：本插件经标准包安装（bundle 层组合，与其他插件同通道），与官方 `dsh-web-search-deepseek` 同权——抓取引擎用全局 `fetch`；`schemastery`（设置 schema）与 `turndown`（HTML→markdown）经 `createRequire(process.argv[1])` 从 harness 安装解析，升级换目录依然有效
