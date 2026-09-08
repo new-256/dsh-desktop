@@ -205,6 +205,18 @@ async function startBackendWithHealing(opts = {}) {
     throw firstErr;
   }
 
+  // R0: transient-failure check — right after an update apply, freshly written
+  // files may not be fully settled yet; one raw retry self-heals those races
+  // (the 0.1.5 first-boot case) without any escalation or dialogs.
+  stopBackend();
+  await new Promise((r) => setTimeout(r, 1200));
+  try {
+    pushLog('retrying backend once (transient check)…\n');
+    return await spawnBackend();
+  } catch (retryTransient) {
+    pushLog('backend start failed again; entering self-heal escalations\n');
+  }
+
   // Escalation 0: home-level patch entries that CONFLICT at the Cordis loader
   // level (duplicate loader id / multi-source client package). These are config
   // problems — profile quarantine and Node repair can never fix them, so
@@ -242,54 +254,51 @@ async function startBackendWithHealing(opts = {}) {
     pushLog('conflict analysis failed: ' + (e && e.message) + '\n');
   }
 
-  // Escalation 1: quarantine the broken profiles dir (dsh rebuilds a fresh
-  // tree on retry) and repair/rebuild custom plugin junctions, so bare-name
-  // plugins injected by the home-level patch keep resolving after the wipe.
-  const qRes = mgr.quarantineProfiles(p.dshHome);
-  if (qRes && qRes.quarantined) {
-    if (!qRes.fallback) {
-      pushLog(`旧 profiles 已备份为 ${qRes.name}（未删除），dsh 将重建配置。\n`);
-    } else {
-      pushLog('旧 profiles 清理完成，dsh 将重建配置。\n');
-    }
-  }
+  // Escalation 1a: repair/rebuild custom plugin junctions (a bare-name plugin
+  // whose junction or real-dir was lost/misnamed). Cheap and non-destructive —
+  // try it before any attribution or quarantine.
   const fixed = mgr.repairProfileJunctions(p.dshHome);
-  if (fixed > 0) pushLog(`自定义插件 junction 修复/重建：${fixed} 项。\n`);
-  stopBackend();
-  await new Promise((r) => setTimeout(r, 800));
-
-  if ((qRes && qRes.quarantined) || fixed > 0) {
+  if (fixed > 0) {
+    pushLog(`自定义插件 junction 修复/重建：${fixed} 项。\n`);
+    stopBackend();
+    await new Promise((r) => setTimeout(r, 800));
     try {
-      pushLog('retrying backend after profile quarantine…\n');
+      pushLog('retrying backend after junction repair…\n');
       return await spawnBackend();
-    } catch (retryErr) {
-      pushLog('backend start failed after profile quarantine\n');
+    } catch (retryErr1a) {
+      pushLog('backend start failed after junction repair\n');
     }
   }
 
-  // Escalation 2: a home-level patch plugin may reference a source that no
-  // longer exists (deleted file, gone junction target). Back up the patch
-  // file, disable just those entries, tell the user, and retry once — instead
-  // of looping forever through quarantine + Node repair.
+  // Escalation 1b: attribute the failure to home-patch plugin entries and
+  // disable JUST those — missing source, or a module whose load CRASHES the
+  // plugin tree (SyntaxError / missing export: the pet-0.3.1 class that used
+  // to fall through to whole-profiles quarantine). Entry-level surgery with
+  // backup + dialog, then retry. Runs BEFORE any quarantine so a single
+  // broken plugin can never wipe innocent third-party registrations.
+  let failingSpecs = [];
   let disabled = [];
   try {
     const analysis = mgr.analyzeBackendFailure(p.dshHome, backendLogs.join(''));
-    if (analysis && analysis.broken && analysis.broken.length) {
-      const res = mgr.disableBrokenPatchPlugins(p.dshHome, analysis.broken);
-      disabled = (res && res.disabled) || [];
-      if (disabled.length) {
-        pushLog(`临时禁用无法加载的插件：${disabled.join(', ')}（原配置已备份：${res.backup}）。\n`);
-        try {
-          const r = await dialog.showMessageBox(null, {
-            type: 'warning', buttons: ['继续启动', '退出'], defaultId: 0, cancelId: 1,
-            title: APP_NAME,
-            message: '已临时禁用无法加载的插件',
-            detail: `以下插件因文件缺失或损坏已被临时禁用，应用将正常启动：\n\n` +
-              disabled.join('\n') +
-              `\n\n原配置已备份到：\n${res.backup}\n\n修复插件后，用备份文件恢复即可重新启用。`
-          });
-          if (r.response === 1) { isQuitting = true; app.exit(0); return; }
-        } catch {}
+    if (analysis) {
+      failingSpecs = analysis.failing || [];
+      if (analysis.broken && analysis.broken.length) {
+        const res = mgr.disableBrokenPatchPlugins(p.dshHome, analysis.broken);
+        disabled = (res && res.disabled) || [];
+        if (disabled.length) {
+          pushLog(`临时禁用无法加载的插件条目：${disabled.join(', ')}（原配置已备份：${res.backup}）。\n`);
+          try {
+            const r = await dialog.showMessageBox(null, {
+              type: 'warning', buttons: ['继续启动', '退出'], defaultId: 0, cancelId: 1,
+              title: APP_NAME,
+              message: '已临时禁用无法加载的插件条目',
+              detail: '检测到以下插件条目导致插件树加载失败，已仅禁用这些条目，其余插件不受影响：\n\n' +
+                analysis.broken.map((b) => `${b.id}（${b.reason}）`).join('\n') +
+                `\n\n原配置已备份到：\n${res.backup}\n\n修复插件后，用备份文件恢复即可重新启用。`
+            });
+            if (r.response === 1) { isQuitting = true; app.exit(0); return; }
+          } catch {}
+        }
       }
     }
   } catch (e) {
@@ -300,11 +309,61 @@ async function startBackendWithHealing(opts = {}) {
 
   if (disabled.length) {
     try {
-      pushLog('retrying backend after disabling broken plugins…\n');
+      pushLog('retrying backend after disabling broken plugin entries…\n');
       return await spawnBackend();
-    } catch (retryErr2) {
-      pushLog('backend start failed after plugin disable\n');
+    } catch (retryErr1b) {
+      pushLog('backend start failed after plugin entry disable\n');
     }
+  }
+
+  // Escalation 2 (LAST resort): quarantine the broken profiles dir — dsh
+  // rebuilds a fresh tree — but FIRST preserve third-party registrations
+  // (bundles / dependencies / profile patches) so a successful rebuild can
+  // AUTO-RESTORE them instead of leaving the user to reinstall everything by
+  // hand. If the re-merged boot fails, the restore is rolled back and the
+  // failure falls through to Node repair.
+  const qRes = mgr.quarantineProfiles(p.dshHome);
+  let booted = false;
+  if (qRes && qRes.quarantined) {
+    if (!qRes.fallback) {
+      pushLog(`旧 profiles 已备份为 ${qRes.name}（未删除），dsh 将重建配置。\n`);
+    } else {
+      pushLog('旧 profiles 清理完成，dsh 将重建配置。\n');
+    }
+    stopBackend();
+    await new Promise((r) => setTimeout(r, 800));
+    try {
+      pushLog('retrying backend after profile quarantine…\n');
+      booted = await spawnBackend();
+    } catch (retryErr) {
+      pushLog('backend start failed after profile quarantine\n');
+    }
+  }
+
+  if (booted) {
+    if (qRes && qRes.registryFile) {
+      const restored = mgr.restoreProfileRegistrations(p.dshHome, qRes.registryFile, failingSpecs);
+      if (restored.restored.length) {
+        pushLog(`自动还原第三方注册：${restored.restored.join(', ')}${restored.skipped.length ? `；跳过失败日志点名的条目（${restored.skipped.join(', ')}）` : ''}，重启验证…\n`);
+        stopBackend();
+        await new Promise((r) => setTimeout(r, 800));
+        try {
+          return await spawnBackend();
+        } catch (restoreBootErr) {
+          pushLog('还原第三方注册后启动失败，回滚还原。第三方注册仍保存在备份中，可稍后手动恢复。\n');
+          mgr.rollbackProfileRestore(p.dshHome, qRes.registryFile);
+          stopBackend();
+          await new Promise((r) => setTimeout(r, 800));
+          try {
+            pushLog('retrying backend after restore rollback…\n');
+            return await spawnBackend();
+          } catch (rollbackErr) {
+            pushLog('backend start failed after restore rollback\n');
+          }
+        }
+      }
+    }
+    return booted;
   }
 
   // Escalation 3: repair Node runtime if spawn still fails — but never for
@@ -928,6 +987,20 @@ if (!gotLock) {
       diag('步骤3 应用暂存更新 applyStaged（后）:', applied);
       const shouldIsolatePlugins = !!(applied && applied.dsh);
       diag('插件隔离流程:', shouldIsolatePlugins ? '本次启动应用了新后端，将执行隔离轮测' : '跳过');
+      // 3.5) Recover an INTERRUPTED plugin isolation from a previous run: if
+      // the app died mid round-test, the home patch is left "everything
+      // commented" and every third-party plugin silently disappears until a
+      // manual restore. Complete the old isolation from its saved state —
+      // entries proven failed stay disabled, everything else comes back.
+      try {
+        const rec = mgr.recoverInterruptedIsolation();
+        if (rec && rec.recovered) {
+          pushLog(`恢复上次未完成的插件隔离：还原 ${(rec.restored || []).length} 条，保持禁用 ${(rec.failed || []).length} 条。\n`);
+          updateSplash('已恢复上次未完成的插件隔离…');
+        }
+      } catch (e) {
+        pushLog('恢复未完成插件隔离失败（跳过）: ' + (e && e.message) + '\n');
+      }
       // 3) Node gate: fast local check without network requests.
       const req = mgr.nodeRequirement();
       pushLog(`node gate: ${req.current || 'none'} >= ${req.required} (${req.source}) -> ${req.ok ? 'ok' : 'unsatisfied'}\n`);

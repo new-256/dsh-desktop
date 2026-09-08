@@ -992,6 +992,33 @@ function pruneQuarantineProfiles(home) {
  * Falls back to destructive rimraf only if rename fails (e.g. file lock), ensuring
  * app boot reliability is never compromised. Prunes old quarantine dirs keeping the 2 most recent.
  */
+/** Snapshot third-party registrations per profile dir (bundles / deps / patch). */
+function collectProfileRegistrations(home) {
+  const prof = path.join(home, 'profiles');
+  const out = [];
+  let dirs = [];
+  try {
+    dirs = fs.readdirSync(prof, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && d.name !== 'node_modules')
+      .map((d) => d.name);
+  } catch { return out; }
+  for (const name of dirs) {
+    const dir = path.join(prof, name);
+    const pkg = readJson(path.join(dir, 'package.json'), null);
+    const patchPath = path.join(dir, 'cordis.patch.yml');
+    let patch = null;
+    try { patch = fs.existsSync(patchPath) ? fs.readFileSync(patchPath, 'utf8') : null; } catch {}
+    if (!pkg && patch == null) continue;
+    out.push({
+      profile: name,
+      bundles: (pkg && pkg.dsh && pkg.dsh.profile && Array.isArray(pkg.dsh.profile.bundles)) ? pkg.dsh.profile.bundles.map(String) : [],
+      dependencies: (pkg && pkg.dependencies && typeof pkg.dependencies === 'object' && !Array.isArray(pkg.dependencies)) ? { ...pkg.dependencies } : {},
+      patch
+    });
+  }
+  return out;
+}
+
 function quarantineProfiles(home) {
   const prof = path.join(home, 'profiles');
   if (!fs.existsSync(prof)) return { quarantined: false, name: null, fallback: false };
@@ -1004,6 +1031,22 @@ function quarantineProfiles(home) {
   while (fs.existsSync(targetPath)) {
     targetName = `profiles.broken-${timestamp}_${counter++}`;
     targetPath = path.join(home, targetName);
+  }
+
+  // Snapshot third-party registrations BEFORE the rename: after a successful
+  // rebuild the desktop can auto-restore them (no more "清了就不管"). The
+  // registry file lives in home, so it survives the profiles rename.
+  const registry = collectProfileRegistrations(home);
+  let registryFile = null;
+  if (registry.length) {
+    registryFile = path.join(home, `profiles-registry-${timestamp}.json`);
+    try {
+      writeJson(registryFile, registry);
+      log(`preserved ${registry.length} profile registration(s) to ${path.basename(registryFile)}`);
+    } catch (e) {
+      registryFile = null;
+      log('preserve profile registrations failed:', e.message);
+    }
   }
 
   let quarantined = false;
@@ -1026,7 +1069,134 @@ function quarantineProfiles(home) {
 
   pruneQuarantineProfiles(home);
 
-  return { quarantined, name: targetName, path: targetPath, fallback };
+  return { quarantined, name: targetName, path: targetPath, fallback, registryFile, registry };
+}
+
+/**
+ * Auto-restore third-party registrations preserved by a quarantine into the
+ * FRESH profiles tree the backend rebuilt. Names appearing in skipNames (the
+ * failure log's failing specifiers) are left out — the culprit must not be
+ * re-added. Every file overwritten gets a .restore.bak first, so the caller
+ * can roll back when the re-merged boot still fails.
+ * Returns { restored, skipped, files, rollback }.
+ */
+function restoreProfileRegistrations(home, registryFile, skipNames = []) {
+  const out = { restored: [], skipped: [], files: [], rollback: [] };
+  if (!registryFile || !fs.existsSync(registryFile)) return out;
+  let registry = [];
+  try { registry = readJson(registryFile, []); } catch { return out; }
+  if (!Array.isArray(registry) || !registry.length) return out;
+  const skip = new Set((skipNames || []).map((n) => normalizeSpecifier(n)));
+  const isSkipped = (name) => skip.has(normalizeSpecifier(String(name || '')));
+
+  for (const item of registry) {
+    if (!item || !item.profile) continue;
+    const dir = path.join(home, 'profiles', item.profile);
+    if (!fs.existsSync(dir)) continue;
+    let touched = false;
+
+    // package.json: merge preserved bundles/deps minus skipped names.
+    const pkgPath = path.join(dir, 'package.json');
+    const fresh = readJson(pkgPath, null);
+    if (fresh) {
+      const freshBundles = (fresh.dsh && fresh.dsh.profile && Array.isArray(fresh.dsh.profile.bundles)) ? fresh.dsh.profile.bundles.map(String) : [];
+      const keptFresh = freshBundles.filter((b) => !isSkipped(b));
+      const restoredBundles = (item.bundles || []).filter((b) => !isSkipped(b) && !keptFresh.includes(b));
+      const restoredDeps = {};
+      for (const [k, v] of Object.entries(item.dependencies || {})) if (!isSkipped(k)) restoredDeps[k] = v;
+      const skippedHere = (item.bundles || []).filter(isSkipped).concat(Object.keys(item.dependencies || {}).filter(isSkipped));
+      if (restoredBundles.length || Object.keys(restoredDeps).length || skippedHere.length) {
+        try { fs.copyFileSync(pkgPath, pkgPath + '.restore.bak'); out.rollback.push(pkgPath + '.restore.bak'); } catch {}
+        const nextPkg = {
+          ...fresh,
+          dependencies: { ...(fresh.dependencies || {}), ...restoredDeps },
+          dsh: { ...(fresh.dsh || {}), profile: { ...((fresh.dsh && fresh.dsh.profile) || {}), bundles: [...keptFresh, ...restoredBundles] } }
+        };
+        try { writeJson(pkgPath, nextPkg); touched = true; } catch (e) { log('restore package.json failed:', e.message); }
+        if (skippedHere.length) out.skipped.push(...skippedHere);
+      }
+    }
+
+    // cordis.patch.yml: restore the preserved text, entry-disable any entries
+    // matching skipNames (the culprit stays out).
+    const patchText = item.patch;
+    if (patchText != null) {
+      const patchPath = path.join(dir, 'cordis.patch.yml');
+      try { fs.copyFileSync(patchPath, patchPath + '.restore.bak'); out.rollback.push(patchPath + '.restore.bak'); } catch {}
+      try {
+        fs.writeFileSync(patchPath, patchText, 'utf8');
+        touched = true;
+        const skippedIds = (parseHomePatchBlocks(patchText) || []).flatMap((b) => b.entries.filter((e) => isSkipped(e.name || e.id)).map((e) => e.id));
+        if (skippedIds.length) {
+          const res = disablePatchEntriesInFile(patchPath, skippedIds);
+          out.skipped.push(...(res.disabled || []));
+        }
+      } catch (e) { log('restore profile patch failed:', e.message); }
+    }
+
+    if (touched) { out.restored.push(item.profile); out.files.push(path.join('profiles', item.profile)); }
+  }
+  if (out.restored.length) log(`auto-restored third-party registrations: ${out.restored.join(', ')} (skipped ${out.skipped.length}: ${out.skipped.join(', ')})`);
+  return out;
+}
+
+/** Undo restoreProfileRegistrations by copying the .restore.bak files back. */
+function rollbackProfileRestore(home, registryFile) {
+  if (!registryFile || !fs.existsSync(registryFile)) return;
+  let registry = [];
+  try { registry = readJson(registryFile, []); } catch { return; }
+  if (!Array.isArray(registry)) return;
+  for (const item of registry) {
+    if (!item || !item.profile) continue;
+    const dir = path.join(home, 'profiles', item.profile);
+    if (!fs.existsSync(dir)) continue;
+    for (const f of ['package.json', 'cordis.patch.yml']) {
+      const bak = path.join(dir, f + '.restore.bak');
+      if (fs.existsSync(bak)) {
+        try { fs.copyFileSync(bak, path.join(dir, f)); log(`rolled back ${item.profile}/${f}`); } catch (e) { log('rollback failed:', e.message); }
+      }
+    }
+  }
+}
+
+/**
+ * Boot-time recovery of an INTERRUPTED plugin isolation: if the app died mid
+ * round-test, the home patch is left in "everything commented" state — which
+ * used to read as "清了就不管" for all third-party plugins. Completes the
+ * isolation from the saved state: entries recorded as failed stay disabled;
+ * every other entry is restored. No-op when no state file exists or the patch
+ * was already restored.
+ */
+function recoverInterruptedIsolation() {
+  const state = readJson(pluginIsolationStatePath(), null);
+  const p = P();
+  if (!state || !state.original) return { active: false };
+  // The isolation COMPLETED normally (finishPluginIsolation stamps finishedAt):
+  // its result is already reflected in the live patch — nothing to recover.
+  if (state.finishedAt) {
+    clearPluginIsolation();
+    return { active: true, finished: true };
+  }
+  const live = readPatchText(p.dshHome);
+  if (live == null) return { active: false };
+  if (live === state.original) {
+    clearPluginIsolation();
+    return { active: true, alreadyRestored: true };
+  }
+  const entries = state.entries || [];
+  const failed = new Set(entries.filter((e) => e.status === 'failed').map((e) => e.index));
+  const all = new Set(entries.map((e) => e.index));
+  const good = new Set([...all].filter((i) => !failed.has(i)));
+  const text = commentPatchEntries(state.original, good);
+  writePatchText(p.dshHome, text);
+  const statusMap = new Map(entries.map((e) => [e.index, e]));
+  const result = {
+    ...state, finishedAt: new Date().toISOString(), recovered: true,
+    entries: entries.map((e) => ({ ...e, status: failed.has(e.index) ? 'failed' : e.status || 'ok' }))
+  };
+  writeJson(pluginIsolationStatePath(), result);
+  log(`recovered interrupted plugin isolation: ${failed.size} failed kept disabled, ${good.size} restored`);
+  return { active: true, recovered: true, failed: [...failed], restored: [...good] };
 }
 
 function pluginEntries(home) {
@@ -1184,22 +1354,53 @@ function normalizeSpecifier(spec) {
     try { s = decodeURIComponent(rest); } catch { s = rest; }
   }
   s = s.split('?')[0];
+  s = s.replace(/:\d+(?::\d+)?$/, ''); // strip :line[:col] suffixes from error URLs
   return s.replace(/\\/g, '/').toLowerCase();
 }
 
-/** Collect failing module/package specifiers from backend log text. */
+/**
+ * Collect failing module/package specifiers from backend log text.
+ * Returns { specifiers: Set, pluginTree: bool, cannotFind: bool }.
+ * - specifiers: normalized module references named in error lines
+ * - pluginTree: whether the log states the plugin tree itself failed to load
+ *   (a plugin module CRASHED on load — SyntaxError/missing export/etc.), the
+ *   signal that gates crash-mode attribution
+ * - cannotFind: whether a plain "Cannot find package/module" pattern matched
+ */
 function failingSpecifiersFromLogs(logText) {
   const out = new Set();
-  if (!logText) return out;
-  const patterns = [
-    /Cannot find (?:package|module) '([^']+)'/g,
-    /Cannot find '([^']+)'/g
-  ];
-  for (const re of patterns) {
+  if (!logText) return { specifiers: out, pluginTree: false, cannotFind: false };
+  const add = (s) => { const n = normalizeSpecifier(s); if (n) out.add(n); };
+
+  // 1) Cannot find package/module 'X' (missing source — existing behavior).
+  let cannotFind = false;
+  for (const re of [/Cannot find (?:package|module) '([^']+)'/g, /Cannot find '([^']+)'/g]) {
     let m;
-    while ((m = re.exec(logText)) !== null) out.add(normalizeSpecifier(m[1]));
+    while ((m = re.exec(logText)) !== null) { cannotFind = true; add(m[1]); }
   }
-  return out;
+
+  // 2) Loader/plugin-tree failure signals.
+  const pluginTree = /plugin tree failed to load/i.test(logText) ||
+    /The following plugins? (?:were unable to load|failed to load)/i.test(logText) ||
+    /failed to (?:load|mount|apply loader entry)/i.test(logText);
+
+  // 3) Error lines that name the crashing module (file:// URL, quoted token,
+  //    path-like spec, or kebab-case bare name). Attribution happens against
+  //    patch entry names later, so over-collection is harmless.
+  const errLineRe = /^.*\b(?:SyntaxError|TypeError|ReferenceError|ERR_[A-Z0-9_]+|is not a function|is not defined|does not provide an export named|failed to (?:load|mount)|unable to load|Cannot (?:find|read|resolve|parse)|no such file|Cannot find module).*$/gim;
+  let line;
+  while ((line = errLineRe.exec(logText)) !== null) {
+    const l = line[0];
+    for (const u of l.matchAll(/file:\/\/[^\s'"()]+/gi)) add(u[0]);
+    for (const q of l.matchAll(/['"]([\w@./:\\-]+)['"]/g)) add(q[1]);
+    for (const p of l.matchAll(/\b(?:@[a-z0-9_-]+\/)?[a-z0-9_.-]+\/(?:[a-z0-9_.-]+\/)*[a-z0-9_.-]+\.(?:mjs|js|cjs|ts|tsx|jsx)\b/gi)) add(p[0]);
+    for (const k of l.matchAll(/\b(?:@[a-z0-9_-]+\/)?[a-z0-9_-]+(?:-[a-z0-9_-]+)+\b/g)) add(k[0]);
+    // Unquoted loader names: "loader entry pet", "plugin pet" (covers bare
+    // names without hyphens that the kebab pattern above cannot see).
+    for (const b of l.matchAll(/(?:loader entry|plugin)\s+([A-Za-z0-9@_.\/-]+)/gi)) add(b[1]);
+  }
+
+  return { specifiers: out, pluginTree, cannotFind };
 }
 
 /**
@@ -1289,29 +1490,45 @@ function pluginSourceAvailable(home, entry) {
 
 /**
  * Analyze backend failure logs against the home-level patch config.
- * Returns { failing: [specifiers], broken: [{ id, name }] } where `broken`
- * lists patch entries that both appear in the failure logs and whose source is
- * genuinely unavailable (i.e. they are the direct boot blocker).
+ * Returns { failing: [specifiers], broken: [{ id, name, reason }] } where
+ * `broken` lists patch entries the failure logs point at:
+ *  - "Cannot find package/module" mode: entry name matches AND its source is
+ *    genuinely unavailable (the direct boot blocker);
+ *  - plugin-tree crash mode (the log says the plugin tree failed to load):
+ *    entry name matches ANY failing specifier, regardless of source presence —
+ *    a plugin whose module CRASHES on load (SyntaxError, missing export,
+ *    TypeError during import) is just as much a boot blocker, and was the
+ *    class that used to slip past into whole-profiles quarantine.
  */
 function analyzeBackendFailure(home, logText) {
   const result = { failing: [], broken: [] };
   const patchPath = path.join(home, 'cordis.patch.yml');
   if (!fs.existsSync(patchPath)) return result;
-  const failing = failingSpecifiersFromLogs(logText);
+  const parsed = failingSpecifiersFromLogs(logText);
+  const failing = parsed.specifiers;
   result.failing = [...failing];
   if (!failing.size) return result;
 
   let yamlText;
   try { yamlText = fs.readFileSync(patchPath, 'utf8'); } catch (e) { log('read patch failed:', e.message); return result; }
+  // Crash-mode attribution is only trusted when the log itself says the
+  // plugin tree failed; otherwise keep the conservative missing-source rule.
+  const useAll = parsed.cannotFind || parsed.pluginTree;
   const seen = new Set();
   for (const block of parseHomePatchBlocks(yamlText)) {
     for (const entry of block.entries) {
       if (!entry.name || seen.has(entry.id)) continue;
-      if (!failing.has(normalizeSpecifier(entry.name))) continue;
+      const norm = normalizeSpecifier(entry.name);
+      const filePath = specToPath(entry.name);
+      const isFailing = failing.has(norm) || (!!filePath && failing.has(normalizeSpecifier(filePath)));
+      if (!isFailing) continue;
+      const available = pluginSourceAvailable(home, entry);
+      if (!useAll && !available) continue; // cannot-find mode: require missing source
       seen.add(entry.id);
-      if (!pluginSourceAvailable(home, entry)) {
-        result.broken.push({ id: entry.id, name: entry.name });
-      }
+      result.broken.push({
+        id: entry.id, name: entry.name,
+        reason: available ? '插件源码加载时出错（plugin tree failed to load）' : '插件源文件缺失或不可加载'
+      });
     }
   }
   return result;
@@ -2048,6 +2265,8 @@ module.exports = {
   currentVersions, stagedVersions, checkForUpdates,
   snapshotPluginState, pluginCompatibilityReport, disableIncompatiblePlugins, rollbackDsh,
   preparePluginIsolation, enablePluginIsolationBlock, enablePluginIsolationEntry, finishPluginIsolation, clearPluginIsolation,
+  recoverInterruptedIsolation,
+  collectProfileRegistrations, restoreProfileRegistrations, rollbackProfileRestore,
   readSettings, writeSettings, npmRegistryUrl, registryInfo,
   stageDsh, stageNode,
   latestDshVersion, latestDshInfo, latestNodeVersion, minNodeForDsh, nodeMeetsRequirement,
