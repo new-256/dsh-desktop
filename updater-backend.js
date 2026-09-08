@@ -1563,6 +1563,103 @@ function preflightBareNameResolution() {
   return out;
 }
 
+/**
+ * Compare a version string's leading major.minor.patch against [maj, min, pat].
+ * Prerelease tags are ignored ("0.1.3-alpha.2" counts as 0.1.3).
+ */
+function versionAtLeast(v, want) {
+  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(v || '').trim());
+  if (!m) return false;
+  const a = [+m[1], +m[2], +m[3]];
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== want[i]) return a[i] > want[i];
+  }
+  return true;
+}
+
+/**
+ * dsh 0.1.3-alpha changed the @deepseek-ai/dsh-persona config contract: the
+ * old `text:` field was replaced by a REQUIRED `prefix:` (plus optional
+ * `suffix:`). Agent presets written for the old schema then fail to mount
+ * with `$.prefix missing required value`, breaking session resume until the
+ * files are edited by hand (9/8 17:xx incident). This migration renames
+ * `text:` to `prefix:` inside dsh-persona entries of the home dir's custom
+ * agent presets — line-based (indentation and block-scalar style preserved),
+ * per-file backup, idempotent. Only runs when the ACTIVE backend ships the
+ * new contract (dsh-persona >= 0.1.3).
+ * Returns { migrated: [files], backups: {file: backup} }.
+ */
+function migrateAgentPresetPersonaText() {
+  const out = { migrated: [], backups: {} };
+  const home = dshHome();
+
+  let personaVersion = '';
+  try {
+    const pj = readJson(path.join(path.dirname(path.dirname(P().dshPkg)), 'dsh-persona', 'package.json'), null);
+    if (pj && typeof pj.version === 'string') personaVersion = pj.version;
+  } catch {}
+  if (!versionAtLeast(personaVersion, [0, 1, 3])) {
+    log(`agent-preset persona migration skipped: backend dsh-persona ${personaVersion || 'unknown'} predates the prefix contract`);
+    return out;
+  }
+
+  const presetsDir = path.join(home, '.agent-presets');
+  let dirs = [];
+  try { dirs = fs.readdirSync(presetsDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return out; }
+  const ts = formatDateTimestamp();
+  for (const name of dirs) {
+    const file = path.join(presetsDir, name, 'agent.cordis.yml');
+    if (!fs.existsSync(file)) continue;
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+    const eol = text.includes('\r\n') ? '\r\n' : '\n';
+    const lines = text.split(/\r?\n/);
+
+    // Walk loader entries; inside a dsh-persona entry's config block, rename
+    // the old `text:` key (a direct child of config:) to `prefix:`.
+    let entryIndent = -1;
+    let inPersona = false;
+    let configIndent = -1;
+    let changed = false;
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (/^\s*#/.test(l) || l.trim() === '') continue;
+      const indent = l.length - l.trimStart().length;
+      const entryStart = /^(\s*)-\s+(?:id|name):\s/.exec(l);
+      if (entryStart) {
+        entryIndent = indent;
+        inPersona = /@deepseek-ai\/dsh-persona\b/.test(l);
+        configIndent = -1;
+        continue;
+      }
+      if (indent === entryIndent + 2) {
+        const nameM = /^\s*name:\s*(.+)$/.exec(l);
+        if (nameM && /@deepseek-ai\/dsh-persona\b/.test(nameM[1])) { inPersona = true; continue; }
+        if (inPersona && /^\s*config:\s*$/.test(l)) { configIndent = indent; continue; }
+      }
+      if (inPersona && configIndent >= 0 && indent === configIndent + 2) {
+        if (/^(\s*)text:\s/.test(l)) {
+          lines[i] = l.replace(/^(\s*)text:/, '$1prefix:');
+          changed = true;
+        }
+      }
+    }
+
+    if (!changed) continue;
+    const backup = file + `.persona-migrate-${ts}.bak`;
+    try {
+      fs.copyFileSync(file, backup);
+      fs.writeFileSync(file, lines.join(eol));
+      out.migrated.push(file);
+      out.backups[file] = backup;
+      log(`migrated agent preset persona text->prefix: ${name} (backup: ${backup})`);
+    } catch (e) {
+      log(`agent preset migration write failed ${file}: ${e.message}`);
+    }
+  }
+  return out;
+}
+
 function stagedVersions() {
   const p = P();
   let dsh = null;
@@ -1843,7 +1940,7 @@ module.exports = {
   repairProfileJunctions, quarantineProfiles, repairNodeForBackendFailure, nodeRequirement,
   analyzeBackendFailure, disableBrokenPatchPlugins, analyzeConfigEntryConflicts,
   findLoaderIdConflicts, applyLoaderConflictFixes, disablePatchEntriesInFile,
-  preflightBareNameResolution,
+  preflightBareNameResolution, migrateAgentPresetPersonaText,
   // main.js spawns the backend with this dedicated/isolated environment.
   buildDedicatedEnv, describeEnvIsolation, enableCorepack,
   currentVersions, stagedVersions, checkForUpdates,

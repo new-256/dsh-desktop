@@ -519,9 +519,23 @@ function createChromiumWindow(url) {
     if (autoStartHidden) { closeSplash(); return; } // auto-started at login: stay in tray
     win.show(); closeSplash();
   });
-  win.webContents.on('did-fail-load', (_e, code, desc) => {
-    pushLog(`chromium did-fail-load ${code} ${desc}\n`);
-    if (code === -3) return; // aborted (normal on redirect)
+  // Window-load resilience: the backend binds a fresh random port on every
+  // boot (--port 0), so a load that raced a restart just needs to follow the
+  // CURRENT address. Auto-retry bounded, main frame only (9/8 17:xx incident:
+  // the user's workaround was a manual Ctrl+R — this does it for them).
+  let loadRetries = 0;
+  win.webContents.on('did-finish-load', () => { loadRetries = 0; });
+  win.webContents.on('did-fail-load', (_e, code, desc, validatedURL, isMainFrame) => {
+    pushLog(`chromium did-fail-load ${code} ${desc} ${validatedURL || ''}\n`);
+    if (code === -3) return; // aborted (normal on redirect/replaced navigation)
+    if (!isMainFrame || isQuitting) return;
+    if (loadRetries >= 5) return;
+    const wait = 1000 * (loadRetries + 1);
+    loadRetries++;
+    pushLog(`window load failed; retrying with current backend URL in ${wait}ms (attempt ${loadRetries}/5)\n`);
+    setTimeout(() => {
+      try { if (!win.isDestroyed() && activeUrl) win.loadURL(activeUrl); } catch {}
+    }, wait);
   });
   win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
   // Close button (X) hides to tray instead of quitting — DSH is keep-alive.
@@ -895,6 +909,28 @@ if (!gotLock) {
       mgr.repairProfileJunctions(mgr.dshHome());
       const iso = mgr.describeEnvIsolation();
       pushLog(`env isolation: stripped ${iso.strippedVars.length} var(s), dropped ${iso.droppedPathEntries.length} foreign PATH entr(ies), DSH_HOME=${iso.dshHome}\n`);
+      // 4.4) Agent-preset schema migration: upstream breaking changes (e.g.
+      // dsh-persona 0.1.3 renamed text→prefix) would otherwise break session
+      // resume with "$.prefix missing required value" until the preset files
+      // are edited by hand. Migrate BEFORE the backend serves any session.
+      try {
+        const mig = mgr.migrateAgentPresetPersonaText();
+        if (mig.migrated.length) {
+          diag('预设兼容性迁移完成:', mig);
+          updateSplash('已自动迁移自定义 Agent 预设格式…');
+          pushLog(`预设兼容性迁移：${mig.migrated.length} 个预设的 persona 字段已从旧版 text 迁移为 prefix（原文件已备份）。\n`);
+          if (!autoStartHidden) {
+            dialog.showMessageBox(null, {
+              type: 'info', buttons: ['继续启动'], defaultId: 0, title: APP_NAME,
+              message: '已自动迁移自定义 Agent 预设',
+              detail: '上游组件 dsh-persona 升级后配置格式变更（text → prefix），你的自定义预设已自动迁移到新格式，会话可正常恢复。\n\n原文件已按 .persona-migrate-*.bak 后缀备份，详情见桌面日志：DSH-Desktop-日志.txt'
+            }).catch(() => {});
+          }
+        }
+      } catch (e) {
+        pushLog('预设兼容性迁移失败（跳过，不影响启动）: ' + (e && e.message) + '\n');
+        diag('预设迁移异常:', e);
+      }
       // 4.5) Pre-flight: ONE-PASS scan for problems that would crash the cold
       // start. The Cordis loader reports only the FIRST issue it meets, so
       // crash-retry healing surfaces one problem per boot; this scan catches
