@@ -173,7 +173,8 @@ function spawnBackend() {
 }
 
 /** Attempt to start the backend, self-healing common failure modes with escalations. */
-async function startBackendWithHealing() {
+async function startBackendWithHealing(opts = {}) {
+  const isolationRound = !!(opts && opts.isolationRound);
   const p = activePaths();
   let firstErr;
   try {
@@ -181,6 +182,27 @@ async function startBackendWithHealing() {
   } catch (err) {
     firstErr = err;
     pushLog('first backend start failed; attempting self-heal (junction repair + profile quarantine)\n');
+  }
+
+  // Isolation round-tests: the isolation flow owns the home patch (each round
+  // rewrites it from the pre-isolation snapshot). Patch-editing escalations
+  // (conflict disable / broken-source disable) would be overwritten by the
+  // next round anyway, and their dialogs would interrupt the round loop —
+  // the round will simply be marked failed. Do junction repair + one retry,
+  // then surface the error.
+  if (isolationRound) {
+    pushLog('隔离轮测中：跳过补丁编辑类自愈，仅做 junction 修复后重试。\n');
+    const fixedRound = mgr.repairProfileJunctions(p.dshHome);
+    if (fixedRound > 0) {
+      stopBackend();
+      await new Promise((r) => setTimeout(r, 800));
+      try {
+        return await spawnBackend();
+      } catch (retryErrRound) {
+        pushLog('backend start failed after junction repair (isolation round)\n');
+      }
+    }
+    throw firstErr;
   }
 
   // Escalation 0: home-level patch entries that CONFLICT at the Cordis loader
@@ -335,7 +357,7 @@ async function startBackendWithPluginIsolation(shouldIsolate = false) {
     mgr.enablePluginIsolationBlock(plugin.index);
     backendLogs = [];
     try {
-      await startBackendWithHealing();
+      await startBackendWithHealing({ isolationRound: true });
       const pluginText = backendLogs.join('');
       const failed = plugin.ids.some((id) => new RegExp(`(?:failed|error|cannot|without registering).*${String(id).replace(/[.*+?^${}()|[\\]\\]/g, '\\\\$&')}`, 'i').test(pluginText));
       statuses.push({ index: plugin.index, status: failed ? 'failed' : 'ok' });
@@ -873,32 +895,51 @@ if (!gotLock) {
       mgr.repairProfileJunctions(mgr.dshHome());
       const iso = mgr.describeEnvIsolation();
       pushLog(`env isolation: stripped ${iso.strippedVars.length} var(s), dropped ${iso.droppedPathEntries.length} foreign PATH entr(ies), DSH_HOME=${iso.dshHome}\n`);
-      // 4.5) Pre-flight: ONE-PASS scan for loader id conflicts that would crash
-      // the cold start. The Cordis loader reports only the FIRST duplicate it
-      // meets, so crash-retry healing surfaces one conflict per boot; this
-      // scan catches them all up front and fixes them surgically (only the
-      // conflicting entry is disabled — sibling entries stay active).
+      // 4.5) Pre-flight: ONE-PASS scan for problems that would crash the cold
+      // start. The Cordis loader reports only the FIRST issue it meets, so
+      // crash-retry healing surfaces one problem per boot; this scan catches
+      // them all up front and fixes them surgically (only the conflicting
+      // entry is disabled — sibling entries stay active).
       try {
         const preConflicts = mgr.findLoaderIdConflicts();
-        if (preConflicts.length) {
-          diag('启动预检发现冲突条目:', preConflicts);
-          pushLog(`启动预检：发现 ${preConflicts.length} 个冲突的插件配置条目，正在自动禁用…\n`);
-          const fix = mgr.applyLoaderConflictFixes(preConflicts);
-          if (fix.fixed.length) {
-            updateSplash('已自动禁用冲突的插件配置条目…');
-            const total = fix.fixed.reduce((n, f) => n + f.ids.length, 0);
-            pushLog(`启动预检：已禁用 ${total} 个冲突条目（各文件已备份）。\n`);
-            if (!autoStartHidden) {
-              const r = await dialog.showMessageBox(null, {
-                type: 'warning', buttons: ['继续启动', '退出'], defaultId: 0, cancelId: 1,
-                title: APP_NAME,
-                message: '已禁用冲突的插件配置条目',
-                detail: '以下插件配置与 DSH 内置组件或官方安装重复，重复声明会导致启动失败，已自动禁用：\n\n' +
-                  preConflicts.map((c) => `${c.id}：${c.reason}`).join('\n') +
-                  '\n\n其余插件不受影响。原配置已备份（后缀 .bak），可恢复后手动调整。\n详情见桌面日志：DSH-Desktop-日志.txt'
-              });
-              if (r.response === 1) { isQuitting = true; app.exit(0); return; }
+        const preResolve = mgr.preflightBareNameResolution() || { repaired: [], broken: [] };
+        const repaired = preResolve.repaired || [];
+        const allConflicts = preConflicts.concat(preResolve.broken || []);
+        if (allConflicts.length || repaired.length) {
+          diag('启动预检发现待处理项:', { conflicts: allConflicts, repaired });
+          if (repaired.length) {
+            updateSplash('已自动修复插件的解析链接…');
+            for (const r of repaired) {
+              pushLog(`启动预检：插件包 ${r.name} 的安装目录名与包名不一致，已自动建立解析链接（${r.junction}），插件可正常加载。\n`);
             }
+          }
+          let fix = { fixed: [] };
+          if (allConflicts.length) {
+            pushLog(`启动预检：发现 ${allConflicts.length} 个问题条目，正在自动处理…\n`);
+            fix = mgr.applyLoaderConflictFixes(allConflicts);
+            if (fix.fixed.length) {
+              updateSplash('已自动禁用冲突的插件配置条目…');
+              const total = fix.fixed.reduce((n, f) => n + f.ids.length, 0);
+              pushLog(`启动预检：已禁用 ${total} 个问题条目（各文件已备份）。\n`);
+            }
+          }
+          if (!autoStartHidden && (repaired.length || fix.fixed.length)) {
+            const repairPart = repaired.length
+              ? '已自动修复（插件继续正常加载，无需操作）：\n\n' + repaired.map((r) => `${r.name}：安装目录名与包名不一致，已建好解析链接`).join('\n') + '\n\n'
+              : '';
+            const disablePart = fix.fixed.length
+              ? '已禁用（与内置组件/官方安装重复，或包无法解析；原配置已备份，后缀 .bak）：\n\n' +
+                allConflicts.map((c) => `${c.id}：${c.reason}`).join('\n')
+              : '';
+            const r5 = await dialog.showMessageBox(null, {
+              type: fix.fixed.length ? 'warning' : 'info',
+              buttons: ['继续启动', '退出'], defaultId: 0, cancelId: 1,
+              title: APP_NAME,
+              message: fix.fixed.length ? '已处理冲突的插件配置条目' : '已自动修复插件解析',
+              detail: repairPart + disablePart +
+                '\n\n其余插件不受影响。详情见桌面日志：DSH-Desktop-日志.txt'
+            });
+            if (r5.response === 1) { isQuitting = true; app.exit(0); return; }
           }
         } else {
           diag('启动预检：无冲突条目');

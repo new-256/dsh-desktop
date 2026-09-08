@@ -722,12 +722,14 @@ function repairProfileJunctions(home) {
   // Custom plugin junctions (mirrored from home-level node_modules) point
   // OUTSIDE the active root by design — exempt their targets from the
   // "foreign link" sweep so the rebuild pass is not immediately undone.
-  const customTargets = new Set(
-    collectJunctionSources(path.join(home, 'node_modules'))
-      .map((s) => { try { return fs.realpathSync(s.target).toLowerCase(); } catch { return null; } })
-      .filter(Boolean)
-  );
+  // Real-directory installs count too: a plugin copied in by hand (e.g. a
+  // local tgz install) has no junction, but links under profiles pointing
+  // at it are just as deliberate (9/8 15:32 incident: the sweep removed a
+  // bridge junction because its target was a misnamed real dir, not a
+  // junction — crashing a plugin that would otherwise have booted).
+  const customTargets = new Set(collectHomeModuleTargets(path.join(home, 'node_modules')));
   let removed = 0;
+  const removedItems = []; // { name, kind, target } — logged so boot records answer "what was removed"
 
   if (fs.existsSync(modulesDir)) {
     let realDirs = 0;
@@ -745,6 +747,7 @@ function repairProfileJunctions(home) {
       if (st.isDirectory() && !st.isSymbolicLink()) {
         rimraf(itemPath);
         realDirs++;
+        removedItems.push({ name: path.basename(itemPath), kind: 'real-dir', target: null });
         return;
       }
 
@@ -755,12 +758,14 @@ function repairProfileJunctions(home) {
         } catch {
           rimraf(itemPath);
           brokenLinks++;
+          removedItems.push({ name: path.basename(itemPath), kind: 'broken-link', target: null });
           return;
         }
 
         if (!isInsideActiveRoot(targetPath, root) && !customTargets.has(targetPath.toLowerCase())) {
           rimraf(itemPath);
           foreignLinks++;
+          removedItems.push({ name: path.basename(itemPath), kind: 'foreign-link', target: targetPath });
           return;
         }
       }
@@ -795,7 +800,11 @@ function repairProfileJunctions(home) {
       if (realDirs > 0) details.push(`${realDirs} real dir(s)`);
       if (foreignLinks > 0) details.push(`${foreignLinks} foreign link(s)`);
       if (brokenLinks > 0) details.push(`${brokenLinks} broken link(s)`);
-      log(`repaired profile entries under ${modulesDir}: ${details.join(', ')}`);
+      // Name every removed item — "1 foreign link(s)" alone made the 9/8
+      // bot-gateway investigation rely on mtime forensics.
+      const named = removedItems.map((it) => (it.target ? `${it.name} -> ${it.target}` : it.name));
+      const suffix = named.length ? ` [${named.slice(0, 8).join('; ')}${named.length > 8 ? `; …共${named.length}项` : ''}]` : '';
+      log(`repaired profile entries under ${modulesDir}: ${details.join(', ')}${suffix}`);
     }
   }
 
@@ -803,6 +812,33 @@ function repairProfileJunctions(home) {
   const total = removed + rebuilt;
   if (total > 0) log(`profile junction heal total: removed=${removed}, rebuilt=${rebuilt}`);
   return total;
+}
+
+/**
+ * Realpaths of everything deliberately placed directly under home-level
+ * node_modules — junctions AND real directories (one level, plus @scope
+ * nesting). These are the user's custom plugin installs; profile-layer
+ * links pointing at them are exempt from the foreign-link sweep.
+ */
+function collectHomeModuleTargets(modulesDir) {
+  const out = [];
+  let entries;
+  try { entries = fs.readdirSync(modulesDir); } catch { return out; }
+  const addRealpath = (p) => { try { out.push(fs.realpathSync(p).toLowerCase()); } catch {} };
+  for (const entry of entries) {
+    const full = path.join(modulesDir, entry);
+    let st;
+    try { st = fs.lstatSync(full); } catch { continue; }
+    if (st.isSymbolicLink() || st.isDirectory()) {
+      addRealpath(full);
+      if (!st.isSymbolicLink() && entry.startsWith('@')) {
+        let subs;
+        try { subs = fs.readdirSync(full); } catch { subs = []; }
+        for (const sub of subs) addRealpath(path.join(full, sub));
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -1415,6 +1451,118 @@ function applyLoaderConflictFixes(conflicts) {
   return { fixed };
 }
 
+/**
+ * Node-style upward resolution check: does <name> exist as a directory in any
+ * node_modules on the walk-up chain from `dir`? This is the necessary
+ * condition for `import '<name>'` to resolve — if no such directory exists
+ * anywhere, the import is guaranteed to fail with ERR_MODULE_NOT_FOUND (no
+ * false positives; package.json/exports subtleties are out of scope).
+ */
+function resolvesFromDir(dir, name) {
+  const segs = String(name).split('/');
+  let cur = path.resolve(dir);
+  for (;;) {
+    let st = null;
+    try { st = fs.statSync(path.join(cur, 'node_modules', ...segs)); } catch {}
+    if (st && st.isDirectory()) return true;
+    const parent = path.dirname(cur);
+    if (parent === cur) return false;
+    cur = parent;
+  }
+}
+
+/**
+ * Find a REAL directory (not a link) directly under modulesDir whose
+ * package.json declares the given package name — i.e. a hand-copied install
+ * whose directory name does not match its package name.
+ */
+function findRealDirByPackageName(modulesDir, pkgName) {
+  let entries;
+  try { entries = fs.readdirSync(modulesDir); } catch { return null; }
+  for (const entry of entries) {
+    if (entry.startsWith('@')) continue;
+    const full = path.join(modulesDir, entry);
+    let st;
+    try { st = fs.lstatSync(full); } catch { continue; }
+    if (!st.isDirectory() || st.isSymbolicLink()) continue;
+    const pj = readJson(path.join(full, 'package.json'), null);
+    if (pj && typeof pj.name === 'string' && pj.name === pkgName) return full;
+  }
+  return null;
+}
+
+/**
+ * Pre-flight: verify every active patch entry that references a package by
+ * BARE NAME actually resolves from the profile directories. An unresolvable
+ * bare name is a guaranteed cold-start crash (ERR_MODULE_NOT_FOUND → plugin
+ * tree failed to load — the 9/8 15:32 bot-gateway incident: a local tgz
+ * install had copied the plugin to a real dir named `bot-gateway` while the
+ * patch entry referenced the bare package name `dsh-bot-gateway`).
+ *
+ * Auto-repair: when the package exists as a misnamed real directory under
+ * home node_modules, create a correctly-named junction — the plugin keeps
+ * working instead of being disabled. Otherwise the entry is reported broken
+ * (the caller disables it entry-level, with backup).
+ *
+ * Returns { repaired: [{id, name, junction, target}], broken: [{file, id, name, reason}] }.
+ */
+function preflightBareNameResolution() {
+  const out = { repaired: [], broken: [] };
+  const home = dshHome();
+  const homePatchPath = path.join(home, 'cordis.patch.yml');
+  const profilesDir = path.join(home, 'profiles');
+
+  // Profile directories the loader imports from (must contain package.json).
+  const profileDirs = [];
+  try {
+    for (const d of fs.readdirSync(profilesDir, { withFileTypes: true })) {
+      if (!d.isDirectory() || d.name === 'node_modules') continue;
+      const dir = path.join(profilesDir, d.name);
+      if (fs.existsSync(path.join(dir, 'package.json'))) profileDirs.push(dir);
+    }
+  } catch {}
+  if (!profileDirs.length) return out;
+
+  // Active entries with bare package names from home + profile patches.
+  // file:// URLs and scheme forms (npm:…) are not bare imports — skip them.
+  const entries = [];
+  for (const patchPath of [homePatchPath, ...profileDirs.map((d) => path.join(d, 'cordis.patch.yml'))]) {
+    if (!fs.existsSync(patchPath)) continue;
+    let yamlText;
+    try { yamlText = fs.readFileSync(patchPath, 'utf8'); } catch { continue; }
+    for (const block of parseHomePatchBlocks(yamlText)) {
+      for (const e of block.entries) {
+        if (!e.name) continue;
+        const n = String(e.name).trim();
+        if (!n || n.includes(':') || n.includes('?') || n.startsWith('.') || n.startsWith('/') || n.startsWith('\\')) continue;
+        entries.push({ file: patchPath, id: e.id, name: n });
+      }
+    }
+  }
+
+  for (const e of entries) {
+    if (profileDirs.some((dir) => resolvesFromDir(dir, e.name))) continue;
+    // Unresolvable — try to auto-repair from a misnamed real-dir install.
+    const junctionPath = path.join(home, 'node_modules', e.name);
+    if (!fs.existsSync(junctionPath)) {
+      const realDir = findRealDirByPackageName(path.join(home, 'node_modules'), e.name);
+      if (realDir) {
+        try {
+          fs.symlinkSync(realDir, junctionPath, 'junction');
+          out.repaired.push({ id: e.id, name: e.name, junction: junctionPath, target: realDir });
+          log(`pre-flight auto-repair: junction ${e.name} -> ${realDir} (directory name did not match package name)`);
+          continue;
+        } catch (err) {
+          log(`pre-flight auto-repair failed for ${e.name}: ${err.message}`);
+        }
+      }
+    }
+    out.broken.push({ file: e.file, id: e.id, name: e.name, reason: `包「${e.name}」在 node_modules 解析链里不存在，冷启动必然失败` });
+  }
+  if (out.broken.length) log('pre-flight unresolvable bare names:', out.broken.map((b) => b.name).join(', '));
+  return out;
+}
+
 function stagedVersions() {
   const p = P();
   let dsh = null;
@@ -1695,6 +1843,7 @@ module.exports = {
   repairProfileJunctions, quarantineProfiles, repairNodeForBackendFailure, nodeRequirement,
   analyzeBackendFailure, disableBrokenPatchPlugins, analyzeConfigEntryConflicts,
   findLoaderIdConflicts, applyLoaderConflictFixes, disablePatchEntriesInFile,
+  preflightBareNameResolution,
   // main.js spawns the backend with this dedicated/isolated environment.
   buildDedicatedEnv, describeEnvIsolation, enableCorepack,
   currentVersions, stagedVersions, checkForUpdates,
