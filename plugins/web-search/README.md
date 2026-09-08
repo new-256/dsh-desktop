@@ -1,4 +1,4 @@
-# web-search — DSH 网页搜索增强插件（38 引擎 · 8 大类 · auto 智能路由）
+# web-search — DSH 网页搜索增强插件（39 引擎 · 8 大类 · auto 智能路由）
 
 DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会话**注册多引擎网页搜索与 URL 抓取工具，并提供 设置→插件 页配置卡片。零依赖（单文件 ESM，host realm 全 Node 权限）。
 
@@ -42,6 +42,7 @@ DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会
 | `ddg-api` | DuckDuckGo IA | 开放 API | Instant Answer 事实快答（覆盖面窄，按设计如此） |
 | `wikipedia` | Wikipedia | 开放 API | **语言感知**（中文查询→zh.wikipedia） |
 | `marginalia` | Marginalia | 公共 API | 独立小众索引（内部保底 30s 超时；不参与 auto） |
+| `anysearch` | AnySearch | 开放 API（匿名） | AI 搜索基础设施（api.anysearch.com，[官网](https://www.anysearch.com)）——匿名可用（限速低）；配置 key 后提额并进入 auto 优先链；深度网页覆盖（Reddit/仓库/垂直域），也支持 `aggregate:anysearch,...` 复合 |
 
 ### 【通用网页 · API-key 型】（可选，设置页配 key 后启用）
 | id | 服务 | 获取 key | 免费额度* |
@@ -123,7 +124,7 @@ DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会
 - **`web_search_multi`**：多引擎搜索。参数 `query`（必填）、`engine`（默认 auto）、`maxResults`（1-50）。返回 `{sources: [{url,title,snippet}], engine, attempts, error?}`，渲染为 markdown 链接列表。
 - **`web_fetch_url`**：抓取任意公开 URL。经官方 `@deepseek-ai/dsh-web-fetch-http` provider（SSRF 防护/同源重定向/字节上限），HTML 自动转 markdown（turndown + gfm，从 harness 安装解析）。参数 `url`（必填）、`maxChars`（默认 20000）。
 
-另将 38 个引擎注册为 `ctx.web` search provider（host 的 `web` 行仍钉 `searchProvider: deepseek-official`，产品自带 `web_search` 不受影响；想切换时在家级 patch 覆写 `web` 行 config 即可）。
+另将 39 个引擎注册为 `ctx.web` search provider（host 的 `web` 行仍钉 `searchProvider: deepseek-official`，产品自带 `web_search` 不受影响；想切换时在家级 patch 覆写 `web` 行 config 即可）。
 
 ## 设置页
 
@@ -144,7 +145,7 @@ dsh plugin --profile web add web-search-panel
 
 本包自带 `dsh.bundle.patch` 声明（profile bundle），`dsh plugin` 安装后**自动**加入 `dsh.profile.bundles` 层栈并组合行——无需手改任何 YAML。重启 web 档案（或 `patchReload: live` 自动生效）即可使用：
 
-- 模型获得 `web_search_multi`（38 引擎智能路由搜索）与 `web_fetch_url`
+- 模型获得 `web_search_multi`（39 引擎智能路由搜索）与 `web_fetch_url`
 - 设置→插件 出现「网页搜索」配置卡片（引擎开关 / API key / 智能路由开关）
 
 前置条件：[pnpm](https://pnpm.io) 在 PATH 上（`dsh plugin` 经 pnpm 安装；`npm i -g pnpm` 或 corepack）。更新：`dsh plugin --profile web update web-search-panel`；卸载：`dsh plugin --profile web remove web-search-panel`。

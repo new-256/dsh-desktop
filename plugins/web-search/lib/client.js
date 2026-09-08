@@ -78,6 +78,7 @@ window.__ModuleLoader__.load({
 				serperApiKey: "",
 				braveApiKey: "",
 				exaApiKey: "",
+				anysearchApiKey: "",
 				maxResults: 10,
 				timeoutMs: 20000,
 				userAgent: ""
@@ -90,7 +91,8 @@ window.__ModuleLoader__.load({
 				["enableDdgHtml", "ddg-html", "DuckDuckGo HTML 抓取 · 通用搜索"],
 				["enableBrave", "brave", "Brave 抓取 · 独立索引"],
 				["enableDdgApi", "ddg-api", "DuckDuckGo IA API · 事实快答"],
-				["enableWikipedia", "wikipedia", "Wikipedia API · 百科（中文查询→zh）"]
+				["enableWikipedia", "wikipedia", "Wikipedia API · 百科（中文查询→zh）"],
+				["enableAnysearch", "anysearch", "AnySearch · AI 搜索基础设施（匿名可用，配 key 提额进 auto 链）"]
 			];
 
 			// 垂直渠道与聚合（不参与 auto 链，需在工具调用中显式指定 engine）——按类分组
@@ -164,10 +166,11 @@ window.__ModuleLoader__.load({
 				["serperApiKey", "Serper.dev", "Google 结果 API", "https://serper.dev/signup", "注册送约 2500 次免费查询"],
 				["tavilyApiKey", "Tavily", "LLM 优化搜索 API", "https://app.tavily.com", "免费档约 1000 次/月"],
 				["braveApiKey", "Brave Search API", "官方 API（与抓取版独立）", "https://brave.com/search/api/", "免费档约 2000 次/月"],
-				["exaApiKey", "Exa", "神经/语义搜索 API", "https://dashboard.exa.ai", "注册送约 $10 额度"]
+				["exaApiKey", "Exa", "神经/语义搜索 API", "https://dashboard.exa.ai", "注册送约 $10 额度"],
+				["anysearchApiKey", "AnySearch", "AI 搜索基础设施（匿名也可用，key 提额进 auto 链）", "https://www.anysearch.com", "匿名即可用（限速低）"]
 			];
 
-			const ENGINE_IDS = ["auto", "aggregate", "ddg-html", "bing", "baidu", "so360", "brave", "ddg-api", "wikipedia", "marginalia", "arxiv", "openalex", "crossref", "pubmed", "europepmc", "dblp", "github", "npm", "crates", "dockerhub", "stackexchange", "mdn", "csdn", "news", "hn", "youtube", "bilibili", "images", "itunes", "wechat", "zhidao", "wikidata", "books", "archive", "maps", "serper", "tavily", "brave-api", "exa"];
+			const ENGINE_IDS = ["auto", "aggregate", "ddg-html", "bing", "baidu", "so360", "brave", "ddg-api", "wikipedia", "marginalia", "anysearch", "arxiv", "openalex", "crossref", "pubmed", "europepmc", "dblp", "github", "npm", "crates", "dockerhub", "stackexchange", "mdn", "csdn", "news", "hn", "youtube", "bilibili", "images", "itunes", "wechat", "zhidao", "wikidata", "books", "archive", "maps", "serper", "tavily", "brave-api", "exa"];
 
 			const zh = {
 				title: "网页搜索（多引擎增强）",

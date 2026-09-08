@@ -1,12 +1,12 @@
-// web-search — host half（家级 cordis.patch.yml 的 file:// 行加载，?v=N 热加载）。
+// web-search — host 半（标准包安装：bundle 层组合，main 即本文件；改源码重启 DSH 生效）。
 //
 // 注册内容：
-//   1. 模型工具 web_search_multi —— 38 引擎/渠道搜索（8 大类）+ auto 智能路由：
+//   1. 模型工具 web_search_multi —— 39 引擎/渠道搜索（8 大类）+ auto 智能路由：
 //      auto 时由 DSH 分析查询特性（语言/领域/意图/时效）自动选择合适引擎或
 //      多引擎并行 RRF 融合（smart(intent):e1+e2），路由失败回退语言感知链。
 //      【通用网页】ddg-html / bing / baidu / so360 / brave / ddg-api /
-//      wikipedia（语言感知）/ marginalia / serper / tavily / brave-api / exa
-//      （后四个 API-key 型）
+//      wikipedia（语言感知）/ marginalia / anysearch（AI 搜索基础设施，匿名可用，
+//      配 key 提额）/ serper / tavily / brave-api / exa（后四个 API-key 型）
 //      【聚合】aggregate（并行 + RRF；复合语法 aggregate:子集）
 //      【学术文献】arxiv / openalex / crossref / pubmed / europepmc / dblp
 //      【开发者】github / npm / crates / dockerhub / stackexchange / mdn / csdn
@@ -517,7 +517,7 @@ function parseZhidaoHtml(html) {
 const ENGINE_CATEGORY = {
   // 通用网页（auto 链与显式通用）
   'ddg-html': 'general', bing: 'general', baidu: 'general', so360: 'general', brave: 'general',
-  'ddg-api': 'general', wikipedia: 'general', marginalia: 'general',
+  'ddg-api': 'general', wikipedia: 'general', marginalia: 'general', anysearch: 'general',
   serper: 'general', tavily: 'general', 'brave-api': 'general', exa: 'general',
   // 聚合
   aggregate: 'aggregate',
@@ -694,6 +694,34 @@ function makeEngines(readSettings) {
         const hits = (res.data && res.data.results) || []
         if (hits.length === 0) throw new Error('Exa 无结果')
         return { sources: hits.map((h) => ({ url: h.url, title: h.title, snippet: h.text ? String(h.text).slice(0, 300) : undefined })) }
+      },
+    },
+    // AnySearch：AI 搜索基础设施（api.anysearch.com）。匿名可用（限速较低），
+    // 配置 key 提额；POST /v1/search，信封 {code,message,data:{results,metadata}}。
+    anysearch: {
+      label: 'AnySearch（AI 搜索基础设施，匿名可用）',
+      needsKey: 'anysearchApiKey', // 仅用于取 key 映射；引擎不因无 key 禁用（匿名可用）
+      async run(query, max, opts) {
+        const headers = { 'X-Anysearch-Client': 'dsh-web-search' }
+        if (opts.apiKey) headers.Authorization = `Bearer ${opts.apiKey}`
+        const res = await httpPostJson(
+          'https://api.anysearch.com/v1/search',
+          { query, max_results: Math.min(Math.max(max, 1), 10) },
+          headers,
+          opts
+        )
+        if (!res.ok || res.error) throw new Error(res.error || `HTTP ${res.statusCode}`)
+        const body = res.data || {}
+        if (body.code !== undefined && body.code !== 0) throw new Error(`AnySearch 错误 ${body.code}：${body.message || '未知错误'}`)
+        const hits = (body.data && body.data.results) || []
+        if (hits.length === 0) throw new Error('AnySearch 无结果')
+        return {
+          sources: hits.map((h) => ({
+            url: h.url,
+            title: h.title,
+            snippet: String(h.snippet || h.content || '').slice(0, 300) || undefined,
+          })),
+        }
       },
     },
     // ── 垂直渠道引擎（不参与 auto 链，需显式指定 engine=<id>）─────────────────
@@ -1385,9 +1413,10 @@ function rrfMerge(subResults, max) {
 //   • 查询含 CJK → 中文链（Bing/百度/360 对中文覆盖最好）；
 //   • 否则 → 英文链（DDG HTML/Bing/Brave）；
 //   • 配置了 API key 且 apiInAuto 未关时，API 引擎（Serper=Google 结果、
-//     Tavily、Brave API、Exa）排在最前（质量最高，消耗配额）；
+//     Tavily、Brave API、Exa，以及配置了 key 的 AnySearch）排在最前（质量最高，
+//     消耗配额；AnySearch 匿名限速低，故仅在配置 key 后进入 auto 链）；
 //   • settings.defaultEngine 非 auto 时该引擎最先试。
-const API_AUTO_ORDER = ['serper', 'tavily', 'brave-api', 'exa']
+const API_AUTO_ORDER = ['serper', 'tavily', 'brave-api', 'exa', 'anysearch']
 const ZH_AUTO_ORDER = ['bing', 'baidu', 'so360', 'ddg-html', 'ddg-api', 'wikipedia']
 const EN_AUTO_ORDER = ['ddg-html', 'bing', 'brave', 'ddg-api', 'wikipedia']
 /** auto 链总时间预算（毫秒）：超时后不再尝试剩余引擎，避免工具超时。 */
@@ -1512,6 +1541,7 @@ function resolvedSettings() {
     enableBaidu: s.enableBaidu !== false,
     enableSo360: s.enableSo360 !== false,
     enableBrave: s.enableBrave !== false,
+    enableAnysearch: s.enableAnysearch !== false,
     enableArxiv: s.enableArxiv !== false,
     enableGithub: s.enableGithub !== false,
     enableStackexchange: s.enableStackexchange !== false,
@@ -1544,6 +1574,7 @@ function resolvedSettings() {
     serperApiKey: typeof s.serperApiKey === 'string' ? s.serperApiKey.trim() : '',
     braveApiKey: typeof s.braveApiKey === 'string' ? s.braveApiKey.trim() : '',
     exaApiKey: typeof s.exaApiKey === 'string' ? s.exaApiKey.trim() : '',
+    anysearchApiKey: typeof s.anysearchApiKey === 'string' ? s.anysearchApiKey.trim() : '',
     maxResults: clampInt(s.maxResults, 10, 1, 50),
     timeoutMs: clampInt(s.timeoutMs, 20000, 3000, 90000),
     userAgent: typeof s.userAgent === 'string' && s.userAgent.trim() ? s.userAgent : DEFAULT_UA,
@@ -1555,6 +1586,7 @@ function apiKeyFor(id, s) {
   if (id === 'tavily') return s.tavilyApiKey
   if (id === 'brave-api') return s.braveApiKey
   if (id === 'exa') return s.exaApiKey
+  if (id === 'anysearch') return s.anysearchApiKey
   return ''
 }
 
@@ -1575,6 +1607,8 @@ function engineEnabled(id, s) {
   if (id === 'baidu') return s.enableBaidu
   if (id === 'so360') return s.enableSo360
   if (id === 'brave') return s.enableBrave
+  // AnySearch：匿名可用，开关独立于 key（默认启用）
+  if (id === 'anysearch') return s.enableAnysearch
   // 垂直渠道引擎
   if (id === 'arxiv') return s.enableArxiv
   if (id === 'github') return s.enableGithub
@@ -1836,6 +1870,7 @@ export function apply(ctx, config) {
           enableBaidu: Schema.boolean().default(true).description('启用百度抓取（中文搜索，mu 属性取真实 URL）'),
           enableSo360: Schema.boolean().default(true).description('启用 360 搜索抓取（中文，data-mdurl 取真实 URL）'),
           enableBrave: Schema.boolean().default(true).description('启用 Brave 抓取（独立索引，英文覆盖好）'),
+          enableAnysearch: Schema.boolean().default(true).description('启用 AnySearch（AI 搜索基础设施，匿名可用限速较低；配置 key 后进入 auto 链）'),
           enableWikipedia: Schema.boolean().default(true).description('启用 Wikipedia API（语言感知：中文查询→zh.wikipedia；部分地区网络不可达）'),
           enableArxiv: Schema.boolean().default(true).description('启用 arXiv 学术论文 API（垂直渠道，显式指定 engine=arxiv）'),
           enableGithub: Schema.boolean().default(true).description('启用 GitHub 仓库搜索 API（垂直渠道，engine=github；未认证限 10 次/分钟）'),
@@ -1869,6 +1904,7 @@ export function apply(ctx, config) {
           serperApiKey: Schema.string().default('').description('Serper.dev API key（google.serper.dev，Google 结果，配置后 serper 引擎可用；获取：https://serper.dev/signup）'),
           braveApiKey: Schema.string().default('').description('Brave Search API key（api.search.brave.com，配置后 brave-api 引擎可用；获取：https://brave.com/search/api/）'),
           exaApiKey: Schema.string().default('').description('Exa API key（api.exa.ai，神经/语义搜索，配置后 exa 引擎可用；获取：https://dashboard.exa.ai）'),
+    anysearchApiKey: Schema.string().default('').description('AnySearch API key（www.anysearch.com，可选——匿名也能用但限速低；配置后 anysearch 进入 auto 优先链；获取：官网 → Pricing/Support）'),
           maxResults: Schema.number().default(10).description('每次搜索默认返回条数（1-50）'),
           timeoutMs: Schema.number().default(20000).description('单引擎请求超时毫秒数（3000-90000）'),
           userAgent: Schema.string().default(DEFAULT_UA).description('抓取用 User-Agent'),
@@ -1923,14 +1959,14 @@ export function apply(ctx, config) {
         ctx.tools.register({
           name: 'web_search_multi',
           description:
-            '多渠道网页搜索（38 引擎 · 8 大类 · auto 智能路由）。engine 默认 auto：由 DSH 分析查询特性（语言/领域/意图/时效）自动路由——学术论文→arxiv/openalex/crossref 并行融合、生物医学→pubmed+europepmc、报错→stackexchange(+csdn)、包管理→github+npm+dockerhub、新闻→news（自动推断时效）、图片→images、视频→bilibili+youtube、地点→maps、中文问答→zhidao、实体快查→ddg-api+wikidata+wikipedia 并行、对比评测→aggregate；通用查询→语言感知回退链（中文 Bing→百度→360→DDG，英文 DDG→Bing→Brave；key 引擎优先）。也可显式指定：【通用】ddg-html/bing/baidu/so360/brave/ddg-api/wikipedia/marginalia/serper·tavily·brave-api·exa（key 型）【聚合】aggregate（RRF 融合；复合语法 aggregate:id1,id2）【学术】arxiv/openalex/crossref/pubmed/europepmc/dblp【开发】github/npm/crates/dockerhub/stackexchange/mdn/csdn【新闻社区】news/hn【媒体】youtube/bilibili/images/itunes【中文】wechat/zhidao【参考】wikidata/books/archive/maps。freshness 可选 day/week/month/year（部分引擎原生支持）。返回 sources（url/title/snippet），engine 字段显示实际路由（如 smart(academic):arxiv+openalex）。配置见 设置→插件→网页搜索。',
+            '多渠道网页搜索（39 引擎 · 8 大类 · auto 智能路由）。engine 默认 auto：由 DSH 分析查询特性（语言/领域/意图/时效）自动路由——学术论文→arxiv/openalex/crossref 并行融合、生物医学→pubmed+europepmc、报错→stackexchange(+csdn)、包管理→github+npm+dockerhub、新闻→news（自动推断时效）、图片→images、视频→bilibili+youtube、地点→maps、中文问答→zhidao、实体快查→ddg-api+wikidata+wikipedia 并行、对比评测→aggregate；通用查询→语言感知回退链（中文 Bing→百度→360→DDG，英文 DDG→Bing→Brave；key 引擎优先）。也可显式指定：【通用】ddg-html/bing/baidu/so360/brave/ddg-api/wikipedia/marginalia/anysearch（AI 搜索基础设施，匿名可用）/serper·tavily·brave-api·exa（key 型）【聚合】aggregate（RRF 融合；复合语法 aggregate:id1,id2）【学术】arxiv/openalex/crossref/pubmed/europepmc/dblp【开发】github/npm/crates/dockerhub/stackexchange/mdn/csdn【新闻社区】news/hn【媒体】youtube/bilibili/images/itunes【中文】wechat/zhidao【参考】wikidata/books/archive/maps。freshness 可选 day/week/month/year（部分引擎原生支持）。返回 sources（url/title/snippet），engine 字段显示实际路由（如 smart(academic):arxiv+openalex）。配置见 设置→插件→网页搜索。',
           parameters: {
             type: 'object',
             additionalProperties: false,
             required: ['query'],
             properties: {
               query: { type: 'string', description: '搜索关键词。' },
-              engine: { type: 'string', description: '搜索引擎/渠道（默认 auto；支持复合聚合语法 aggregate:<id1>,<id2>；38 引擎分 8 类，详见工具描述）' },
+              engine: { type: 'string', description: '搜索引擎/渠道（默认 auto；支持复合聚合语法 aggregate:<id1>,<id2>；39 引擎分 8 类，详见工具描述）' },
               maxResults: { type: 'integer', description: '返回条数上限（1-50，默认取设置值）。' },
               freshness: { type: 'string', enum: ['day', 'week', 'month', 'year'], description: '时效过滤：仅返回该时间窗口内的结果（ddg-html/brave/baidu/news/aggregate 原生支持，其他引擎忽略）。' },
             },
@@ -2003,7 +2039,7 @@ export function apply(ctx, config) {
           order: 106,
           text: [
             'Enhanced web tools are available:',
-            '- web_search_multi: multi-channel web search (38 engines, 8 categories, SMART ROUTING). engine="auto" (default) lets DSH analyze the query and route automatically: academic papers → arxiv/openalex/crossref in parallel (merged with RRF); biomedical → pubmed+europepmc; code errors → stackexchange(+csdn for Chinese); packages → github+npm+dockerhub; news → news engine (auto-derived freshness); images → images; video → bilibili+youtube; places → maps; Chinese Q&A → zhidao; entity lookups → ddg-api+wikidata+wikipedia in parallel; comparisons/reviews → aggregate; general queries → language-aware fallback chain (Chinese: Bing→Baidu→So360→DDG; others: DDG→Bing→Brave; API-key engines first when configured). The returned engine field shows the actual route, e.g. smart(academic):arxiv+openalex. Explicit engines remain available: [General] ddg-api/ddg-html/bing/baidu/so360/brave/wikipedia/marginalia + serper/tavily/brave-api/exa (API-key); [Aggregate] aggregate (composite syntax aggregate:<id1>,<id2>); [Academic] arxiv/openalex/crossref/pubmed/europepmc/dblp; [Developer] github/npm/crates/dockerhub/stackexchange/mdn/csdn; [News] news/hn; [Media] youtube/bilibili/images/itunes; [Chinese] wechat/zhidao; [Reference] wikidata/books/archive/maps.',
+            '- web_search_multi: multi-channel web search (39 engines, 8 categories, SMART ROUTING). engine="auto" (default) lets DSH analyze the query and route automatically: academic papers → arxiv/openalex/crossref in parallel (merged with RRF); biomedical → pubmed+europepmc; code errors → stackexchange(+csdn for Chinese); packages → github+npm+dockerhub; news → news engine (auto-derived freshness); images → images; video → bilibili+youtube; places → maps; Chinese Q&A → zhidao; entity lookups → ddg-api+wikidata+wikipedia in parallel; comparisons/reviews → aggregate; general queries → language-aware fallback chain (Chinese: Bing→Baidu→So360→DDG; others: DDG→Bing→Brave; API-key engines first when configured). The returned engine field shows the actual route, e.g. smart(academic):arxiv+openalex. Explicit engines remain available: [General] ddg-api/ddg-html/bing/baidu/so360/brave/wikipedia/marginalia/anysearch (AI search infrastructure, anonymous OK) + serper/tavily/brave-api/exa (API-key); [Aggregate] aggregate (composite syntax aggregate:<id1>,<id2>); [Academic] arxiv/openalex/crossref/pubmed/europepmc/dblp; [Developer] github/npm/crates/dockerhub/stackexchange/mdn/csdn; [News] news/hn; [Media] youtube/bilibili/images/itunes; [Chinese] wechat/zhidao; [Reference] wikidata/books/archive/maps.',
             'Usually just call with query and let auto route. Pass an explicit engine when you need a specific channel; freshness="day"/"week"/"month"/"year" for recency on engines that support it.',
             '- web_fetch_url: fetch any public URL and return text (HTML converted to markdown).',
             'Use web_search_multi when the built-in web_search returns insufficient results, when a specific engine/channel is needed, or for quick fact lookups; use web_fetch_url to read a source page after searching. Results carry url/title/snippet — cite URLs as markdown links.',
