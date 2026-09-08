@@ -203,22 +203,31 @@ DSH 升级流程（applyStaged）会重写 `profiles/web/package.json`，可能�
 - 设置→插件 清单里只剩官方内置 `web-search-deepseek`，无 `web-search → web-search-panel`
 - 插件管理器「用户插件」分类为空
 
-**恢复（一条命令，与首次安装相同）：**
+**恢复（一条命令，与首次安装相同；npm 已发布，直接装 registry 版）：**
 
 ```bash
 dsh plugin --profile web add web-search-panel
-# 本机以本地路径安装过（未发 npm）时：
-dsh plugin --profile web add <插件源码绝对路径>
 ```
+
+> 仅当需要改源码做开发时用本地路径：`dsh plugin --profile web add <插件源码绝对路径>`（pnpm 将以 `link:` 直连源码）。
 
 验证 `profiles/web/package.json` 恢复两项后**重启 DSH**：
 
 ```json
-"dependencies": { "web-search-panel": "link:<源码路径>" },
+"dependencies": { "web-search-panel": "^1.2.0" },
 "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "web-search-panel"] } }
 ```
 
 重启后 `GET /web-search/health` 应返回 `engineCount: 39`。
+
+### 插件随其它插件一起“消失”（profile 被隔离重建）
+
+若**另一个**插件启动失败（如引用了新版 DSH 已移除的旧 API），桌面自愈会整份隔离 `profiles/web`（移入 `profiles.broken-<时间戳>/`）再重建——`web-search-panel` 会作为“连坐”被一并清出。这是整份清理的连带效应，**不是本插件自身的错误**。判断依据：
+
+- 隔离前的日志里无任何 web-search 报错（报错行指向别的插件包）
+- `profiles.broken-*/web/package.json` 里本插件与出问题的插件“同批被清”
+
+恢复同样一条命令即可：`dsh plugin --profile web add web-search-panel`（见上）。本插件与其它插件互不依赖，单独重装即可。
 
 ## 设计说明
 
