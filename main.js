@@ -345,26 +345,29 @@ async function startBackendWithPluginIsolation(shouldIsolate = false) {
   } catch (error) {
     // Core itself cannot boot: restore the FULL original plugin set before
     // surfacing the error, so no half-applied isolation state is left behind.
-    mgr.finishPluginIsolation(isolation.plugins.map((p) => ({ index: p.index, status: 'not-tested' })));
+    mgr.finishPluginIsolation((isolation.entries || []).map((e) => ({ index: e.index, status: 'not-tested' })));
     throw error;
   }
   stopBackend();
   const statuses = [];
+  const entries = isolation.entries || [];
+  const total = entries.length;
   let done = 0;
-  for (const plugin of isolation.plugins) {
+  for (const entry of entries) {
     done++;
-    updateSplash(`正在逐个检查插件（${done}/${isolation.plugins.length}）：${(plugin.ids || [])[0] || '未知插件'}`);
-    mgr.enablePluginIsolationBlock(plugin.index);
+    updateSplash(`正在逐个检查插件（${done}/${total}）：${entry.id || '未知插件'}`);
+    mgr.enablePluginIsolationEntry(entry.index);
     backendLogs = [];
     try {
       await startBackendWithHealing({ isolationRound: true });
       const pluginText = backendLogs.join('');
-      const failed = plugin.ids.some((id) => new RegExp(`(?:failed|error|cannot|without registering).*${String(id).replace(/[.*+?^${}()|[\\]\\]/g, '\\\\$&')}`, 'i').test(pluginText));
-      statuses.push({ index: plugin.index, status: failed ? 'failed' : 'ok' });
-      if (failed) pushLog(`插件 ${plugin.ids.join(', ')} 启动检查失败，将保持禁用。\n`);
+      const id = String(entry.id || '').replace(/[^a-z0-9_-]+/gi, (m) => '\\' + m);
+      const failed = !!id && new RegExp(`(?:failed|error|cannot|without registering).*${id}`, 'i').test(pluginText);
+      statuses.push({ index: entry.index, status: failed ? 'failed' : 'ok' });
+      if (failed) pushLog(`插件 ${entry.id} 启动检查失败，将保持禁用（仅此条目，同组插件不受影响）。\n`);
     } catch (error) {
-      statuses.push({ index: plugin.index, status: 'failed', error: error.message });
-      pushLog(`插件 ${plugin.ids.join(', ')} 启动失败，将保持禁用：${error.message}\n`);
+      statuses.push({ index: entry.index, status: 'failed', error: error.message });
+      pushLog(`插件 ${entry.id} 启动失败，将保持禁用（仅此条目）：${error.message}\n`);
     }
     stopBackend();
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -373,13 +376,13 @@ async function startBackendWithPluginIsolation(shouldIsolate = false) {
   backendLogs = [];
   updateSplash('正在以兼容插件集启动 DSH…');
   const url = await startBackendWithHealing();
-  const failed = (report?.plugins || []).filter((p) => p.status === 'failed');
-  if (failed.length) {
-    const names = failed.flatMap((p) => p.ids || p.names || []).filter(Boolean);
+  const failedEntries = (report && report.entries ? report.entries : []).filter((e) => e.status === 'failed');
+  if (failedEntries.length) {
+    const names = failedEntries.map((e) => e.id || e.name).filter(Boolean);
     setTimeout(() => dialog.showMessageBox(mainWindow, {
       type: 'warning', title: APP_NAME, buttons: ['知道了'],
       message: '部分插件与当前后端不兼容',
-      detail: `DSH 已正常启动，但以下插件已保持禁用：\n\n${names.join('\n')}\n\n插件源码和原配置已保留，可在修复插件后重新启用。`
+      detail: `DSH 已正常启动，但以下插件已保持禁用（逐条检测，仅影响这些条目）：\n\n${names.join('\n')}\n\n插件源码和原配置已保留，可在修复插件后重新启用。`
     }).catch(() => {}), 800);
   }
   return url;
@@ -440,7 +443,7 @@ function trayMenuTemplate() {
     autoStartItem = { label: '开机自启（仅安装版可用）', enabled: false };
   }
   return [
-    ...updateMenuItems(),
+    { label: '设置…', click: () => createSettingsWindow() },
     { type: 'separator' },
     { label: '打开 DSH Desktop', click: () => showMainWindow() },
     { type: 'separator' },
@@ -629,7 +632,7 @@ function setupShellUpdater() {
       try {
         tray && tray.displayBalloon({
           iconType: 'info', title: 'DSH Desktop 有新版本',
-          content: `桌面版 ${shellUpdateVersion || '新版本'} 可用。点击托盘菜单中的版本/更新项确认下载。`
+          content: `桌面版 ${shellUpdateVersion || '新版本'} 可用。打开托盘菜单中的「设置」可确认下载。`
         });
       } catch {}
     });
@@ -656,19 +659,6 @@ function setUpdateStatus(state, message, percent = updateStatus.percent, detail 
     try { tray.setToolTip(`${APP_NAME} · ${message}`); tray.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate())); } catch {}
   }
 }
-function updateMenuItems() {
-  const p = updateStatus.percent;
-  const suffix = updateStatus.state === 'downloading' ? ` ${p}%` : '';
-  // Update items stay clickable so the user can open the confirmation dialog
-  // from the tray; only transient states (checking / downloading) are locked.
-  const interactive = ['idle', 'available', 'ready', 'error'].includes(updateStatus.state);
-  const click = interactive ? () => { handleUpdateMenuClick(); } : null;
-  return [
-    { label: `当前版本：${updateStatus.current}`, enabled: interactive, click },
-    { label: `最新版本：${updateStatus.latest}`, enabled: interactive, click },
-    { label: `更新：${updateStatus.message}${suffix}`, enabled: interactive, click }
-  ];
-}
 let shellUpdateVersion = null;
 
 /** Check-only: never downloads. New versions are announced via the tray and wait for user confirmation. */
@@ -685,7 +675,7 @@ async function checkBackendUpdates(options = {}) {
       try {
         tray && tray.displayBalloon({
           iconType: 'info', title: 'DSH 有可用更新',
-          content: info.updates.map((u) => `${u.component} → ${u.latest}`).join('；') + '\n点击托盘菜单中的版本/更新项确认下载。'
+          content: info.updates.map((u) => `${u.component} → ${u.latest}`).join('；') + '\n打开托盘菜单中的「设置」可确认下载。'
         });
       } catch {}
     } else if (info.pending && info.pending.length) {
@@ -760,52 +750,91 @@ async function stageConfirmedUpdates(updates, info) {
   if (r.response === 0) restartApp();
 }
 
-/** Tray menu click on the version/update items — the single consent gate for updates. */
-async function handleUpdateMenuClick() {
-  diag('托盘更新项被点击，当前状态:', { state: updateStatus.state, current: updateStatus.current, latest: updateStatus.latest });
-  if (silentBusy) {
-    dialog.showMessageBox(mainWindow, { type: 'info', buttons: ['知道了'], title: APP_NAME, message: '正在检查或下载更新', detail: '请稍候，当前更新操作完成后即可继续。' }).catch(() => {});
-    return;
-  }
-  showMainWindow();
+// ---------------------------------------------------------------------------
+// Settings window — tray「设置…」: update route (official/mirror) + shell/backend config
+// ---------------------------------------------------------------------------
+let settingsWindow = null;
+function createSettingsWindow() {
+  if (settingsWindow && !settingsWindow.isDestroyed()) { settingsWindow.show(); settingsWindow.focus(); return; }
+  settingsWindow = new BrowserWindow({
+    width: 560, height: 680, show: false, resizable: false, maximizable: false, fullscreenable: false,
+    title: `${APP_NAME} 设置`, icon: path.join(__dirname, 'assets', 'icon.png'),
+    backgroundColor: '#0b1020', autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'settings-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false }
+  });
+  settingsWindow.loadFile(path.join(__dirname, 'settings.html'));
+  settingsWindow.once('ready-to-show', () => settingsWindow.show());
+  settingsWindow.on('closed', () => { settingsWindow = null; });
+}
+
+function settingsSnapshot() {
+  let versions = null; try { versions = mgr.currentVersions(); } catch {}
+  let settings = {}; try { settings = mgr.readSettings(); } catch {}
+  let registry = null; try { registry = mgr.registryInfo(); } catch {}
+  let autoStart = false; try { autoStart = app.getLoginItemSettings().openAtLogin; } catch {}
+  return { settings, versions, updateStatus, shellUpdateVersion, registry, autoStart };
+}
+
+ipcMain.handle('settings:get', () => settingsSnapshot());
+ipcMain.handle('settings:set-route', (_e, route) => {
+  if (route !== 'official' && route !== 'mirror') return null;
+  mgr.writeSettings({ npmRegistry: route });
+  const info = mgr.registryInfo();
+  pushLog(`更新路线已切换：${info.label}（${info.url}）\n`);
+  diag('更新路线设置变更:', info);
+  return info;
+});
+ipcMain.handle('settings:check-updates', async () => {
+  if (silentBusy) return { busy: true };
+  const info = await checkBackendUpdates({ includeNode: true });
+  let registry = null; try { registry = mgr.registryInfo(); } catch {}
+  return { busy: false, info, status: updateStatus, registry };
+});
+ipcMain.handle('settings:download-updates', async () => {
+  if (silentBusy) return { busy: true };
+  const parent = settingsWindow || mainWindow;
   if (updateStatus.state === 'ready') {
-    const r = await dialog.showMessageBox(mainWindow, {
+    const r = await dialog.showMessageBox(parent, {
       type: 'info', buttons: ['立即重启并更新', '稍后'], defaultId: 0, cancelId: 1,
       title: APP_NAME, message: '更新已就绪',
       detail: (updateStatus.detail || '新版本已下载完成。') + '\n\n重启应用后生效。'
     });
     if (r.response === 0) restartApp();
-    return;
+    return { ok: true };
   }
   const info = await checkBackendUpdates({ includeNode: false });
-  if (!info) return;
+  if (!info) return { ok: false, msg: '检查更新失败' };
   if (!info.updates || !info.updates.length) {
     if (info.pending && info.pending.length) {
       setUpdateStatus('ready', '更新待重启应用', 100, info.pending.map((p) => `${p.component} ${p.staged}`).join('；'), { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
-      const r = await dialog.showMessageBox(mainWindow, {
+      const r = await dialog.showMessageBox(parent, {
         type: 'info', buttons: ['立即重启并更新', '稍后'], defaultId: 0, cancelId: 1,
         title: APP_NAME, message: '更新已就绪',
         detail: info.pending.map((p) => `${p.component} → ${p.staged}`).join('\n') + '\n\n重启应用后生效。'
       });
       if (r.response === 0) restartApp();
-    } else {
-      dialog.showMessageBox(mainWindow, {
-        type: 'info', buttons: ['知道了'], title: APP_NAME, message: '已是最新版本',
-        detail: `当前 DSH 后端：${info.current?.dsh || '未知'}\n最新版本：${info.latest?.dsh || '未知'}`
-      }).catch(() => {});
+      return { ok: true };
     }
-    return;
+    return { ok: false, msg: '已是最新版本' };
   }
   const lines = info.updates.map((u) => `${u.component === 'dsh' ? 'DSH 后端' : u.component} ${u.current || '无'} → ${u.latest}`);
   if (shellUpdateVersion) lines.push(`DSH Desktop 桌面版 → ${shellUpdateVersion}`);
   const changes = info.updates.flatMap((u) => (u.changes || []).slice(0, 3).map((c) => `· ${c}`));
-  const r = await dialog.showMessageBox(mainWindow, {
+  const r = await dialog.showMessageBox(parent, {
     type: 'question', buttons: ['下载并更新', '取消'], defaultId: 0, cancelId: 1,
     title: APP_NAME, message: '发现新版本',
     detail: lines.join('\n') + (changes.length ? '\n\n更新内容：\n' + changes.join('\n') : '') + '\n\n是否现在下载更新？下载完成后需要重启应用生效。'
   });
   if (r.response === 0) await stageConfirmedUpdates(info.updates, info);
-}
+  return { ok: true };
+});
+ipcMain.handle('settings:set-autostart', (_e, on) => {
+  try { app.setLoginItemSettings({ openAtLogin: !!on, args: ['--hidden'] }); pushLog(`auto-start ${on ? 'enabled' : 'disabled'}（设置窗）\n`); return true; } catch { return false; }
+});
+ipcMain.handle('settings:open-log', () => {
+  try { return shell.openPath(require('./diag-log').logFile()); } catch { return 'failed'; }
+});
+ipcMain.handle('settings:restart-app', () => restartApp());
 
 function scheduleSilentUpdates() {
   // Check-only cadence: announces new versions via the tray, never downloads.

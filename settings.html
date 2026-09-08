@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>DSH Desktop 设置</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0b1020; color: #d8dee9; font: 13px/1.6 "Microsoft YaHei", system-ui, sans-serif; padding: 20px 24px; user-select: none; }
+h1 { font-size: 17px; color: #fff; margin-bottom: 16px; letter-spacing: .5px; }
+h2 { font-size: 13px; color: #88c0d0; margin: 18px 0 10px; border-bottom: 1px solid #232a3d; padding-bottom: 6px; }
+.row { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.row label { cursor: pointer; }
+.dim { color: #7f8ba3; font-size: 12px; }
+#routeNote { margin: 6px 0 4px 2px; color: #a3be8c; font-size: 12px; }
+.kv { display: grid; grid-template-columns: 84px 1fr; row-gap: 6px; margin: 10px 0; }
+.kv .k { color: #7f8ba3; }
+.kv .v { color: #e5e9f0; word-break: break-all; }
+button { background: #2e3440; color: #e5e9f0; border: 1px solid #3b4252; border-radius: 6px; padding: 7px 16px; font-size: 13px; cursor: pointer; }
+button:hover { background: #3b4252; }
+button.primary { background: #5e81ac; border-color: #5e81ac; color: #fff; }
+button.primary:hover { background: #6f92bd; }
+button:disabled { opacity: .45; cursor: default; }
+.actions { display: flex; gap: 10px; margin-top: 12px; }
+input[type=radio], input[type=checkbox] { accent-color: #5e81ac; }
+.note { margin-top: 16px; font-size: 12px; color: #7f8ba3; border-top: 1px solid #232a3d; padding-top: 10px; }
+#msg { margin-top: 10px; min-height: 20px; font-size: 12px; }
+.err { color: #bf616a; }
+.ok { color: #a3be8c; }
+</style>
+</head>
+<body>
+<h1>DSH Desktop 设置</h1>
+
+<div class="section">
+<h2>更新设置</h2>
+<div class="row"><span>更新路线（后端组件下载源）</span></div>
+<div class="row"><input type="radio" name="route" id="r-mirror" value="mirror"><label for="r-mirror">镜像站（npmmirror）<span class="dim">&nbsp;— 国内访问快；镜像同步可能滞后几小时到一天</span></label></div>
+<div class="row"><input type="radio" name="route" id="r-official" value="official"><label for="r-official">官方站（npmjs）<span class="dim">&nbsp;— 版本与依赖始终最新；国内网络可能较慢</span></label></div>
+<div id="routeNote"></div>
+<div class="kv">
+<div class="k">当前版本</div><div class="v" id="vCurrent">读取中…</div>
+<div class="k">最新版本</div><div class="v" id="vLatest">未检查</div>
+<div class="k">更新状态</div><div class="v" id="vStatus">—</div>
+</div>
+<div class="actions">
+<button id="btnCheck" class="primary">检查更新</button>
+<button id="btnDownload">下载并更新</button>
+</div>
+<div id="msg"></div>
+</div>
+
+<div class="section">
+<h2>外壳与系统</h2>
+<div class="row"><input type="checkbox" id="autoStart"><label for="autoStart">开机自启（登录后后台运行）</label></div>
+<div class="actions">
+<button id="btnLog">打开桌面日志</button>
+<button id="btnRestart">重启应用</button>
+</div>
+</div>
+
+<div class="note">数据与配置保存在独立目录，更新与重启不会影响会话。更新为「检查提示 + 手动确认」模式：发现新版本只弹提示，确认后才下载。</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const api = window.dshSettings;
+
+function msg(text, isErr) { const el = $('msg'); el.textContent = text || ''; el.className = isErr ? 'err' : 'ok'; }
+
+function renderState(s) {
+  if (!s) return;
+  const ver = (s.versions && s.versions.dsh) || '未知';
+  $('vCurrent').textContent = ver + (s.versions && s.versions.node ? ' · Node ' + s.versions.node : '');
+  $('vLatest').textContent = (s.updateStatus && s.updateStatus.latest) || '未检查';
+  $('vStatus').textContent = (s.updateStatus && s.updateStatus.message) || '—';
+  if (s.registry) $('routeNote').textContent = '当前生效：' + s.registry.label + '（' + s.registry.url + '）';
+  const route = (s.settings && s.settings.npmRegistry) || 'mirror';
+  const radio = document.querySelector('input[name=route][value=' + route + ']');
+  if (radio) radio.checked = true;
+  $('autoStart').checked = !!(s.autoStart);
+}
+
+async function refresh() { renderState(await api.get()); }
+
+document.querySelectorAll('input[name=route]').forEach((el) => el.addEventListener('change', async () => {
+  const r = await api.setRoute(el.value);
+  if (r) { msg('更新路线已切换：' + r.label + '（下次检查/下载生效）'); refresh(); }
+  else { msg('切换失败', true); }
+}));
+
+$('autoStart').addEventListener('change', async (e) => {
+  const ok = await api.setAutostart(e.target.checked);
+  if (!ok) { e.target.checked = !e.target.checked; msg('开机自启设置失败', true); }
+});
+
+$('btnCheck').addEventListener('click', async () => {
+  $('btnCheck').disabled = true; msg('正在检查更新…');
+  const res = await api.checkUpdates();
+  $('btnCheck').disabled = false;
+  if (res && res.busy) { msg('正在检查或下载更新，请稍候', true); return; }
+  renderState(await api.get());
+  const info = res && res.info;
+  const st = res && res.status;
+  if (info && info.updates && info.updates.length) {
+    msg('发现新版本：' + info.updates.map((u) => (u.component === 'dsh' ? 'DSH 后端' : u.component) + ' ' + (u.current || '无') + ' → ' + u.latest).join('；') + '。点击「下载并更新」确认下载。');
+  } else if (st && st.message) { msg(st.message); }
+});
+
+$('btnDownload').addEventListener('click', async () => {
+  $('btnDownload').disabled = true; msg('正在处理…');
+  const res = await api.downloadUpdates();
+  $('btnDownload').disabled = false;
+  if (res && res.busy) { msg('正在检查或下载更新，请稍候', true); return; }
+  if (res && res.ok === false) msg(res.msg || '没有可下载的更新');
+  else if (res && res.ok) { /* 对话框流程已接管；状态刷新 */ refresh(); }
+});
+
+$('btnLog').addEventListener('click', () => api.openLog());
+$('btnRestart').addEventListener('click', async () => { msg('正在重启…'); await api.restart(); });
+
+refresh();
+</script>
+</body>
+</html>

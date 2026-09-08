@@ -31,7 +31,30 @@ const fs = require('fs');
 const os = require('os');
 const https = require('https');
 
-const REGISTRY = process.env.DSH_NPM_REGISTRY || 'https://registry.npmmirror.com';
+// 更新路线：托盘「设置」窗可切换 'mirror'（npmmirror，国内快、同步滞后）与
+// 'official'（npmjs，版本始终最新）。未设置时退回环境变量，再退回镜像站。
+function settingsPath() { return path.join(userDataPath(), 'settings.json'); }
+function readSettings() { try { return readJson(settingsPath(), {}); } catch { return {}; } }
+function writeSettings(patch) {
+  const s = { ...readSettings(), ...patch };
+  try { writeJson(settingsPath(), s); } catch (e) { log('write settings failed:', e.message); }
+  return s;
+}
+function npmRegistryUrl() {
+  const s = readSettings();
+  const route = s && (s.npmRegistry === 'official' || s.npmRegistry === 'mirror') ? s.npmRegistry : null;
+  if (route === 'official') return 'https://registry.npmjs.org';
+  if (route === 'mirror') return 'https://registry.npmmirror.com';
+  return process.env.DSH_NPM_REGISTRY || 'https://registry.npmmirror.com';
+}
+function registryInfo() {
+  const url = npmRegistryUrl();
+  let route;
+  if (url === 'https://registry.npmjs.org') route = 'official';
+  else if (url === 'https://registry.npmmirror.com') route = 'mirror';
+  else route = 'env';
+  return { route, url, label: route === 'official' ? '官方站（npmjs）' : route === 'mirror' ? '镜像站（npmmirror）' : '环境变量 DSH_NPM_REGISTRY' };
+}
 const UPSTREAM_GITHUB_RAW = process.env.DSH_UPSTREAM_GITHUB_RAW || 'https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master';
 const UPSTREAM_GITHUB_API = process.env.DSH_UPSTREAM_GITHUB_API || 'https://api.github.com/repos/deepseek-ai/deepseek-harness';
 const NODE_DIST_BASE = process.env.DSH_NODE_DIST_BASE || 'https://cdn.npmmirror.com/binaries/node';
@@ -307,7 +330,7 @@ function buildDedicatedEnv() {
   mkdirp(p.npmPrefix); mkdirp(p.npmCache); mkdirp(p.corepackHome); mkdirp(p.pnpmHome);
 
   // Dedicated .npmrc so the bundled npm never reads the user's global config.
-  const registry = REGISTRY;
+  const registry = npmRegistryUrl();
   const npmrcLines = [
     `registry=${registry}`,
     `cache=${p.npmCache.replace(/\\/g, '/')}`,
@@ -412,7 +435,7 @@ function currentVersions() {
 }
 /** npm 镜像上 @deepseek-ai/dsh 已发布的版本集合（与 GitHub 版本交叉校核用）。 */
 async function npmDshPublished() {
-  const doc = await fetchJson(`${REGISTRY}/@deepseek-ai%2Fdsh`);
+  const doc = await fetchJson(`${npmRegistryUrl()}/@deepseek-ai%2Fdsh`);
   const versions = Object.keys((doc && doc.versions) || {});
   if (!versions.length) throw new Error('npm registry returned no versions');
   return { versions, latest: highestSemver(versions) };
@@ -456,7 +479,7 @@ async function latestDshInfo() {
   if (!github && npm && npm.latest) {
     return { version: npm.latest, source: 'npm', changes: [], fallback: githubErr };
   }
-  const version = (await fetchJson(`${REGISTRY}/@deepseek-ai%2Fdsh/latest`)).version;
+  const version = (await fetchJson(`${npmRegistryUrl()}/@deepseek-ai%2Fdsh/latest`)).version;
   return { version, source: 'npm', changes: [], fallback: githubErr || npmErr };
 }
 async function latestDshVersion() { return (await latestDshInfo()).version; }
@@ -1054,25 +1077,92 @@ function commentPatchBlocks(text, selected = null) {
 }
 function preparePluginIsolation() {
   const p = P(); const parsed = patchBlocks(p.dshHome);
-  if (parsed.text == null || !parsed.blocks.length) return { active: false, plugins: [] };
-  const state = { original: parsed.text, createdAt: new Date().toISOString(), plugins: parsed.blocks.map((block, index) => ({ index, ids: block.entries.map((e) => e.id), names: block.entries.map((e) => e.name), status: 'pending' })) };
+  if (parsed.text == null || !parsed.blocks.length) return { active: false, plugins: [], entries: [] };
+  // ENTRY-level granularity: every plugin entry is tested and released
+  // individually, so one broken plugin can no longer take its whole block
+  // (a "class" of plugins) down with it.
+  const entries = [];
+  parsed.blocks.forEach((block, blockIndex) => {
+    block.entries.forEach((e) => {
+      entries.push({ index: entries.length, blockIndex, id: e.id, name: e.name, lineStart: e.lineStart, lineEnd: e.lineEnd, status: 'pending' });
+    });
+  });
+  const state = {
+    original: parsed.text, createdAt: new Date().toISOString(), granularity: 'entry',
+    plugins: parsed.blocks.map((block, index) => ({ index, ids: block.entries.map((e) => e.id), names: block.entries.map((e) => e.name), status: 'pending' })),
+    entries
+  };
   writeJson(pluginIsolationStatePath(), state);
   const backup = path.join(p.dshHome, `cordis.patch.yml.isolation-${formatDateTimestamp()}.bak`);
   fs.copyFileSync(path.join(p.dshHome, 'cordis.patch.yml'), backup);
-  writePatchText(p.dshHome, commentPatchBlocks(parsed.text));
-  return { active: true, backup, plugins: state.plugins };
+  writePatchText(p.dshHome, commentPatchEntries(parsed.text, null)); // comment ALL entries
+  return { active: true, backup, plugins: state.plugins, entries };
 }
+
+/**
+ * Comment entry ranges of a patch text. `selected` = Set(entry indexes) to KEEP
+ * active; null comments everything. A block's `- insert:` line is only commented
+ * when EVERY entry in it is commented (a bare insert would be a null insert).
+ */
+function commentPatchEntries(text, selected) {
+  const eol = String(text).includes('\r\n') ? '\r\n' : '\n';
+  const lines = String(text).split(/\r?\n/);
+  const blocks = parseHomePatchBlocks(text);
+  let entryIndex = 0;
+  for (const block of blocks) {
+    let commentedInBlock = 0;
+    for (const entry of block.entries) {
+      if (!(selected && selected.has(entryIndex))) {
+        for (let j = entry.lineStart; j < entry.lineEnd; j++) {
+          if (lines[j].trim() && !lines[j].startsWith('#')) lines[j] = '#' + lines[j];
+        }
+        commentedInBlock++;
+      }
+      entryIndex++;
+    }
+    if (block.entries.length > 0 && commentedInBlock === block.entries.length) {
+      const l = lines[block.start];
+      if (l && !l.trimStart().startsWith('#')) lines[block.start] = '#' + l;
+    }
+  }
+  return lines.join(eol);
+}
+
+/** Enable ONE plugin entry alone: comment everything except `entryIndex`. */
+function enablePluginIsolationEntry(entryIndex) {
+  const p = P(); const state = readJson(pluginIsolationStatePath(), null);
+  if (!state || !state.original || !state.entries) return false;
+  writePatchText(p.dshHome, commentPatchEntries(state.original, new Set([entryIndex])));
+  return true;
+}
+
+/** Legacy BLOCK-level enable (kept for compatibility; main.js uses entry-level). */
 function enablePluginIsolationBlock(index) {
-  const p = P(); const state = readJson(pluginIsolationStatePath(), null); if (!state || !state.original) return false;
-  const blocks = parseHomePatchBlocks(state.original); const selected = new Set([index]);
-  writePatchText(p.dshHome, commentPatchBlocks(state.original, selected)); return !!blocks[index];
+  const p = P(); const state = readJson(pluginIsolationStatePath(), null);
+  if (!state || !state.original) return false;
+  const blocks = parseHomePatchBlocks(state.original);
+  const selected = new Set((state.entries || []).filter((e) => e.blockIndex === index).map((e) => e.index));
+  writePatchText(p.dshHome, commentPatchEntries(state.original, selected));
+  return !!blocks[index];
 }
+
+/**
+ * Finish: restore the original patch with ONLY the failed entries commented —
+ * every entry that passed stays active. statuses carry ENTRY indexes.
+ */
 function finishPluginIsolation(statuses = []) {
   const p = P(); const state = readJson(pluginIsolationStatePath(), null); if (!state || !state.original) return null;
-  const failed = new Set(statuses.filter((s) => s.status === 'failed').map((s) => s.index));
-  const good = new Set(state.plugins.map((item) => item.index).filter((index) => !failed.has(index)));
-  const result = { ...state, plugins: state.plugins.map((item) => ({ ...item, ...(statuses.find((s) => s.index === item.index) || {}) })), finishedAt: new Date().toISOString() };
-  writePatchText(p.dshHome, commentPatchBlocks(state.original, good));
+  const failed = new Set((statuses || []).filter((s) => s.status === 'failed').map((s) => s.index));
+  const entries = state.entries || [];
+  const allIdx = new Set(entries.map((e) => e.index));
+  const good = new Set([...allIdx].filter((i) => !failed.has(i)));
+  const statusMap = new Map((statuses || []).map((s) => [s.index, s]));
+  const result = {
+    ...state, finishedAt: new Date().toISOString(),
+    plugins: (state.plugins || []).map((blk) => ({ ...blk, status: 'done' })),
+    entries: entries.map((e) => ({ ...e, ...(statusMap.get(e.index) || {}) }))
+  };
+  writePatchText(p.dshHome, commentPatchEntries(state.original, good));
   writeJson(pluginIsolationStatePath(), result); return result;
 }
 function clearPluginIsolation() { try { fs.unlinkSync(pluginIsolationStatePath()); } catch {} }
@@ -1706,11 +1796,23 @@ async function stageDsh(callbacks = {}, requestedVersion = null) {
   rimraf(p.dshNew); mkdirp(p.dshNew);
   writeJson(path.join(p.dshNew, 'package.json'), { name: 'dsh-active-backend', version: '0.0.0', private: true, dependencies: { '@deepseek-ai/dsh': latest } });
   say(`正在下载并安装 DSH 后端 ${latest}（${info.source === 'github' ? 'GitHub 版本，npm 下载' : 'npm'}，依赖较多，请稍候）…`);
-  await run(p.nodeExe, [p.npmCli, 'install', '--no-audit', '--no-fund', '--loglevel=error', `--registry=${REGISTRY}`, '--no-bin-links'], {
-    cwd: p.dshNew,
-    env: buildDedicatedEnv(),
-    onOutput: (s) => { const l = s.trim(); if (l && l.includes('packages')) say(l); }
-  });
+  try {
+    await run(p.nodeExe, [p.npmCli, 'install', '--no-audit', '--no-fund', '--loglevel=error', `--registry=${npmRegistryUrl()}`, '--no-bin-links'], {
+      cwd: p.dshNew,
+      env: buildDedicatedEnv(),
+      onOutput: (s) => { const l = s.trim(); if (l && l.includes('packages')) say(l); }
+    });
+  } catch (e) {
+    const msg = (e && e.message) || String(e);
+    if (/ETARGET|No matching version found/i.test(msg)) {
+      // 2026-09-08 晚上事故：dsh@0.1.5-alpha.1 在 npmmirror 上存在，但其依赖
+      // dsh-fs-local@^0.1.5-alpha.1 尚未同步 → ETARGET → 整个安装回滚。给出可
+      // 操作的提示，而不是一句冷冰冰的 npm 报错。
+      throw new Error('下载失败：当前更新路线「' + registryInfo().label + '」尚未同步该版本的完整依赖（ETARGET）。\n' +
+        '可在托盘「设置」中把更新路线切换到「官方站（npmjs）」后重试，或稍等镜像同步（通常几小时）后再试。\n\n' + msg);
+    }
+    throw e;
+  }
   const newBin = path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
   if (!fs.existsSync(newBin)) { rimraf(p.dshNew); throw new Error('后端暂存安装后未找到 dsh，已放弃（当前版本不受影响）。'); }
   const ver = readJson(path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'package.json'), {}).version || null;
@@ -1945,7 +2047,8 @@ module.exports = {
   buildDedicatedEnv, describeEnvIsolation, enableCorepack,
   currentVersions, stagedVersions, checkForUpdates,
   snapshotPluginState, pluginCompatibilityReport, disableIncompatiblePlugins, rollbackDsh,
-  preparePluginIsolation, enablePluginIsolationBlock, finishPluginIsolation, clearPluginIsolation,
+  preparePluginIsolation, enablePluginIsolationBlock, enablePluginIsolationEntry, finishPluginIsolation, clearPluginIsolation,
+  readSettings, writeSettings, npmRegistryUrl, registryInfo,
   stageDsh, stageNode,
   latestDshVersion, latestDshInfo, latestNodeVersion, minNodeForDsh, nodeMeetsRequirement,
   compareSemver
