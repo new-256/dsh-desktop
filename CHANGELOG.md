@@ -2,6 +2,21 @@
 
 这里记录每个版本改了什么。版本号和 `package.json` 保持一致。
 
+## 0.3.32（2026-09-09）
+
+**修复"命令行装插件会装错地方"这一结构性问题。** 根因：桌面版把后端隔离在自己的 `DSH_HOME`（`userData\dsh-home`，`buildDedicatedEnv()` 会主动剥离继承的 `DSH_HOME`），而用户在普通终端里跑的 `dsh`（npm 全局装）默认 home 是 `~/.dsh`。照上游 README 直接敲 `dsh plugin --profile web add X`，插件会装进旧 home，桌面版永远加载不到——本机 `~/.dsh` 里 9 个插件（含 `dsh-chrome@0.1.3`，即 `browser_*` 工具不出现的原因）就是这样产生的。**注意 `dsh plugin add` 写的是 `package.json` 的 `dependencies` + `dsh.profile.bundles`（后者才决定是否被加载），不是 `cordis.patch.yml`——手工拷包目录无效。**
+
+设置窗新增「**插件安装与终端**」区，三条根治通道 + 一条止梗通道：
+
+1. **应用内安装（推荐，永不装错）**：填包名（`dsh-chrome` / `dsh-chrome@0.1.3` / 本地 `.tgz` 路径）点安装，主进程用桌面版自带的 Node + dsh 入口、经 `buildDedicatedEnv()`（`DSH_HOME` 天然正确）执行 `plugin add`，安装日志实时回显，成功后提示重启加载。分发用户无需安装 CLI、无需碰终端、不可能装错。
+2. **终端包装器**：自动生成 `dsh-desktop.cmd` / `dsh.cmd` / `dsh-desktop.ps1` 到 `userData\bin`（每次启动刷新），脚本内固定 `DSH_HOME` + 调用桌面版 Node 与 dsh 入口，并带"后端未初始化"守卫。可一键加入用户 PATH——**追加在末尾，不抢占**用户已有的全局 `dsh`。终端里 `dsh-desktop plugin --profile web add X` 永远正确。
+3. **智能 `DSH_HOME` 环境变量**：写用户级（`HKCU\Environment`）`DSH_HOME` 并广播 `WM_SETTINGCHANGE`，让 README 原文命令也落到桌面 home。**智能默认**：检测到 `~/.dsh` 已在使用（有插件/会话/凭据）时**不自动写入**，避免让原有独立 CLI 环境"消失"，仅在设置窗给开关；干净机器首次启动自动写入，分发用户开箱即对。决策记在 `settings.json`，只做一次，用户关掉后不会被重新打开。
+4. **旧 Home 扫描 + 勾选导入**：对比两个 home 的 `dsh.profile.bundles`，列出桌面版看不到的插件（名称/版本/形态），勾选后逐个走通道 ① 的正规流程装进桌面 home；`link:`/`file:` 本地依赖标记为"需手工"不盲目重装；结果导出 `DSH-Desktop-插件迁移报告-<时间戳>.txt` 到桌面。
+
+修复：0.3.31 引入的设置窗 DOM 缺陷——「DSH 后端版本管理」区缺少闭合 `</div>`，导致「手机访问」区被错误嵌套其中（现已配平，6 个区块各自独立）。
+
+验证：真实环境 25 项断言全过（旧 home 扫描识别 9 个孤儿并读到真实版本、link 依赖正确标记、包装器三脚本内容与守卫、PATH/环境变量只读状态、迁移报告内容、空包名拒绝）；并完成**真实端到端安装**——经应用内通道装入 `dsh-chrome@0.1.3` 后 `bundles` 已含 `dsh-chrome`、包目录与版本正确；包装器在**故意不带 `DSH_HOME` 的干净终端**中执行 `plugin list`，正确解析到桌面版 home 并列出该插件。安全守卫复核：本机（旧 home 在用）`preseed` 正确跳过，未改动任何环境变量与 PATH。
+
 ## 0.3.31（2026-09-09）
 
 版本管理增强（设置窗）——Node 与 DSH 后端都支持"任意版本选择/回退"，后端回退带插件兼容性分析并导出桌面报告：

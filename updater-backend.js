@@ -125,7 +125,9 @@ function P() {
     npmCache: path.join(root, '.npm-cache'),
     npmRc: path.join(root, '.npmrc'),
     corepackHome: path.join(root, '.corepack'),
-    pnpmHome: path.join(root, '.pnpm')
+    pnpmHome: path.join(root, '.pnpm'),
+    // 终端包装器脚本目录（dsh.cmd / dsh-desktop.cmd，可加入用户 PATH）
+    binDir: path.join(userDataPath(), 'bin')
   };
 }
 
@@ -2537,6 +2539,417 @@ async function checkForUpdates(options = {}) {
   return result;
 }
 
+// --------------------------------------------------------------------------
+// PLUGIN INSTALL / TERMINAL WIRING / LEGACY HOME IMPORT (0.3.32)
+//
+// 问题背景：桌面版把后端隔离在 userData/dsh-home（buildDedicatedEnv 会主动剥离
+// 继承的 DSH_HOME），而用户在普通终端里跑的 `dsh`（npm 全局装）默认 DSH_HOME 是
+// ~/.dsh。照 README 直接敲 `dsh plugin --profile web add X` 会装进旧 home，桌面版
+// 永远加载不到。这里提供三条根治通道 + 一条止血通道：
+//   ① installPluginViaCli()  —— 应用内安装，用桌面自带 node+dsh+dedicated env，
+//      DSH_HOME 天然正确，分发用户无需装 CLI、无需碰终端。
+//   ② writeWrapperScripts()  —— 生成 dsh-desktop.cmd / dsh.cmd 到 userData/bin，
+//      脚本内部固定 DSH_HOME 并调用桌面版 node + dsh 入口；可加入用户 PATH。
+//   ③ DSH_HOME 用户级环境变量（智能默认）—— 无旧 ~/.dsh 的干净机器首启自动写入，
+//      让 README 原文命令也落到桌面 home；已有旧 home 的机器只在设置窗给开关。
+//   ④ scanLegacyHome()/importLegacyPlugins() —— 扫描旧 home 中桌面版看不见的插件，
+//      勾选后走 ① 的正规流程装进桌面 home（一次性止血）。
+// --------------------------------------------------------------------------
+
+/** 旧 CLI 默认 home（~/.dsh）。 */
+function legacyHomePath() {
+  const profile = process.env.USERPROFILE || os.homedir();
+  return path.join(profile, '.dsh');
+}
+
+/** profile 的 package.json 路径（web / 其他 profile 同构）。 */
+function profilePkgPath(home, profile = 'web') {
+  return path.join(home, 'profiles', profile, 'package.json');
+}
+
+/**
+ * 读取某个 home 的插件注册表。dsh plugin add 实际写两处：
+ *   dependencies（pnpm 装包）与 dsh.profile.bundles（加载登记）——
+ * 后者才决定"会不会被加载"，所以以 bundles 为准，dependencies 提供版本号。
+ */
+function readProfileRegistry(home, profile = 'web') {
+  const pkg = readJson(profilePkgPath(home, profile), null);
+  if (!pkg) return null;
+  const bundles = (pkg.dsh && pkg.dsh.profile && Array.isArray(pkg.dsh.profile.bundles)) ? pkg.dsh.profile.bundles : [];
+  return { pkg, bundles, deps: pkg.dependencies || {} };
+}
+
+/** dsh 自带的基础 bundle，不属于"用户安装的插件"，扫描时排除。 */
+const BASE_BUNDLES = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']);
+
+/**
+ * 扫描旧 home（默认 ~/.dsh）里桌面版看不到的插件。
+ * 返回 { exists, home, profile, orphans: [{ name, version, spec, kind, installed }], total }
+ * kind: 'npm'（可正常重装）| 'link'（link:/file: 本地依赖，需用户自行处理）
+ */
+function scanLegacyHome(legacyHome = null, profile = 'web') {
+  const home = legacyHome || legacyHomePath();
+  const out = { exists: false, home, profile, orphans: [], total: 0, sameAsDesktop: false };
+  const desktopHome = dshHome();
+  if (path.resolve(home).toLowerCase() === path.resolve(desktopHome).toLowerCase()) {
+    out.sameAsDesktop = true;
+    return out;
+  }
+  if (!fs.existsSync(home)) return out;
+  out.exists = true;
+  const legacy = readProfileRegistry(home, profile);
+  if (!legacy) return out;
+  const desktop = readProfileRegistry(desktopHome, profile) || { bundles: [], deps: {} };
+  const have = new Set(desktop.bundles.map((b) => String(b)));
+  for (const name of legacy.bundles) {
+    const bare = String(name);
+    if (BASE_BUNDLES.has(bare) || have.has(bare)) continue;
+    const declared = legacy.deps[bare] ? String(legacy.deps[bare]) : '';
+    const isLink = /^(link:|file:)/i.test(declared);
+    // 已装在旧 home 的实际版本（优先读包自己的 package.json，最准）
+    let installed = null;
+    try {
+      const m = readJson(path.join(home, 'profiles', profile, 'node_modules', bare, 'package.json'), null);
+      if (m && m.version) installed = String(m.version);
+    } catch {}
+    out.orphans.push({
+      name: bare,
+      version: installed || declared.replace(/^[\^~]/, '') || null,
+      declared: declared || null,
+      spec: isLink ? declared : (installed ? `${bare}@${installed}` : bare),
+      kind: isLink ? 'link' : 'npm',
+      installable: !isLink
+    });
+  }
+  out.total = out.orphans.length;
+  return out;
+}
+
+/** 旧 home 是否"有人在用"（决定 DSH_HOME 环境变量的智能默认）。 */
+function legacyHomeInUse() {
+  const home = legacyHomePath();
+  if (!fs.existsSync(home)) return false;
+  // 有注册过插件、有会话、或有凭据 → 视为用户在独立使用 CLI，不擅自改其 DSH_HOME
+  try {
+    const reg = readProfileRegistry(home, 'web');
+    if (reg && reg.bundles.some((b) => !BASE_BUNDLES.has(String(b)))) return true;
+  } catch {}
+  for (const rel of ['sessions', '.credentials.yaml', 'settings.yaml']) {
+    try {
+      const full = path.join(home, rel);
+      if (!fs.existsSync(full)) continue;
+      const st = fs.statSync(full);
+      if (st.isDirectory()) { if (fs.readdirSync(full).length > 0) return true; }
+      else if (st.size > 0) return true;
+    } catch {}
+  }
+  return false;
+}
+
+// ---- 用户级环境变量（HKCU\Environment）读写 -------------------------------
+function regQueryUserEnv(name) {
+  try {
+    const out = execFileSync('reg', ['query', 'HKCU\\Environment', '/v', name], {
+      // 变量不存在时 reg.exe 会往 stderr 打印本地化错误（GBK 编码，在 Electron
+      // 控制台显示为乱码）——那是正常的"未设置"信号而非故障，吞掉 stderr。
+      encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore']
+    });
+    // 形如：    DSH_HOME    REG_SZ    C:\path
+    const m = out.split(/\r?\n/).map((l) => l.trim()).find((l) => l.toUpperCase().startsWith(name.toUpperCase() + ' '));
+    if (!m) return null;
+    const parts = m.split(/\s{2,}/);
+    if (parts.length < 3) return null;
+    return { type: parts[1], value: parts.slice(2).join('    ') };
+  } catch { return null; }
+}
+
+function regSetUserEnv(name, value, type = 'REG_SZ') {
+  execFileSync('reg', ['add', 'HKCU\\Environment', '/v', name, '/t', type, '/d', value, '/f'], { encoding: 'utf8', windowsHide: true });
+  broadcastEnvChange();
+}
+
+function regDeleteUserEnv(name) {
+  try {
+    execFileSync('reg', ['delete', 'HKCU\\Environment', '/v', name, '/f'], { encoding: 'utf8', windowsHide: true });
+  } catch (e) {
+    if (!/找不到|cannot find|unable to find/i.test(String(e && (e.stderr || e.message)))) throw e;
+  }
+  broadcastEnvChange();
+}
+
+/**
+ * 广播 WM_SETTINGCHANGE，让新开的终端/资源管理器立刻看到环境变量变化
+ * （不广播的话只有重启后的进程才能看到）。失败不影响写入本身。
+ */
+function broadcastEnvChange() {
+  try {
+    execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+      "$s='using System;using System.Runtime.InteropServices;public class DshEnv{[DllImport(\"user32.dll\",SetLastError=true,CharSet=CharSet.Auto)]public static extern IntPtr SendMessageTimeout(IntPtr hWnd,uint Msg,UIntPtr wParam,string lParam,uint fuFlags,uint uTimeout,out UIntPtr lpdwResult);public static void Broadcast(){UIntPtr r;SendMessageTimeout((IntPtr)0xffff,0x1A,UIntPtr.Zero,\"Environment\",2,1000,out r);}}';Add-Type -TypeDefinition $s;[DshEnv]::Broadcast()"
+    ], { encoding: 'utf8', windowsHide: true, timeout: 15000 });
+  } catch (e) { log('broadcast env change failed (harmless):', e && e.message); }
+}
+
+/** DSH_HOME 用户级环境变量当前状态 + 智能默认建议。 */
+function dshHomeEnvStatus() {
+  const desired = dshHome();
+  const cur = regQueryUserEnv('DSH_HOME');
+  const legacyBusy = legacyHomeInUse();
+  const pointsHere = !!(cur && path.resolve(cur.value).toLowerCase() === path.resolve(desired).toLowerCase());
+  return {
+    desired,
+    current: cur ? cur.value : null,
+    set: !!cur,
+    pointsHere,
+    legacyHome: legacyHomePath(),
+    legacyInUse: legacyBusy,
+    // 智能默认：干净机器（无旧 home 在用）才自动写入
+    autoEligible: !legacyBusy,
+    autoApplied: !!readSettings().dshHomeEnvAutoApplied
+  };
+}
+
+/** 写入/移除 DSH_HOME 用户级环境变量（显式操作，来自设置窗）。 */
+function setDshHomeEnv(enabled) {
+  if (enabled) {
+    regSetUserEnv('DSH_HOME', dshHome());
+    writeSettings({ dshHomeEnv: true });
+    log('user env DSH_HOME set to', dshHome());
+  } else {
+    regDeleteUserEnv('DSH_HOME');
+    writeSettings({ dshHomeEnv: false });
+    log('user env DSH_HOME removed');
+  }
+  return dshHomeEnvStatus();
+}
+
+/**
+ * 智能默认：干净机器（没有在用的 ~/.dsh）首次启动时自动写入 DSH_HOME，
+ * 让分发用户照 README 敲命令就落在桌面 home。只做一次（记在 settings.json），
+ * 用户在设置窗关掉后不会被重新打开。
+ */
+function preseedDshHomeEnv() {
+  try {
+    const s = readSettings();
+    if (s.dshHomeEnvAutoApplied || s.dshHomeEnv === false) return { applied: false, reason: 'already-decided' };
+    const st = dshHomeEnvStatus();
+    if (!st.autoEligible) {
+      writeSettings({ dshHomeEnvAutoApplied: true });
+      return { applied: false, reason: 'legacy-home-in-use' };
+    }
+    if (st.pointsHere) {
+      writeSettings({ dshHomeEnvAutoApplied: true, dshHomeEnv: true });
+      return { applied: false, reason: 'already-correct' };
+    }
+    regSetUserEnv('DSH_HOME', st.desired);
+    writeSettings({ dshHomeEnvAutoApplied: true, dshHomeEnv: true });
+    log('preseeded user env DSH_HOME =', st.desired);
+    return { applied: true, value: st.desired };
+  } catch (e) {
+    log('preseed DSH_HOME failed:', e && e.message);
+    return { applied: false, reason: (e && e.message) || 'error' };
+  }
+}
+
+// ---- 终端包装器脚本 -------------------------------------------------------
+/**
+ * 生成 dsh-desktop.cmd / dsh-desktop.ps1 / dsh.cmd 到 userData/bin。
+ * 脚本内部固定 DSH_HOME + 用桌面版 node 跑桌面版 dsh 入口 —— 与应用内安装
+ * 完全等价，因此终端里怎么敲都不会再装错 home。
+ */
+function writeWrapperScripts() {
+  const p = P();
+  mkdirp(p.binDir);
+  const home = p.dshHome;
+  const cmd = [
+    '@echo off',
+    'rem DSH Desktop 终端包装器 —— 由桌面版自动生成，请勿手工编辑。',
+    'rem 固定 DSH_HOME 指向桌面版 home，并用桌面版自带 Node 运行桌面版 dsh 入口。',
+    'setlocal',
+    `set "DSH_HOME=${home}"`,
+    `set "PATH=${p.root};%PATH%"`,
+    `if not exist "${p.dshBin}" (`,
+    '  echo [dsh-desktop] 后端尚未初始化：请先启动一次 DSH Desktop。 1>&2',
+    '  exit /b 1',
+    ')',
+    `"${p.nodeExe}" "${p.dshBin}" %*`,
+    'endlocal & exit /b %ERRORLEVEL%',
+    ''
+  ].join('\r\n');
+  const ps1 = [
+    '# DSH Desktop 终端包装器（PowerShell）—— 由桌面版自动生成，请勿手工编辑。',
+    `$env:DSH_HOME = '${home.replace(/'/g, "''")}'`,
+    `$env:PATH = '${p.root.replace(/'/g, "''")}' + ';' + $env:PATH`,
+    `if (-not (Test-Path -LiteralPath '${p.dshBin.replace(/'/g, "''")}')) {`,
+    "  Write-Error '[dsh-desktop] 后端尚未初始化：请先启动一次 DSH Desktop。'; exit 1",
+    '}',
+    `& '${p.nodeExe.replace(/'/g, "''")}' '${p.dshBin.replace(/'/g, "''")}' @args`,
+    'exit $LASTEXITCODE',
+    ''
+  ].join('\r\n');
+  const written = [];
+  for (const name of ['dsh-desktop.cmd', 'dsh.cmd']) {
+    const file = path.join(p.binDir, name);
+    fs.writeFileSync(file, cmd, 'utf8');
+    written.push(file);
+  }
+  const ps1File = path.join(p.binDir, 'dsh-desktop.ps1');
+  fs.writeFileSync(ps1File, ps1, 'utf8');
+  written.push(ps1File);
+  log('wrote terminal wrappers into', p.binDir);
+  return { dir: p.binDir, files: written };
+}
+
+/** 用户 PATH 里是否已包含包装器目录。 */
+function userPathStatus() {
+  const p = P();
+  const cur = regQueryUserEnv('Path');
+  const entries = cur ? String(cur.value).split(';').map((s) => s.trim()).filter(Boolean) : [];
+  const target = path.resolve(p.binDir).toLowerCase();
+  return {
+    dir: p.binDir,
+    inPath: entries.some((e) => { try { return path.resolve(e).toLowerCase() === target; } catch { return false; } }),
+    exists: fs.existsSync(path.join(p.binDir, 'dsh-desktop.cmd')),
+    type: cur ? cur.type : null,
+    entries: entries.length
+  };
+}
+
+/**
+ * 把包装器目录加入/移出用户 PATH。追加在**末尾** —— 绝不抢占用户可能已有的
+ * 全局 dsh（他们的 dsh 依然优先，dsh-desktop 是无歧义的新命令）。
+ */
+function setUserPathEntry(enabled) {
+  const p = P();
+  if (enabled) writeWrapperScripts();
+  const cur = regQueryUserEnv('Path');
+  const type = (cur && cur.type) || 'REG_EXPAND_SZ';
+  const entries = cur ? String(cur.value).split(';').map((s) => s.trim()).filter(Boolean) : [];
+  const target = path.resolve(p.binDir).toLowerCase();
+  const without = entries.filter((e) => { try { return path.resolve(e).toLowerCase() !== target; } catch { return true; } });
+  const next = enabled ? [...without, p.binDir] : without;
+  if (!next.length) { regDeleteUserEnv('Path'); }
+  else { regSetUserEnv('Path', next.join(';'), type); }
+  log(enabled ? 'added wrapper dir to user PATH' : 'removed wrapper dir from user PATH');
+  return userPathStatus();
+}
+
+// ---- 应用内插件安装 -------------------------------------------------------
+/**
+ * 在桌面版自己的环境里跑 `dsh plugin --profile <profile> add <spec>`。
+ * 这是唯一保证 DSH_HOME 正确的安装通道：node/dsh 都用桌面版自带的，
+ * env 走 buildDedicatedEnv()（其中 DSH_HOME 被强制为 userData/dsh-home）。
+ * 返回 { ok, code, log, spec }；callbacks.onLog 可实时接收输出行。
+ */
+function installPluginViaCli(spec, options = {}) {
+  const { profile = 'web', timeoutMs = 600000, onLog = null, action = 'add' } = options;
+  const p = P();
+  const clean = String(spec || '').trim();
+  if (!clean) return Promise.resolve({ ok: false, code: -1, log: '未提供插件名。', spec: clean });
+  if (!fs.existsSync(p.nodeExe) || !fs.existsSync(p.dshBin)) {
+    return Promise.resolve({ ok: false, code: -1, log: '后端尚未初始化（缺少 node.exe 或 dsh 入口），请先正常启动一次。', spec: clean });
+  }
+  const args = [p.dshBin, 'plugin'];
+  if (profile) args.push('--profile', profile);
+  args.push(action, clean);
+  const env = buildDedicatedEnv();
+  log(`plugin ${action} via desktop CLI:`, clean, 'profile=', profile, 'DSH_HOME=', env.DSH_HOME);
+  return new Promise((resolve) => {
+    let out = '';
+    let done = false;
+    const say = (chunk) => {
+      const text = String(chunk);
+      out += text;
+      if (onLog) text.split(/\r?\n/).filter((l) => l.trim()).forEach((l) => onLog(l));
+    };
+    let child;
+    try {
+      child = spawn(p.nodeExe, args, { cwd: p.dshHome, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) {
+      return resolve({ ok: false, code: -1, log: `启动安装进程失败：${e && e.message}`, spec: clean });
+    }
+    const timer = setTimeout(() => {
+      if (done) return;
+      try { child.kill(); } catch {}
+      done = true;
+      resolve({ ok: false, code: -1, log: out + `\n[超时] 安装超过 ${Math.round(timeoutMs / 1000)}s，已中止。`, spec: clean, timedOut: true });
+    }, timeoutMs);
+    child.stdout.on('data', say);
+    child.stderr.on('data', say);
+    child.on('error', (e) => {
+      if (done) return; done = true; clearTimeout(timer);
+      resolve({ ok: false, code: -1, log: out + `\n[错误] ${e && e.message}`, spec: clean });
+    });
+    child.on('exit', (code) => {
+      if (done) return; done = true; clearTimeout(timer);
+      resolve({ ok: code === 0, code, log: out, spec: clean });
+    });
+  });
+}
+
+/**
+ * 批量把旧 home 的插件导入桌面 home（逐个走 installPluginViaCli）。
+ * link:/file: 形态的本地依赖不能盲目重装，直接标记跳过并说明原因。
+ */
+async function importLegacyPlugins(items, options = {}) {
+  const { profile = 'web', onLog = null } = options;
+  const results = [];
+  for (const it of (items || [])) {
+    const name = typeof it === 'string' ? it : (it && it.name);
+    const spec = typeof it === 'string' ? it : (it && (it.spec || it.name));
+    const kind = typeof it === 'string' ? 'npm' : ((it && it.kind) || 'npm');
+    if (!name) continue;
+    if (kind === 'link') {
+      results.push({ name, spec, ok: false, skipped: true, reason: '本地 link:/file: 依赖，需按原路径手工安装（源码目录可能已不存在）' });
+      onLog && onLog(`[跳过] ${name} —— 本地 link 依赖，需手工处理`);
+      continue;
+    }
+    onLog && onLog(`[开始] ${name} → ${spec}`);
+    const r = await installPluginViaCli(spec, { profile, onLog });
+    results.push({ name, spec, ok: r.ok, code: r.code, reason: r.ok ? '安装成功' : (r.timedOut ? '安装超时' : '安装失败，详见日志'), log: r.log });
+    onLog && onLog(`[${r.ok ? '成功' : '失败'}] ${name}`);
+  }
+  return {
+    total: results.length,
+    ok: results.filter((r) => r.ok).length,
+    failed: results.filter((r) => !r.ok && !r.skipped).length,
+    skipped: results.filter((r) => r.skipped).length,
+    results
+  };
+}
+
+/** 把导入结果导出到桌面（与回退兼容报告同一套路）。 */
+function exportLegacyImportReport(scan, summary) {
+  const desktop = require('./diag-log').desktopDir();
+  mkdirp(desktop);
+  const stamp = new Date().toISOString().replace(/[:.]/g, '').replace('T', '-').slice(0, 17);
+  const file = path.join(desktop, `DSH-Desktop-插件迁移报告-${stamp}.txt`);
+  const lines = [];
+  lines.push('DSH 插件迁移报告（旧 CLI Home → 桌面版 Home）');
+  lines.push('='.repeat(52));
+  lines.push(`旧 Home：${scan && scan.home}`);
+  lines.push(`桌面 Home：${dshHome()}`);
+  lines.push(`Profile：${(scan && scan.profile) || 'web'}`);
+  lines.push(`时间：${new Date().toISOString()}`);
+  if (summary) lines.push(`结果：共 ${summary.total} 项 —— 成功 ${summary.ok} / 失败 ${summary.failed} / 跳过 ${summary.skipped}`);
+  lines.push('-'.repeat(52));
+  if (summary && summary.results) {
+    for (const r of summary.results) {
+      lines.push(`[${r.skipped ? '跳过' : r.ok ? '成功' : '失败'}] ${r.name}${r.spec && r.spec !== r.name ? `  (${r.spec})` : ''}`);
+      lines.push(`    ${r.reason}`);
+    }
+  } else if (scan && scan.orphans) {
+    for (const o of scan.orphans) {
+      lines.push(`[待导入] ${o.name}${o.version ? ' v' + o.version : ''}${o.kind === 'link' ? '（本地 link 依赖，需手工）' : ''}`);
+    }
+  }
+  lines.push('');
+  lines.push('说明：桌面版把后端隔离在自己的 DSH_HOME，终端里 npm 全局装的 dsh 默认用 ~/.dsh，');
+  lines.push('      所以照 README 直接敲命令会装进旧 home。设置窗「插件安装与终端」区已提供');
+  lines.push('      应用内安装、dsh-desktop 包装器与 DSH_HOME 环境变量三条正确通道。');
+  fs.writeFileSync(file, lines.join('\r\n'), 'utf8');
+  return file;
+}
+
 module.exports = {
   P, activeRoot, dshHome, requestedBackendVersion, clearRequestedBackendVersion,
   ensureSeeded, migrateProjectionCache, applyStaged, ensureNodeMeetsRequirement,
@@ -2556,6 +2969,11 @@ module.exports = {
   stageDsh, stageNode,
   listNodeVersions, npmDshVersionsAll, backendEnginesFor,
   analyzeBackendRollback, exportBackendCompatReport,
+  // 0.3.32 插件安装 / 终端接线 / 旧 home 迁移
+  legacyHomePath, scanLegacyHome, legacyHomeInUse, readProfileRegistry,
+  dshHomeEnvStatus, setDshHomeEnv, preseedDshHomeEnv,
+  writeWrapperScripts, userPathStatus, setUserPathEntry,
+  installPluginViaCli, importLegacyPlugins, exportLegacyImportReport,
   latestDshVersion, latestDshInfo, latestNodeVersion, minNodeForDsh, nodeMeetsRequirement,
   compareSemver
 };

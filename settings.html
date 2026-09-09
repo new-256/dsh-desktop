@@ -24,12 +24,25 @@ button.primary:hover { background: #6f92bd; }
 button:disabled { opacity: .45; cursor: default; }
 .actions { display: flex; gap: 10px; margin-top: 12px; }
 input[type=radio], input[type=checkbox] { accent-color: #5e81ac; }
+input[type=number] { background: #2e3440; color: #e5e9f0; border: 1px solid #3b4252; border-radius: 6px; padding: 5px 8px; font-size: 13px; width: 90px; }
+details { margin-top: 10px; }
+summary { color: #88c0d0; cursor: pointer; font-size: 12px; }
 select { background: #2e3440; color: #e5e9f0; border: 1px solid #3b4252; border-radius: 6px; padding: 5px 8px; font-size: 13px; max-width: 320px; }
 #compatBox { margin-top: 10px; font-size: 12px; }
 #compatBox table { border-collapse: collapse; width: 100%; margin-top: 6px; }
 #compatBox th, #compatBox td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #232a3d; vertical-align: top; }
 #compatBox th { color: #7f8ba3; font-weight: normal; }
 .bad { color: #bf616a; } .mid { color: #d08770; } .good { color: #a3be8c; }
+h3 { font-size: 12px; color: #d8dee9; margin: 14px 0 6px; font-weight: 600; }
+code { font-family: Consolas, monospace; color: #ebcb8b; font-size: 11.5px; }
+input[type=text] { background: #2e3440; color: #e5e9f0; border: 1px solid #3b4252; border-radius: 6px; padding: 6px 9px; font-size: 12.5px; flex: 1; min-width: 180px; }
+button.mini { padding: 3px 10px; font-size: 11px; }
+.cmdline { flex: 1; user-select: text; word-break: break-all; background: #161c2e; border: 1px solid #232a3d; border-radius: 5px; padding: 5px 8px; }
+pre.log { margin-top: 6px; max-height: 190px; overflow: auto; background: #070b16; border: 1px solid #232a3d; border-radius: 6px; padding: 8px 10px; font: 11px/1.55 Consolas, monospace; color: #b8c0d0; user-select: text; white-space: pre-wrap; word-break: break-all; }
+#legacyBox { margin-top: 10px; font-size: 12px; }
+#legacyBox table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+#legacyBox th, #legacyBox td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #232a3d; vertical-align: top; }
+#legacyBox th { color: #7f8ba3; font-weight: normal; }
 .note { margin-top: 16px; font-size: 12px; color: #7f8ba3; border-top: 1px solid #232a3d; padding-top: 10px; }
 #msg { margin-top: 10px; min-height: 20px; font-size: 12px; }
 .err { color: #bf616a; }
@@ -95,6 +108,69 @@ select { background: #2e3440; color: #e5e9f0; border: 1px solid #3b4252; border-
 </div>
 
 <div class="section">
+<h2>插件安装与终端</h2>
+<div class="row"><span class="dim">桌面版把后端隔离在自己的 DSH_HOME；终端里 npm 全局装的 <code>dsh</code> 默认用 <code>~/.dsh</code>，照 README 直接敲命令会装错地方、桌面版加载不到。下面三条通道都指向正确的 home。</span></div>
+<div class="kv">
+<div class="k">桌面版 Home</div><div class="v" id="tHome">读取中…</div>
+<div class="k">DSH_HOME 变量</div><div class="v" id="tEnv">—</div>
+<div class="k">包装器 PATH</div><div class="v" id="tPath">—</div>
+</div>
+
+<h3>① 应用内安装（推荐，永不装错）</h3>
+<div class="row">
+<input type="text" id="pSpec" placeholder="插件名，如 dsh-chrome 或 dsh-chrome@0.1.3 或本地 .tgz 路径">
+<select id="pProfile"><option value="web">web</option><option value="">（不指定 profile）</option></select>
+<button id="btnPInstall" class="primary">安装</button>
+</div>
+<div class="row"><span class="dim">用桌面版自带的 Node + dsh 入口执行 <code>plugin add</code>，DSH_HOME 天然正确。无需安装 CLI、无需碰终端。</span></div>
+
+<h3>② 终端包装器</h3>
+<div class="row"><input type="checkbox" id="tPathToggle"><label for="tPathToggle">把包装器目录加入用户 PATH（终端可直接用 <code>dsh-desktop</code>）</label></div>
+<div class="row"><span class="dim">生成 <code>dsh-desktop.cmd</code> / <code>dsh.cmd</code> / <code>dsh-desktop.ps1</code>，脚本内固定 DSH_HOME 并调用桌面版 Node。追加在 PATH <b>末尾</b>，不抢占你已有的全局 <code>dsh</code>。</span></div>
+<div class="row"><code id="tCmdWrapper" class="cmdline">—</code><button id="btnCopyWrapper" class="mini">复制</button></div>
+
+<h3>③ DSH_HOME 环境变量</h3>
+<div class="row"><input type="checkbox" id="tEnvToggle"><label for="tEnvToggle">写入用户级 <code>DSH_HOME</code>（让 README 原文命令也落到桌面 Home）</label></div>
+<div class="row"><span class="dim" id="tEnvNote">—</span></div>
+<div class="row"><code id="tCmdPwsh" class="cmdline">—</code><button id="btnCopyPwsh" class="mini">复制</button></div>
+
+<h3>④ 从旧 Home 导入已装插件</h3>
+<div class="actions">
+<button id="btnScanLegacy" class="primary">扫描旧 Home</button>
+<button id="btnImportLegacy">导入所选并导出报告</button>
+</div>
+<div id="legacyBox"></div>
+
+<h3>安装日志</h3>
+<pre id="pLog" class="log">（尚无输出）</pre>
+</div>
+
+<div class="section">
+<h2>手机访问</h2>
+<div class="row"><input type="checkbox" id="mEnabled"><label for="mEnabled">启用手机访问（局域网）</label></div>
+<div class="row"><label for="mPort">服务端口：</label><input type="number" id="mPort" min="1" max="65535" value="47896"><span class="dim">默认 47896；冲突时自动递增试探</span></div>
+<div class="kv">
+<div class="k">生效状态</div><div class="v" id="mStatus">读取中…</div>
+<div class="k">实际端口</div><div class="v" id="mPortVal">—</div>
+<div class="k">防火墙状态</div><div class="v" id="mFwStatus">—</div>
+</div>
+<div id="mFwBox" style="display:none;margin:8px 0;padding:8px 10px;background:#1a202c;border:1px solid #bf616a;border-radius:6px;font-size:12px;">
+<div class="err" style="margin-bottom:4px;">⚠ 防火墙入站规则未自动添加（可能需要管理员权限）。若手机无法连接，请在管理员 CMD/PowerShell 中执行：</div>
+<div style="display:flex;gap:8px;align-items:center;">
+<code id="mFwCmd" style="flex:1;user-select:text;word-break:break-all;color:#ebcb8b;font-family:Consolas,monospace;font-size:11px;"></code>
+<button id="btnCopyFw" style="padding:3px 8px;font-size:11px;">复制</button>
+</div>
+</div>
+<div class="actions">
+<button id="btnOpenQr" class="primary" disabled>打开配对二维码</button>
+</div>
+<details>
+<summary>高级说明</summary>
+<div class="dim" style="margin-top:6px;line-height:1.6;">开启后，DSH 后端将监听 0.0.0.0，同一局域网内的手机或平板设备均可通过局域网 IP 与端口访问 DSH 界面及服务。<br>建议仅在家庭、办公室等可信 Wi-Fi 环境下开启；在公共 Wi-Fi 或不可信网络中建议关闭此功能。<br>修改开关或端口后，需要重启应用后生效。</div>
+</details>
+</div>
+
+<div class="section">
 <h2>外壳与系统</h2>
 <div class="row"><input type="checkbox" id="autoStart"><label for="autoStart">开机自启（登录后后台运行）</label></div>
 <div class="row"><span>维修通道（安全模式）：<span id="safeModeState">读取中…</span></span></div>
@@ -133,7 +209,10 @@ function renderState(s) {
   $('safeModeState').textContent = s.safeMode ? '已启用（仅核心组件）' : '未启用';
 }
 
-async function refresh() { renderState(await api.get()); }
+async function refresh() {
+  renderState(await api.get());
+  if (typeof loadMobile === 'function') await loadMobile();
+}
 
 document.querySelectorAll('input[name=route]').forEach((el) => el.addEventListener('change', async () => {
   const r = await api.setRoute(el.value);
@@ -285,7 +364,223 @@ $('btnBInstall').addEventListener('click', async () => {
   else if (r && r.ok) { refresh(); loadBackendVersions(); /* 对话框流程已接管 */ }
 });
 
+let currentMobile = { enabled: false, port: 47896 };
+
+async function loadMobile() {
+  if (!api || !api.getMobile) return;
+  const m = await api.getMobile();
+  if (!m) return;
+  currentMobile = m;
+  $('mEnabled').checked = !!m.enabled;
+  $('mPort').value = m.port || 47896;
+  $('btnOpenQr').disabled = !m.enabled;
+
+  if (m.enabled) {
+    if (m.activePort) {
+      $('mStatus').innerHTML = '<span class="good">已生效（局域网可访问）</span>';
+      $('mPortVal').textContent = m.activePort + (m.activePort !== m.port ? '（设置端口 ' + m.port + ' 占用，自动顺延）' : '');
+    } else {
+      $('mStatus').innerHTML = '<span class="mid">已开启，重启应用后生效</span>';
+      $('mPortVal').textContent = '待重启生效（预期 ' + m.port + '）';
+    }
+  } else {
+    $('mStatus').textContent = '未启用（仅本机 127.0.0.1 可访问）';
+    $('mPortVal').textContent = '—';
+  }
+
+  const fwBox = $('mFwBox');
+  const fwCmd = $('mFwCmd');
+  if (m.firewallOk === true) {
+    $('mFwStatus').innerHTML = '<span class="good">已配置入站放行规则</span>';
+    fwBox.style.display = 'none';
+  } else if (m.firewallOk === false) {
+    $('mFwStatus').innerHTML = '<span class="bad">未自动放行（需手动执行）</span>';
+    fwCmd.textContent = m.firewallCommand || ('netsh advfirewall firewall add rule name="DSH Desktop Mobile" dir=in action=allow protocol=TCP localport=' + (m.port || 47896));
+    fwBox.style.display = 'block';
+  } else {
+    $('mFwStatus').textContent = m.enabled ? '未检测（首次开启时自动添加）' : '未开启';
+    fwBox.style.display = 'none';
+  }
+}
+
+async function saveMobile() {
+  const enabled = $('mEnabled').checked;
+  const port = parseInt($('mPort').value, 10);
+  if (isNaN(port) || port < 1 || port > 65535) {
+    msg('端口必须在 1-65535 之间', true);
+    $('mPort').value = currentMobile.port || 47896;
+    return;
+  }
+  $('btnOpenQr').disabled = !enabled;
+  const res = await api.setMobile({ enabled, port });
+  if (res) {
+    currentMobile = res;
+    msg('手机访问设置已保存，重启应用后生效。');
+    loadMobile();
+  } else {
+    msg('保存手机访问设置失败', true);
+  }
+}
+
+$('mEnabled').addEventListener('change', saveMobile);
+$('mPort').addEventListener('change', saveMobile);
+$('btnOpenQr').addEventListener('click', () => {
+  if (api && api.openMobileQr) api.openMobileQr();
+});
+$('btnCopyFw').addEventListener('click', () => {
+  const cmd = $('mFwCmd').textContent;
+  if (!cmd) return;
+  const finish = () => msg('防火墙命令已复制');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(cmd).then(finish).catch(() => {
+      const t = document.createElement('textarea');
+      t.value = cmd; document.body.appendChild(t); t.select();
+      document.execCommand('copy'); document.body.removeChild(t);
+      finish();
+    });
+  } else {
+    const t = document.createElement('textarea');
+    t.value = cmd; document.body.appendChild(t); t.select();
+    document.execCommand('copy'); document.body.removeChild(t);
+    finish();
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// 插件安装与终端（0.3.32）
+// ══════════════════════════════════════════════════════════════════════════
+let legacyScan = null;
+
+function plog(line, reset) {
+  const el = $('pLog');
+  if (reset) el.textContent = '';
+  else if (el.textContent === '（尚无输出）') el.textContent = '';
+  el.textContent += (el.textContent ? '\n' : '') + line;
+  el.scrollTop = el.scrollHeight;
+}
+
+if (api.onPluginLog) api.onPluginLog((line) => plog(line));
+
+async function loadTerminalStatus() {
+  const r = await api.terminalStatus();
+  if (!r || r.err) { $('tHome').textContent = (r && r.err) || '读取失败'; return; }
+  $('tHome').textContent = r.home || '未知';
+  const env = r.env || {};
+  const pathSt = r.path || {};
+  if (env.pointsHere) { $('tEnv').textContent = '已指向桌面版 Home ✓'; $('tEnv').className = 'v good'; }
+  else if (env.set) { $('tEnv').textContent = '已设置但指向别处：' + env.current; $('tEnv').className = 'v bad'; }
+  else { $('tEnv').textContent = '未设置（终端里的 dsh 会用 ' + (env.legacyHome || '~/.dsh') + '）'; $('tEnv').className = 'v mid'; }
+  $('tEnvToggle').checked = !!env.pointsHere;
+  $('tEnvNote').textContent = env.legacyInUse
+    ? '检测到 ' + env.legacyHome + ' 已在使用（有插件/会话），因此未自动写入——避免让你原有的独立 CLI 环境"消失"。需要统一时手工勾选。'
+    : '未检测到在用的旧 Home，干净机器首次启动已自动写入，README 原文命令即可正确安装。';
+  $('tPath').textContent = pathSt.inPath ? ('已加入：' + pathSt.dir) : ('未加入（脚本' + (pathSt.exists ? '已生成' : '未生成') + '：' + (pathSt.dir || '—') + '）');
+  $('tPath').className = pathSt.inPath ? 'v good' : 'v mid';
+  $('tPathToggle').checked = !!pathSt.inPath;
+  $('tCmdWrapper').textContent = r.cmdWrapper || '—';
+  $('tCmdPwsh').textContent = r.cmdPwsh || '—';
+}
+
+$('btnPInstall').addEventListener('click', async () => {
+  const spec = $('pSpec').value.trim();
+  if (!spec) { msg('请填写插件名', true); return; }
+  $('btnPInstall').disabled = true;
+  plog('──── 安装 ' + spec + ' ────', true);
+  msg('正在安装 ' + spec + '…');
+  const r = await api.installPlugin(spec, $('pProfile').value);
+  $('btnPInstall').disabled = false;
+  if (r && r.busy) { msg('已有安装任务在进行，请稍候', true); return; }
+  if (r && r.ok) { msg('安装成功：' + spec + '（重启后加载生效）'); loadTerminalStatus(); }
+  else {
+    msg('安装失败：' + (r && (r.msg || (r.timedOut ? '超时' : '详见下方日志'))), true);
+    if (r && r.log) plog(r.log);
+  }
+});
+
+$('tEnvToggle').addEventListener('change', async (e) => {
+  const on = e.target.checked;
+  e.target.disabled = true;
+  const r = await api.setDshHomeEnv(on);
+  e.target.disabled = false;
+  if (r && r.ok) msg(on ? 'DSH_HOME 已写入用户环境变量（新开的终端生效）' : 'DSH_HOME 已移除');
+  else msg('操作失败：' + ((r && r.msg) || '未知错误'), true);
+  loadTerminalStatus();
+});
+
+$('tPathToggle').addEventListener('change', async (e) => {
+  const on = e.target.checked;
+  e.target.disabled = true;
+  const r = await api.setPathEntry(on);
+  e.target.disabled = false;
+  if (r && r.ok) msg(on ? '包装器已加入用户 PATH（新开的终端里可用 dsh-desktop）' : '包装器已移出 PATH');
+  else msg('操作失败：' + ((r && r.msg) || '未知错误'), true);
+  loadTerminalStatus();
+});
+
+function copyToClipboard(text, okMsg) {
+  const done = () => msg(okMsg);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => {
+      const t = document.createElement('textarea');
+      t.value = text; document.body.appendChild(t); t.select();
+      document.execCommand('copy'); document.body.removeChild(t); done();
+    });
+  } else {
+    const t = document.createElement('textarea');
+    t.value = text; document.body.appendChild(t); t.select();
+    document.execCommand('copy'); document.body.removeChild(t); done();
+  }
+}
+$('btnCopyWrapper').addEventListener('click', () => copyToClipboard($('tCmdWrapper').textContent, '包装器命令已复制'));
+$('btnCopyPwsh').addEventListener('click', () => copyToClipboard($('tCmdPwsh').textContent, 'PowerShell 命令已复制'));
+
+$('btnScanLegacy').addEventListener('click', async () => {
+  $('btnScanLegacy').disabled = true; msg('正在扫描旧 Home…');
+  const r = await api.scanLegacy();
+  $('btnScanLegacy').disabled = false;
+  if (!r || !r.ok) { msg('扫描失败：' + ((r && r.msg) || '未知错误'), true); return; }
+  legacyScan = r.scan;
+  const box = $('legacyBox');
+  if (legacyScan.sameAsDesktop) { box.innerHTML = '<div class="good">旧 Home 与桌面 Home 是同一目录，无需迁移。</div>'; msg('无需迁移'); return; }
+  if (!legacyScan.exists) { box.innerHTML = '<div class="good">未发现旧 Home（' + legacyScan.home + '），无需迁移。</div>'; msg('未发现旧 Home'); return; }
+  if (!legacyScan.total) { box.innerHTML = '<div class="good">旧 Home 存在，但没有桌面版看不到的插件。</div>'; msg('无孤儿插件'); return; }
+  let html = '<div>旧 Home <code>' + legacyScan.home + '</code> 中有 <b class="mid">' + legacyScan.total + '</b> 个插件桌面版看不到：</div>';
+  html += '<table><tr><th style="width:26px"></th><th>插件</th><th>版本</th><th>形态</th></tr>';
+  legacyScan.orphans.forEach((o, i) => {
+    html += '<tr><td><input type="checkbox" class="lgk" data-i="' + i + '"' + (o.installable ? ' checked' : ' disabled') + '></td>' +
+      '<td>' + o.name + '</td><td>' + (o.version || '—') + '</td>' +
+      '<td class="' + (o.installable ? 'good' : 'bad') + '">' + (o.installable ? 'npm 包（可导入）' : '本地 link（需手工）') + '</td></tr>';
+  });
+  html += '</table>';
+  box.innerHTML = html;
+  msg('扫描完成：发现 ' + legacyScan.total + ' 个孤儿插件，勾选后点「导入所选」');
+});
+
+$('btnImportLegacy').addEventListener('click', async () => {
+  if (!legacyScan || !legacyScan.orphans || !legacyScan.orphans.length) { msg('请先扫描旧 Home', true); return; }
+  const picked = Array.from(document.querySelectorAll('.lgk')).filter((c) => c.checked).map((c) => legacyScan.orphans[Number(c.dataset.i)]);
+  if (!picked.length) { msg('请至少勾选一个插件', true); return; }
+  $('btnImportLegacy').disabled = true;
+  plog('──── 导入 ' + picked.length + ' 个插件 ────', true);
+  msg('正在导入 ' + picked.length + ' 个插件…');
+  const r = await api.importLegacy(picked, 'web');
+  $('btnImportLegacy').disabled = false;
+  if (r && r.busy) { msg('已有安装任务在进行，请稍候', true); return; }
+  if (!r || !r.ok) { msg('导入失败：' + ((r && r.msg) || '未知错误'), true); return; }
+  const s = r.summary || {};
+  msg('导入完成：成功 ' + s.ok + ' / 失败 ' + s.failed + ' / 跳过 ' + s.skipped + (r.file ? '。报告已导出到桌面。' : ''));
+  if (s.results) {
+    let html = '<table><tr><th>插件</th><th>结果</th><th>说明</th></tr>';
+    s.results.forEach((x) => {
+      html += '<tr><td>' + x.name + '</td><td class="' + (x.ok ? 'good' : x.skipped ? 'mid' : 'bad') + '">' +
+        (x.ok ? '成功' : x.skipped ? '跳过' : '失败') + '</td><td>' + x.reason + '</td></tr>';
+    });
+    $('legacyBox').innerHTML = html + '</table>';
+  }
+});
+
 refresh();
-loadBackendVersions();</script>
+loadBackendVersions();
+loadTerminalStatus();</script>
 </body>
 </html>

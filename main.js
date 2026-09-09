@@ -1,11 +1,13 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, shell, dialog, ipcMain, Tray, nativeImage } = require('electron');
-const { spawn, spawnSync } = require('child_process');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain, Tray, nativeImage, clipboard } = require('electron');
+const { spawn, spawnSync, exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const net = require('net');
 const os = require('os');
+const { pathToFileURL } = require('url');
 const mgr = require('./updater-backend');
 const diagLog = require('./diag-log');
 const diag = diagLog.write;
@@ -68,6 +70,10 @@ let backendLogs = [];
 let mainWindow = null;
 let splashWindow = null;
 let activeUrl = null;
+let activeLanUrl = null;
+let activeMobilePort = null;
+let lastFirewallCommand = null;
+let lastFirewallSuccess = null;
 let safeMode = false;
 let isQuitting = false;
 let tray = null;
@@ -105,6 +111,9 @@ function stopBackend() {
   if (!backend) return;
   const proc = backend;
   backend = null;
+  activeUrl = null;
+  activeLanUrl = null;
+  activeMobilePort = null;
   try { proc.removeAllListeners('exit'); } catch {}
   killProcessTree(proc);
 }
@@ -122,8 +131,109 @@ function updateSplash(message) {
   splashWindow.webContents.executeJavaScript(`(() => { const el = document.querySelector('.sub'); if (el) el.textContent = '${text}'; })()`).catch(() => {});
 }
 
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getLocalIp() {
+  try {
+    const nets = os.networkInterfaces();
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name]) {
+        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('127.')) {
+          return net.address;
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function getMobileSettings() {
+  let settings = {};
+  try { settings = mgr.readSettings() || {}; } catch {}
+  const m = settings.mobile || {};
+  const port = parseInt(m.port, 10);
+  return {
+    enabled: typeof m.enabled === 'boolean' ? m.enabled : false,
+    port: port >= 1 && port <= 65535 ? port : 47896
+  };
+}
+
+function saveMobileSettings(cfg) {
+  const current = getMobileSettings();
+  const enabled = typeof cfg.enabled === 'boolean' ? cfg.enabled : current.enabled;
+  const portNum = parseInt(cfg.port, 10);
+  const port = portNum >= 1 && portNum <= 65535 ? portNum : current.port;
+  const updated = { enabled, port };
+  try { mgr.writeSettings({ mobile: updated }); } catch (e) {
+    pushLog(`[mobile] 保存设置失败: ${e.message}\n`);
+  }
+  return updated;
+}
+
+function checkPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.on('error', () => resolve(false));
+    server.listen({ port, host: '0.0.0.0' }, () => {
+      server.close(() => resolve(true));
+    });
+  });
+}
+
+async function resolveMobilePort(preferredPort) {
+  const startPort = Math.max(1, Math.min(65535, Number(preferredPort) || 47896));
+  for (let offset = 0; offset <= 10; offset++) {
+    const candidate = startPort + offset;
+    if (candidate > 65535) break;
+    const ok = await checkPortAvailable(candidate);
+    if (ok) {
+      if (offset > 0) {
+        pushLog(`[mobile] 端口 ${startPort} 冲突，已递增试探至可用端口 ${candidate}\n`);
+      }
+      return candidate;
+    }
+  }
+  pushLog(`[mobile] 端口 ${startPort} 连续 10 次试探冲突，回退使用默认端口\n`);
+  return startPort;
+}
+
+function tryAddFirewallRule(port) {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') {
+      lastFirewallSuccess = true;
+      return resolve(true);
+    }
+    const cmd = `netsh advfirewall firewall add rule name="DSH Desktop Mobile" dir=in action=allow protocol=TCP localport=${port}`;
+    lastFirewallCommand = cmd;
+    const delCmd = 'netsh advfirewall firewall delete rule name="DSH Desktop Mobile"';
+    exec(delCmd, { windowsHide: true }, () => {
+      exec(cmd, { windowsHide: true }, (err) => {
+        if (err) {
+          diag('防火墙规则添加失败 (可能需要管理员权限):', err.message);
+          pushLog(`[mobile] 防火墙入站规则添加失败: ${err.message}\n`);
+          lastFirewallSuccess = false;
+          resolve(false);
+        } else {
+          diag('防火墙规则已添加: TCP', port);
+          pushLog(`[mobile] 已成功添加入站防火墙规则: TCP ${port}\n`);
+          lastFirewallSuccess = true;
+          resolve(true);
+        }
+      });
+    });
+  });
+}
+
 function spawnBackend() {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const p = activePaths();
     if (!fs.existsSync(p.nodeExe)) return reject(new Error('缺少 Node 运行时：未找到活跃 node.exe（seed 失败）。'));
     if (!fs.existsSync(p.dshBin)) return reject(new Error('缺少 DSH 后端：未找到活跃 dsh（seed 失败）。'));
@@ -135,20 +245,40 @@ function spawnBackend() {
     env.DSH_HOME = p.dshHome;
     delete env.ELECTRON_RUN_AS_NODE; // we spawn a real standalone node
 
-    const args = [p.dshBin, 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'];
+    const mobileCfg = getMobileSettings();
+    let args = [p.dshBin, 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'];
+    if (mobileCfg.enabled) {
+      const port = await resolveMobilePort(mobileCfg.port);
+      activeMobilePort = port;
+      args = [p.dshBin, 'web', '--no-open', '--port', String(port), '--host', '0.0.0.0'];
+    } else {
+      activeMobilePort = null;
+      activeLanUrl = null;
+    }
 
     const child = spawn(p.nodeExe, args, {
       cwd: path.dirname(p.dshBin), env, windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe']
     });
     backend = child;
-    pushLog(`starting backend: node=${p.nodeExe} DSH_HOME=${p.dshHome}\n`);
+    pushLog(`starting backend: node=${p.nodeExe} DSH_HOME=${p.dshHome} host=${mobileCfg.enabled ? '0.0.0.0' : '127.0.0.1'} port=${mobileCfg.enabled ? activeMobilePort : '0'}\n`);
 
     let settled = false;
     const onUrl = (line) => {
       const m = /dsh web:\s*(https?:\/\/[^\s]+)/i.exec(line);
       if (!m) return;
       const url = m[1].trim();
+
+      const lanMatch = /\(LAN:\s*(https?:\/\/[^\s)]+)\)/i.exec(line);
+      if (lanMatch) {
+        activeLanUrl = lanMatch[1].trim();
+      } else if (mobileCfg.enabled) {
+        const localIp = getLocalIp();
+        if (localIp) {
+          activeLanUrl = url.replace(/\/\/(?:127\.0\.0\.1|0\.0\.0\.0|localhost)/i, `//${localIp}`);
+        }
+      }
+
       if (settled) return;
       settled = true;
       waitForServer(url, 60000, (ok) => {
@@ -505,6 +635,7 @@ function trayMenuTemplate() {
   }
   return [
     { label: '设置…', click: () => createSettingsWindow() },
+    { label: '手机配对二维码', click: () => openQrWindow() },
     { type: 'separator' },
     {
       label: mgr.safeModeActive() ? '退出安全模式并重启' : '以安全模式重启（维修）',
@@ -718,6 +849,8 @@ function setupShellUpdater() {
 // Silent backend/environment updates — stage in background; apply on next launch
 // ---------------------------------------------------------------------------
 let silentBusy = false;
+/** 插件安装互斥锁，防止批量导入重复执行。 */
+let pluginBusy = false;
 let updateStatus = { state: 'idle', percent: 0, message: '未检查更新', detail: '', current: '读取中', latest: '未检查' };
 function setUpdateStatus(state, message, percent = updateStatus.percent, detail = updateStatus.detail, versions = {}) {
   updateStatus = { ...updateStatus, ...versions, state, percent: Math.max(0, Math.min(100, percent)), message, detail };
@@ -823,7 +956,7 @@ let settingsWindow = null;
 function createSettingsWindow() {
   if (settingsWindow && !settingsWindow.isDestroyed()) { settingsWindow.show(); settingsWindow.focus(); return; }
   settingsWindow = new BrowserWindow({
-    width: 560, height: 680, show: false, resizable: false, maximizable: false, fullscreenable: false,
+    width: 560, height: 720, show: false, resizable: false, maximizable: false, fullscreenable: false,
     title: `${APP_NAME} 设置`, icon: path.join(__dirname, 'assets', 'icon.png'),
     backgroundColor: '#0b1020', autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'settings-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false }
@@ -945,6 +1078,340 @@ ipcMain.handle('settings:download-node', async (_e, version) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Mobile companion — QR window and IPC
+// ---------------------------------------------------------------------------
+let qrSvgFn = null;
+async function getQrSvg() {
+  if (!qrSvgFn) {
+    const qrPath = path.join(__dirname, 'plugins', 'mobile-companion', 'lib', 'qr.mjs');
+    const mod = await import(pathToFileURL(qrPath).href);
+    qrSvgFn = mod.qrSvg;
+  }
+  return qrSvgFn;
+}
+
+let qrWindow = null;
+
+async function renderQrWindow(win) {
+  const mobileCfg = getMobileSettings();
+  let html = '';
+  if (activeLanUrl) {
+    let svg = '';
+    try {
+      const qrSvg = await getQrSvg();
+      svg = qrSvg(activeLanUrl, { scale: 5, quiet: 2 });
+    } catch (e) {
+      svg = `<div style="color:#bf616a;padding:20px;font-size:12px;">生成二维码失败: ${escapeHtml(e.message)}</div>`;
+    }
+    html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>手机配对二维码</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #ffffff;
+    color: #1a202c;
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    padding: 20px 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    user-select: none;
+  }
+  h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #111827; }
+  .qr-box {
+    width: 200px;
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 8px;
+    background: #ffffff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  }
+  .qr-box svg { width: 100%; height: 100%; display: block; }
+  .url-card {
+    margin-top: 12px;
+    width: 100%;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #334155;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .url-text {
+    flex: 1;
+    text-align: left;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 11px;
+    word-break: break-all;
+    user-select: text;
+  }
+  .btn-copy {
+    background: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-copy:hover { background: #1d4ed8; }
+  .btn-copy.copied { background: #16a34a; }
+  .steps {
+    margin-top: 14px;
+    text-align: left;
+    width: 100%;
+    background: #f9fafb;
+    border-radius: 6px;
+    padding: 10px 12px 10px 28px;
+    font-size: 12px;
+    color: #4b5563;
+    line-height: 1.6;
+  }
+  .steps li { margin-bottom: 2px; }
+  .steps li:last-child { margin-bottom: 0; }
+</style>
+</head>
+<body>
+  <h2>手机配对</h2>
+  <div class="qr-box">${svg}</div>
+  <div class="url-card">
+    <div class="url-text" id="urlText">${escapeHtml(activeLanUrl)}</div>
+    <button class="btn-copy" id="btnCopy" onclick="copyUrl()">复制</button>
+  </div>
+  <ol class="steps">
+    <li>手机安装 <b>DSH 手机版 App</b> 扫码连接</li>
+    <li>或手机浏览器直接打开该 URL 后访问 <b>/m/</b></li>
+    <li>请确保手机与电脑在同一局域网（Wi-Fi）</li>
+  </ol>
+  <script>
+    function copyUrl() {
+      const text = document.getElementById('urlText').innerText;
+      const btn = document.getElementById('btnCopy');
+      const finish = () => {
+        btn.textContent = '已复制！';
+        btn.className = 'btn-copy copied';
+        setTimeout(() => { btn.textContent = '复制'; btn.className = 'btn-copy'; }, 1500);
+      };
+      if (window.dshSettings && window.dshSettings.copyText) {
+        window.dshSettings.copyText(text).then(finish);
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(finish).catch(() => fallback(text, finish));
+      } else {
+        fallback(text, finish);
+      }
+    }
+    function fallback(text, cb) {
+      const t = document.createElement('textarea');
+      t.value = text;
+      document.body.appendChild(t);
+      t.select();
+      try { document.execCommand('copy'); cb(); } catch {}
+      document.body.removeChild(t);
+    }
+  </script>
+</body>
+</html>`;
+  } else {
+    html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>手机配对二维码</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #ffffff;
+    color: #1a202c;
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    padding: 28px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .icon { font-size: 36px; margin-bottom: 10px; }
+  h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #111827; }
+  .guide {
+    background: #fffbeb;
+    border: 1px solid #fef3c7;
+    border-radius: 6px;
+    padding: 10px 14px;
+    color: #b45309;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 16px;
+    width: 100%;
+  }
+  .status-list {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 12px 14px;
+    width: 100%;
+    text-align: left;
+    font-size: 12px;
+    margin-bottom: 20px;
+  }
+  .row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #edf2f7; }
+  .row:last-child { border-bottom: none; }
+  .k { color: #64748b; }
+  .v { color: #0f172a; font-weight: 500; }
+  .actions { display: flex; gap: 10px; width: 100%; }
+  button {
+    flex: 1;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button:hover { background: #1d4ed8; }
+  button.secondary {
+    background: #f1f5f9;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+  }
+  button.secondary:hover { background: #e2e8f0; }
+</style>
+</head>
+<body>
+  <div class="icon">📱</div>
+  <h2>未获取到局域网访问地址</h2>
+  <div class="guide">请先在设置中启用手机访问并重启后端</div>
+  <div class="status-list">
+    <div class="row"><span class="k">手机访问设置</span><span class="v">${mobileCfg.enabled ? '已开启' : '未开启'}</span></div>
+    <div class="row"><span class="k">设置端口</span><span class="v">${mobileCfg.port}</span></div>
+    <div class="row"><span class="k">后端运行状态</span><span class="v">${backend ? (activeMobilePort ? `运行中（端口 ${activeMobilePort}）` : '运行中（本地模式）') : '未运行'}</span></div>
+  </div>
+  <div class="actions">
+    <button class="secondary" onclick="openSettings()">打开设置</button>
+    <button onclick="restart()">重启应用</button>
+  </div>
+  <script>
+    function openSettings() {
+      if (window.dshSettings && window.dshSettings.openSettings) {
+        window.dshSettings.openSettings();
+      } else {
+        window.location.hash = '#open-settings';
+      }
+    }
+    function restart() {
+      if (window.dshSettings && window.dshSettings.restart) {
+        window.dshSettings.restart();
+      } else {
+        window.location.hash = '#restart';
+      }
+    }
+  </script>
+</body>
+</html>`;
+  }
+  await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+}
+
+async function openQrWindow() {
+  if (qrWindow && !qrWindow.isDestroyed()) {
+    await renderQrWindow(qrWindow);
+    qrWindow.show();
+    qrWindow.focus();
+    return;
+  }
+
+  qrWindow = new BrowserWindow({
+    width: 380,
+    height: 480,
+    show: false,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    title: '手机配对二维码',
+    backgroundColor: '#ffffff',
+    autoHideMenuBar: true,
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'settings-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+
+  Menu.setApplicationMenu(null);
+  qrWindow.webContents.on('will-navigate', (event, url) => {
+    if (url.includes('#open-settings')) {
+      event.preventDefault();
+      createSettingsWindow();
+    } else if (url.includes('#restart')) {
+      event.preventDefault();
+      restartApp();
+    }
+  });
+
+  await renderQrWindow(qrWindow);
+  qrWindow.once('ready-to-show', () => {
+    if (qrWindow && !qrWindow.isDestroyed()) {
+      qrWindow.show();
+      qrWindow.focus();
+    }
+  });
+  qrWindow.on('closed', () => { qrWindow = null; });
+}
+
+function getMobileStatus() {
+  const cfg = getMobileSettings();
+  return {
+    enabled: cfg.enabled,
+    port: cfg.port,
+    activePort: activeMobilePort,
+    lanUrl: activeLanUrl,
+    firewallOk: lastFirewallSuccess,
+    firewallCommand: lastFirewallCommand || `netsh advfirewall firewall add rule name="DSH Desktop Mobile" dir=in action=allow protocol=TCP localport=${cfg.port}`
+  };
+}
+
+ipcMain.handle('mobile:get', () => getMobileStatus());
+ipcMain.handle('mobile:set', async (_e, data) => {
+  const prev = getMobileSettings();
+  const next = saveMobileSettings(data || {});
+  if (!prev.enabled && next.enabled) {
+    await tryAddFirewallRule(next.port);
+  }
+  return getMobileStatus();
+});
+ipcMain.handle('mobile:openQr', async () => {
+  await openQrWindow();
+  return true;
+});
+ipcMain.handle('mobile:copy-text', (_e, text) => {
+  try {
+    clipboard.writeText(String(text || ''));
+    return true;
+  } catch {
+    return false;
+  }
+});
+ipcMain.handle('settings:open', () => {
+  createSettingsWindow();
+  return true;
+});
+
 function scheduleSilentUpdates() {
   // Check-only cadence: announces new versions via the tray, never downloads.
   // First check is early (5s) so the tray shows fresh version data right after
@@ -1039,6 +1506,121 @@ ipcMain.handle('backend:rollback-to', async (_e, version) => {
     return { ok: false, msg: (e && e.message) || '回退暂存失败' };
   }
 });
+// ---------------------------------------------------------------------------
+// 插件安装 / 终端接线 / 旧 Home 迁移（0.3.32）
+//
+// 根因：桌面版把后端隔离在 userData/dsh-home，而终端里 npm 全局装的 dsh 默认
+// DSH_HOME 是 ~/.dsh —— 照 README 敲 `dsh plugin --profile web add X` 会装进旧
+// home，桌面版永远加载不到。下面三条通道保证"命令装插件"这条路本身就正确。
+// ---------------------------------------------------------------------------
+/** 把安装日志实时推给设置窗（渲染层订阅 plugins:log）。 */
+function pushPluginLog(line) {
+  try {
+    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('plugins:log', String(line));
+  } catch {}
+  pushLog('[plugin] ' + line + '\n');
+}
+
+// 终端接线总览：DSH_HOME 环境变量 + 包装器 + PATH + 可复制命令。
+ipcMain.handle('plugins:terminal-status', () => {
+  try {
+    const env = mgr.dshHomeEnvStatus();
+    const pathSt = mgr.userPathStatus();
+    const home = mgr.dshHome();
+    return {
+      env, path: pathSt, home,
+      cmdPwsh: `$env:DSH_HOME='${home}'; dsh plugin --profile web add <插件名>`,
+      cmdWrapper: 'dsh-desktop plugin --profile web add <插件名>'
+    };
+  } catch (e) { return { err: (e && e.message) || '读取终端状态失败' }; }
+});
+
+// 写入/移除用户级 DSH_HOME（让 README 原文命令也落到桌面 home）。
+ipcMain.handle('plugins:set-dsh-home-env', (_e, enabled) => {
+  try {
+    const st = mgr.setDshHomeEnv(!!enabled);
+    diag('DSH_HOME 用户环境变量:', enabled ? '写入' : '移除', st.current);
+    return { ok: true, env: st };
+  } catch (e) { return { ok: false, msg: (e && e.message) || '写入环境变量失败' }; }
+});
+
+// 生成包装器脚本 + 加入/移出用户 PATH（追加在末尾，不抢占已有全局 dsh）。
+ipcMain.handle('plugins:set-path-entry', (_e, enabled) => {
+  try {
+    const st = mgr.setUserPathEntry(!!enabled);
+    diag('包装器 PATH:', enabled ? '加入' : '移出', st.dir);
+    return { ok: true, path: st };
+  } catch (e) { return { ok: false, msg: (e && e.message) || '修改 PATH 失败' }; }
+});
+
+ipcMain.handle('plugins:write-wrappers', () => {
+  try { return { ok: true, ...mgr.writeWrapperScripts() }; }
+  catch (e) { return { ok: false, msg: (e && e.message) || '生成包装器失败' }; }
+});
+
+// 应用内安装插件 —— 唯一保证 DSH_HOME 正确的通道（分发用户无需碰终端）。
+ipcMain.handle('plugins:install', async (_e, payload) => {
+  const spec = payload && payload.spec;
+  const profile = (payload && payload.profile) || 'web';
+  if (!spec) return { ok: false, msg: '请填写插件名' };
+  if (pluginBusy) return { busy: true };
+  pluginBusy = true;
+  try {
+    pushPluginLog(`开始安装 ${spec}（profile=${profile}，DSH_HOME=${mgr.dshHome()}）`);
+    const r = await mgr.installPluginViaCli(spec, { profile, onLog: pushPluginLog });
+    diag('插件安装结果:', { spec, profile, ok: r.ok, code: r.code });
+    if (r.ok) {
+      const parent = settingsWindow || mainWindow;
+      const box = await dialog.showMessageBox(parent, {
+        type: 'info', buttons: ['立即重启并加载', '稍后'], defaultId: 0, cancelId: 1,
+        title: APP_NAME, message: `插件 ${spec} 安装成功`,
+        detail: '插件已装入桌面版 DSH_HOME，重启应用后加载生效。'
+      });
+      if (box.response === 0) restartApp();
+    }
+    return { ok: r.ok, code: r.code, log: r.log, timedOut: !!r.timedOut };
+  } catch (e) {
+    return { ok: false, msg: (e && e.message) || '安装失败' };
+  } finally { pluginBusy = false; }
+});
+
+// 扫描旧 CLI home（~/.dsh）里桌面版看不见的插件。
+ipcMain.handle('plugins:scan-legacy', () => {
+  try {
+    const scan = mgr.scanLegacyHome();
+    diag('旧 Home 扫描:', { home: scan.home, exists: scan.exists, orphans: scan.total });
+    return { ok: true, scan };
+  } catch (e) { return { ok: false, msg: (e && e.message) || '扫描失败' }; }
+});
+
+// 勾选导入：逐个走应用内安装流程装进桌面 home，并把报告导出到桌面。
+ipcMain.handle('plugins:import-legacy', async (_e, payload) => {
+  const items = (payload && payload.items) || [];
+  const profile = (payload && payload.profile) || 'web';
+  if (!items.length) return { ok: false, msg: '未选择要导入的插件' };
+  if (pluginBusy) return { busy: true };
+  pluginBusy = true;
+  try {
+    pushPluginLog(`开始导入 ${items.length} 个插件到桌面 Home…`);
+    const summary = await mgr.importLegacyPlugins(items, { profile, onLog: pushPluginLog });
+    let file = null;
+    try { file = mgr.exportLegacyImportReport(mgr.scanLegacyHome(), summary); } catch (e) { diag('迁移报告导出失败:', e && e.message); }
+    diag('旧 Home 导入结果:', { total: summary.total, ok: summary.ok, failed: summary.failed, skipped: summary.skipped });
+    if (summary.ok > 0) {
+      const parent = settingsWindow || mainWindow;
+      const box = await dialog.showMessageBox(parent, {
+        type: 'info', buttons: ['立即重启并加载', '稍后'], defaultId: 0, cancelId: 1,
+        title: APP_NAME, message: `已导入 ${summary.ok} 个插件`,
+        detail: `成功 ${summary.ok} / 失败 ${summary.failed} / 跳过 ${summary.skipped}。\n重启应用后加载生效。${file ? '\n\n报告已导出到桌面。' : ''}`
+      });
+      if (box.response === 0) restartApp();
+    }
+    return { ok: true, summary, file };
+  } catch (e) {
+    return { ok: false, msg: (e && e.message) || '导入失败' };
+  } finally { pluginBusy = false; }
+});
+
 ipcMain.handle('app:restart', () => restartApp());
 
 // ---------------------------------------------------------------------------
@@ -1061,6 +1643,16 @@ if (!gotLock) {
       // 1) Seed writable active dir from factory resources (first run).
       diag('步骤1 初始化活跃目录 ensureSeeded');
       mgr.ensureSeeded();
+      // 1b) 终端接线（0.3.32）：始终刷新 dsh-desktop/dsh 包装器脚本（内含固定
+      //     DSH_HOME + 桌面版 node），并在"干净机器"（没有在用的 ~/.dsh）上
+      //     首次启动写入用户级 DSH_HOME —— 让分发用户照 README 敲命令也落到
+      //     桌面 home，不会再装进旧 home 后加载不到。已有旧 home 的机器不擅自
+      //     改动，只在设置窗提供开关。
+      try {
+        mgr.writeWrapperScripts();
+        const pre = mgr.preseedDshHomeEnv();
+        diag('步骤1b 终端接线:', pre.applied ? `已写入 DSH_HOME=${pre.value}` : `未写入（${pre.reason}）`);
+      } catch (e) { diag('步骤1b 终端接线失败（不影响启动）:', e && e.message); }
       // 2) Honor the installer-selected backend ONCE (first launch after install).
       //    The marker file is consumed afterwards so later boots never force-stage
       //    an old version and never bypass the tray-confirmation update policy.
