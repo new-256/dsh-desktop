@@ -67,6 +67,7 @@ let backendLogs = [];
 let mainWindow = null;
 let splashWindow = null;
 let activeUrl = null;
+let safeMode = false;
 let isQuitting = false;
 let tray = null;
 let trayHintShown = false;
@@ -504,6 +505,11 @@ function trayMenuTemplate() {
   return [
     { label: '设置…', click: () => createSettingsWindow() },
     { type: 'separator' },
+    {
+      label: mgr.safeModeActive() ? '退出安全模式并重启' : '以安全模式重启（维修）',
+      click: () => (mgr.safeModeActive() ? requestExitSafeMode() : requestEnterSafeMode())
+    },
+    { type: 'separator' },
     { label: '打开 DSH Desktop', click: () => showMainWindow() },
     { type: 'separator' },
     autoStartItem,
@@ -830,8 +836,10 @@ function settingsSnapshot() {
   let versions = null; try { versions = mgr.currentVersions(); } catch {}
   let settings = {}; try { settings = mgr.readSettings(); } catch {}
   let registry = null; try { registry = mgr.registryInfo(); } catch {}
+  let nodeDist = null; try { nodeDist = mgr.nodeDistInfo(); } catch {}
   let autoStart = false; try { autoStart = app.getLoginItemSettings().openAtLogin; } catch {}
-  return { settings, versions, updateStatus, shellUpdateVersion, registry, autoStart };
+  let safeMode = false; try { safeMode = mgr.safeModeActive(); } catch {}
+  return { settings, versions, updateStatus, shellUpdateVersion, registry, nodeDist, autoStart, safeMode };
 }
 
 ipcMain.handle('settings:get', () => settingsSnapshot());
@@ -894,6 +902,38 @@ ipcMain.handle('settings:open-log', () => {
   try { return shell.openPath(require('./diag-log').logFile()); } catch { return 'failed'; }
 });
 ipcMain.handle('settings:restart-app', () => restartApp());
+ipcMain.handle('settings:set-node-dist', (_e, dist) => {
+  if (dist !== 'official' && dist !== 'mirror') return null;
+  mgr.writeSettings({ nodeDist: dist });
+  const info = mgr.nodeDistInfo();
+  pushLog(`Node 下载源已切换：${info.label}（${info.url}）\n`);
+  return info;
+});
+ipcMain.handle('settings:check-node', async () => {
+  let latest = null, err = null;
+  try { latest = await mgr.latestNodeVersion(); } catch (e) { err = (e && e.message) || '网络错误'; }
+  const cur = mgr.currentVersions()?.node || null;
+  const staged = mgr.stagedVersions()?.node || null;
+  const req = mgr.nodeRequirement();
+  let dist = null; try { dist = mgr.nodeDistInfo(); } catch {}
+  return { latest, current: cur, staged, required: req.required, reqOk: req.ok, err, dist };
+});
+ipcMain.handle('settings:download-node', async () => {
+  if (silentBusy) return { busy: true };
+  try {
+    const res = await mgr.stageNode({ onLog: (m) => pushLog('[node-stage] ' + m + '\n') });
+    const parent = settingsWindow || mainWindow;
+    const r = await dialog.showMessageBox(parent, {
+      type: 'info', buttons: ['立即重启并更新', '稍后'], defaultId: 0, cancelId: 1,
+      title: APP_NAME, message: 'Node 运行时已暂存',
+      detail: `Node v${res.version} 已下载并暂存（当前 ${mgr.currentVersions()?.node || '未知'}），重启应用后生效。`
+    });
+    if (r.response === 0) restartApp();
+    return { ok: true, version: res.version, reused: !!res.reused };
+  } catch (e) {
+    return { ok: false, msg: (e && e.message) || 'Node 下载失败' };
+  }
+});
 
 function scheduleSilentUpdates() {
   // Check-only cadence: announces new versions via the tray, never downloads.
@@ -903,7 +943,23 @@ function scheduleSilentUpdates() {
   setInterval(() => checkBackendUpdates(), 6 * 3600 * 1000);
 }
 
-async function restartApp() {
+async function requestEnterSafeMode() {
+  const res = mgr.enterSafeMode();
+  if (!res || !res.ok) {
+    try { dialog.showErrorBox(APP_NAME, '进入安全模式失败：' + ((res && res.msg) || '未知错误')); } catch {}
+    return;
+  }
+  pushLog('进入安全模式：仅核心组件，家级补丁已注释。点击托盘「退出安全模式并重启」可恢复。\n');
+  await restartApp(['--safe-mode']);
+}
+
+async function requestExitSafeMode() {
+  const res = mgr.exitSafeMode();
+  pushLog(`退出安全模式，已还原：${((res && res.restored) || []).join('、') || '（无还原项）'}\n`);
+  await restartApp();
+}
+
+async function restartApp(extraArgs = []) {
   diag('restartApp：准备重启（更新应用流程）');
   isQuitting = true;
   const proc = backend;
@@ -923,7 +979,9 @@ async function restartApp() {
     diag('restartApp：后端已停止，等待句柄释放后拉起新实例');
   }
   diag('restartApp：app.relaunch + exit');
-  app.relaunch();
+  // Strip any stale --safe-mode so a normal restart exits safe mode by default.
+  const baseArgs = process.argv.slice(1).filter((a) => a !== '--safe-mode');
+  app.relaunch({ args: baseArgs.concat(extraArgs || []) });
   app.exit(0);
 }
 
@@ -985,7 +1043,19 @@ if (!gotLock) {
       diag('步骤3 应用暂存更新 applyStaged（前）:', (() => { try { return mgr.stagedVersions(); } catch { return null; } })());
       const applied = mgr.applyStaged();
       diag('步骤3 应用暂存更新 applyStaged（后）:', applied);
-      const shouldIsolatePlugins = !!(applied && applied.dsh);
+      // 3.2) Safe-mode resolution: --safe-mode keeps the reduced (core-only)
+      // profile; a NORMAL launch while a safe-mode marker exists restores the
+      // saved originals — a crash inside safe mode can never strand the
+      // machine in a stripped state.
+      try {
+        const sm = mgr.applySafeModeBoot(process.argv);
+        safeMode = !!sm.active;
+        if (sm.active) { updateSplash('正在以安全模式启动（仅核心组件）…'); pushLog('安全模式：仅加载核心组件，第三方插件已临时停用。\n'); }
+        if (sm.exited) pushLog(`已退出安全模式并还原第三方插件：${(sm.restored || []).join('、') || '（无还原项）'}\n`);
+      } catch (e) {
+        pushLog('安全模式处理失败（按正常启动继续）: ' + (e && e.message) + '\n');
+      }
+      const shouldIsolatePlugins = !!(applied && applied.dsh) && !safeMode;
       diag('插件隔离流程:', shouldIsolatePlugins ? '本次启动应用了新后端，将执行隔离轮测' : '跳过');
       // 3.5) Recover an INTERRUPTED plugin isolation from a previous run: if
       // the app died mid round-test, the home patch is left "everything

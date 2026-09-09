@@ -52,8 +52,27 @@ input[type=radio], input[type=checkbox] { accent-color: #5e81ac; }
 </div>
 
 <div class="section">
+<h2>Node.js 基座更新</h2>
+<div class="row"><span>Node 运行时下载源</span></div>
+<div class="row"><input type="radio" name="ndist" id="nd-mirror" value="mirror"><label for="nd-mirror">镜像站（npmmirror）<span class="dim">&nbsp;— 国内访问快，默认</span></label></div>
+<div class="row"><input type="radio" name="ndist" id="nd-official" value="official"><label for="nd-official">官方站（nodejs.org）<span class="dim">&nbsp;— 官方发布源；国内网络可能较慢</span></label></div>
+<div id="ndNote"></div>
+<div class="kv">
+<div class="k">当前版本</div><div class="v" id="nCurrent">读取中…</div>
+<div class="k">最新版本</div><div class="v" id="nLatest">未检查</div>
+<div class="k">暂存版本</div><div class="v" id="nStaged">—</div>
+</div>
+<div class="actions">
+<button id="btnNCheck" class="primary">检查 Node 更新</button>
+<button id="btnNDownload">下载并暂存 Node</button>
+</div>
+</div>
+
+<div class="section">
 <h2>外壳与系统</h2>
 <div class="row"><input type="checkbox" id="autoStart"><label for="autoStart">开机自启（登录后后台运行）</label></div>
+<div class="row"><span>维修通道（安全模式）：<span id="safeModeState">读取中…</span></span></div>
+<div class="dim">安全模式入口在托盘菜单：GUI 或后端出故障时，用它以「仅核心组件」启动维修；修复后点托盘「退出安全模式并重启」即恢复全部插件。外壳（托盘/设置窗）不依赖后端，永远可用。</div>
 <div class="actions">
 <button id="btnLog">打开桌面日志</button>
 <button id="btnRestart">重启应用</button>
@@ -79,6 +98,12 @@ function renderState(s) {
   const radio = document.querySelector('input[name=route][value=' + route + ']');
   if (radio) radio.checked = true;
   $('autoStart').checked = !!(s.autoStart);
+  if (s.nodeDist) $('ndNote').textContent = '当前生效：' + s.nodeDist.label + '（' + s.nodeDist.url + '）';
+  const nd = (s.settings && s.settings.nodeDist) || 'mirror';
+  const ndRadio = document.querySelector('input[name=ndist][value=' + nd + ']');
+  if (ndRadio) ndRadio.checked = true;
+  $('nCurrent').textContent = (s.versions && s.versions.node) || '未知';
+  $('safeModeState').textContent = s.safeMode ? '已启用（仅核心组件）' : '未启用';
 }
 
 async function refresh() { renderState(await api.get()); }
@@ -118,6 +143,35 @@ $('btnDownload').addEventListener('click', async () => {
 
 $('btnLog').addEventListener('click', () => api.openLog());
 $('btnRestart').addEventListener('click', async () => { msg('正在重启…'); await api.restart(); });
+
+document.querySelectorAll('input[name=ndist]').forEach((el) => el.addEventListener('change', async () => {
+  const r = await api.setNodeDist(el.value);
+  if (r) { msg('Node 下载源已切换：' + r.label + '（下次检查/下载生效）'); refresh(); }
+  else { msg('切换失败', true); }
+}));
+
+$('btnNCheck').addEventListener('click', async () => {
+  $('btnNCheck').disabled = true; msg('正在检查 Node 更新…');
+  const r = await api.checkNode();
+  $('btnNCheck').disabled = false;
+  if (!r) { msg('检查失败', true); return; }
+  if (r.err) { msg('检查 Node 更新失败：' + r.err, true); }
+  else {
+    $('nLatest').textContent = r.latest || '未知';
+    $('nStaged').textContent = r.staged || '—';
+    if (r.current && r.latest && r.current !== r.latest) msg('发现新版 Node：' + r.current + ' → ' + r.latest + '。点击「下载并暂存 Node」下载，重启后生效。');
+    else msg('Node 已是最新（' + (r.current || '未知') + '）');
+  }
+});
+
+$('btnNDownload').addEventListener('click', async () => {
+  $('btnNDownload').disabled = true; msg('正在下载 Node 运行时…');
+  const r = await api.downloadNode();
+  $('btnNDownload').disabled = false;
+  if (r && r.busy) { msg('正在检查或下载更新，请稍候', true); return; }
+  if (r && r.ok === false) msg(r.msg || 'Node 下载失败', true);
+  else if (r && r.ok) { refresh(); /* 对话框流程已接管 */ }
+});
 
 refresh();
 </script>

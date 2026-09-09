@@ -57,7 +57,23 @@ function registryInfo() {
 }
 const UPSTREAM_GITHUB_RAW = process.env.DSH_UPSTREAM_GITHUB_RAW || 'https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master';
 const UPSTREAM_GITHUB_API = process.env.DSH_UPSTREAM_GITHUB_API || 'https://api.github.com/repos/deepseek-ai/deepseek-harness';
-const NODE_DIST_BASE = process.env.DSH_NODE_DIST_BASE || 'https://cdn.npmmirror.com/binaries/node';
+const NODE_DIST_MIRROR = 'https://cdn.npmmirror.com/binaries/node';
+const NODE_DIST_OFFICIAL = 'https://nodejs.org/dist';
+// Node 运行时下载源：环境变量 DSH_NODE_DIST_BASE > 设置(nodeDist) > 默认镜像站。
+function nodeDistBase() {
+  if (process.env.DSH_NODE_DIST_BASE) return process.env.DSH_NODE_DIST_BASE;
+  const s = readSettings();
+  if (s && s.nodeDist === 'official') return NODE_DIST_OFFICIAL;
+  return NODE_DIST_MIRROR;
+}
+function nodeDistInfo() {
+  const base = nodeDistBase();
+  return {
+    route: base === NODE_DIST_OFFICIAL ? 'official' : base === NODE_DIST_MIRROR ? 'mirror' : 'env',
+    url: base,
+    label: base === NODE_DIST_OFFICIAL ? '官方站（nodejs.org）' : base === NODE_DIST_MIRROR ? '镜像站（npmmirror）' : '环境变量 DSH_NODE_DIST_BASE'
+  };
+}
 // Node 自动更新锁定的主版本（与 DSH 原生模块预编译 ABI 对齐）。
 const PINNED_NODE_MAJOR = parseInt(process.env.DSH_NODE_MAJOR || '24', 10);
 // 兜底最低 Node 版本（读不到 dsh engines 时使用）。DSH 需要 zstd / stripTypeScriptTypes。
@@ -484,7 +500,7 @@ async function latestDshInfo() {
 }
 async function latestDshVersion() { return (await latestDshInfo()).version; }
 async function latestNodeVersion() {
-  const idx = await fetchJson(`${NODE_DIST_BASE}/index.json`);
+  const idx = await fetchJson(`${nodeDistBase()}/index.json`);
   const same = idx.filter((e) => e && e.version && new RegExp(`^v${PINNED_NODE_MAJOR}\\.\\d+\\.\\d+$`).test(e.version)).map((e) => e.version.slice(1));
   const picked = highestSemver(same);
   if (!picked) throw new Error(`未找到 Node v${PINNED_NODE_MAJOR}.x`);
@@ -1197,6 +1213,106 @@ function recoverInterruptedIsolation() {
   writeJson(pluginIsolationStatePath(), result);
   log(`recovered interrupted plugin isolation: ${failed.size} failed kept disabled, ${good.size} restored`);
   return { active: true, recovered: true, failed: [...failed], restored: [...good] };
+}
+
+// --------------------------------------------------------------------------
+// Safe mode: a tray-accessible repair channel. The Electron shell (tray +
+// settings window) always works even when the GUI or backend is bricked; safe
+// mode reduces the profile to ONLY the core bundles and comments the whole
+// home patch, so a broken third-party plugin tree can never prevent the GUI
+// from booting again. Originals are stored in safe-mode.json and restored
+// byte-exact on exit — or automatically on the next NORMAL launch, so a crash
+// inside safe mode can never strand the machine in a stripped state.
+// --------------------------------------------------------------------------
+function safeModeStatePath() { return path.join(P().root, 'safe-mode.json'); }
+function safeModeActive() {
+  const st = readJson(safeModeStatePath(), null);
+  return !!(st && st.active);
+}
+
+function enterSafeMode() {
+  const p = P();
+  const webDir = path.join(p.dshHome, 'profiles', 'web');
+  const webPkgPath = path.join(webDir, 'package.json');
+  if (!fs.existsSync(webPkgPath)) return { ok: false, msg: 'profiles/web/package.json 不存在，无法进入安全模式' };
+  const readTxt = (f) => { try { return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null; } catch { return null; } };
+  const homePatchPath = path.join(p.dshHome, 'cordis.patch.yml');
+  const webPatchPath = path.join(webDir, 'cordis.patch.yml');
+  const saved = {
+    webPkg: readTxt(webPkgPath),
+    webPatch: readTxt(webPatchPath),
+    homePatch: readTxt(homePatchPath)
+  };
+  try { writeJson(safeModeStatePath(), { active: true, enteredAt: new Date().toISOString(), saved }); }
+  catch (e) { return { ok: false, msg: '写入安全模式状态失败: ' + e.message }; }
+
+  // Minimize the profile to core bundles only (keep dependencies — the
+  // installed packages stay valid, they just won't be loaded as bundles).
+  let pkg = null;
+  try { pkg = JSON.parse(saved.webPkg); } catch { pkg = { name: 'dsh-profile-web', private: true }; }
+  const next = {
+    ...pkg,
+    dsh: { ...(pkg.dsh || {}), profile: { ...((pkg.dsh && pkg.dsh.profile) || {}), bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } }
+  };
+  try { writeJson(webPkgPath, next); } catch (e) { return { ok: false, msg: '写安全模式 package.json 失败: ' + e.message }; }
+
+  // Comment every home-patch plugin entry (insert lines too — commentPatchEntries
+  // handles blocks whose entries are all commented).
+  try {
+    if (saved.homePatch != null && saved.homePatch.trim() !== '') {
+      writePatchText(p.dshHome, commentPatchEntries(saved.homePatch, null));
+    }
+  } catch (e) { return { ok: false, msg: '注释家级补丁失败: ' + e.message }; }
+  // Profile patch → empty.
+  try {
+    if (saved.webPatch != null) fs.writeFileSync(webPatchPath, '[]\n', 'utf8');
+  } catch {}
+
+  log('entered safe mode (core bundles only, home patch commented)');
+  return { ok: true, active: true };
+}
+
+function exitSafeMode() {
+  const p = P();
+  const st = readJson(safeModeStatePath(), null);
+  if (!st || !st.saved) return { ok: false, msg: '无安全模式状态可恢复' };
+  const saved = st.saved || {};
+  const webDir = path.join(p.dshHome, 'profiles', 'web');
+  const restored = [];
+  if (saved.webPkg != null) {
+    try { mkdirp(webDir); fs.writeFileSync(path.join(webDir, 'package.json'), saved.webPkg, 'utf8'); restored.push('profiles/web/package.json'); }
+    catch (e) { log('exitSafeMode restore pkg failed:', e.message); }
+  }
+  if (saved.webPatch != null) {
+    try { fs.writeFileSync(path.join(webDir, 'cordis.patch.yml'), saved.webPatch, 'utf8'); restored.push('profiles/web/cordis.patch.yml'); }
+    catch (e) { log('exitSafeMode restore web patch failed:', e.message); }
+  }
+  if (saved.homePatch != null) {
+    try { writePatchText(p.dshHome, saved.homePatch); restored.push('home cordis.patch.yml'); }
+    catch (e) { log('exitSafeMode restore home patch failed:', e.message); }
+  }
+  try { fs.unlinkSync(safeModeStatePath()); } catch {}
+  log('exited safe mode; restored: ' + restored.join(', '));
+  return { ok: true, restored };
+}
+
+/**
+ * Boot-time safe-mode resolution. `--safe-mode` in argv keeps the reduced
+ * profile (entering it first if the marker is missing — e.g. the tray relaunch
+ * raced ahead). A NORMAL launch while a safe-mode marker exists restores the
+ * saved originals, so a crash inside safe mode never strands the machine.
+ */
+function applySafeModeBoot(argv = []) {
+  const requested = Array.isArray(argv) && argv.includes('--safe-mode');
+  if (requested) {
+    if (!safeModeActive()) enterSafeMode();
+    return { active: true, requested: true };
+  }
+  if (safeModeActive()) {
+    const res = exitSafeMode();
+    return { active: false, exited: true, restored: (res && res.restored) || [] };
+  }
+  return { active: false };
 }
 
 function pluginEntries(home) {
@@ -2049,7 +2165,7 @@ async function stageNode(callbacks = {}) {
     return { version: staged, reused: true };
   }
   const zipName = `node-v${latest}-win-x64.zip`;
-  const url = `${NODE_DIST_BASE}/v${latest}/${zipName}`;
+  const url = `${nodeDistBase()}/v${latest}/${zipName}`;
   const zip = path.join(p.downloadDir, zipName);
   say(`正在下载 Node v${latest} …`);
   await downloadFile(url, zip, progress);
@@ -2267,7 +2383,8 @@ module.exports = {
   preparePluginIsolation, enablePluginIsolationBlock, enablePluginIsolationEntry, finishPluginIsolation, clearPluginIsolation,
   recoverInterruptedIsolation,
   collectProfileRegistrations, restoreProfileRegistrations, rollbackProfileRestore,
-  readSettings, writeSettings, npmRegistryUrl, registryInfo,
+  readSettings, writeSettings, npmRegistryUrl, registryInfo, nodeDistInfo,
+  safeModeActive, enterSafeMode, exitSafeMode, applySafeModeBoot,
   stageDsh, stageNode,
   latestDshVersion, latestDshInfo, latestNodeVersion, minNodeForDsh, nodeMeetsRequirement,
   compareSemver
