@@ -46,7 +46,10 @@ const LEGACY_ARCHIVE = path.join(OUT_DIR, 'vendor.7z');
 
 // The bundled Windows x64 7za.exe (this is exactly the binary we also ship as
 // resources/payload/7za.exe, so pack-time and install-time behavior match).
-const SEVEN_ZA = path.join(ROOT, 'node_modules', '7zip-bin', 'win', 'x64', '7za.exe');
+// Since electron-builder 26 removed the 7zip-bin npm package, the binary lives
+// at the tracked build/tools/7za.exe (copied from the electron-builder 7zip
+// toolset, 7-Zip 24.09), which electron-builder also ships for the user.
+const SEVEN_ZA = path.join(ROOT, 'build', 'tools', '7za.exe');
 
 // Multi-threaded compression + explicit LZMA2 block size for MT decompression.
 const COMPRESS_FLAGS = ['-t7z', '-m0=LZMA2:d64m:c16m', '-mx=5', '-mmt=on'];

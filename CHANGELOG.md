@@ -2,6 +2,15 @@
 
 这里记录每个版本改了什么。版本号和 `package.json` 保持一致。
 
+## 0.3.30（2026-09-09）
+
+Electron 大版本升级 + 构建/更新链配套升级，清零 dependabot 告警的主体来源（Electron 33 线早已 EOL，34 之后修复的 Chromium CVE——含 CVE-2025-10585、CVE-2025-2783 等在野利用项——全部随本次升级消除）：
+
+1. **Electron 33.4.11 → 44.3.0**（Chromium 130→152、Node 20→24、V8 13→15）：逐代审计 34→44 breaking changes 后确认本项目代码无需改动——`app.commandLine` 两个开关本就全小写（36 开关归一化无影响）、dialog 只用错误框（43 默认目录变化无影响）、仅 x64 打包（44 移除 ia32 无影响）、主进程无原生模块（Node ABI 变化无影响）。
+2. **electron-builder 25.1.8 → 26.15.3**：① 26 默认 makensis 警告即错误（`-WX`），其新增的 PowerShell 检测模板有一处良性告警，配置 `nsis.warningsAsErrors: false` 还原原行为；② 26 移除 7zip-bin npm 包，构建所需 7za 改为工具集自下载（7-Zip 24.09，已修 CVE-2024-11477/CVE-2025-0411）；`build/payload/7za.exe` 改为自包含文件（更新器解压后端 7z 用，不再依赖 node_modules）。
+3. **electron-updater 6.3.9 → 6.8.9**：经依赖携带 builder-util-runtime 9.7.0，修复 CVE-2026-54673（跨源重定向泄漏凭据头，GHSA-p2f4-r6v6-j797）；6.8.8 起的更新流程 PATH/路径穿越加固一并收入。
+4. **Electron 42+ 二进制懒下载适配**：postinstall 不再下载二进制，首次构建前经国内镜像 `npx install-electron` 预下载（已验证 234.7MB 拉取与运行正常）。
+
 ## 0.3.29（2026-09-09）
 
 日志与维护体验这轮收口，外加设置窗补上桌面版版本号：

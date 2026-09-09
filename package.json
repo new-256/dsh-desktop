@@ -1,7 +1,7 @@
 {
   "name": "dsh-desktop",
   "productName": "DSH Desktop",
-  "version": "0.3.29",
+  "version": "0.3.30",
   "description": "DSH (DeepSeek Harness) 桌面版：独立窗口运行 Web GUI，免浏览器，隔离数据目录，启动自动修复，静默更新重启生效。",
   "author": "DSH Desktop Packager",
   "license": "MIT",
@@ -21,11 +21,11 @@
     "prepare-runtime": "node scripts/prepare-runtime.js"
   },
   "devDependencies": {
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8"
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
-    "electron-updater": "^6.3.9"
+    "electron-updater": "^6.8.9"
   },
   "build": {
     "appId": "com.deepseek.dshdesktop",
@@ -58,7 +58,7 @@
         ]
       },
       {
-        "from": "node_modules/7zip-bin/win/x64/7za.exe",
+        "from": "build/tools/7za.exe",
         "to": "payload/7za.exe"
       }
     ],
@@ -89,7 +89,8 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "warningsAsErrors": false
     }
   }
 }
