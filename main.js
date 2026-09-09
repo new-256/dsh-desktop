@@ -73,6 +73,7 @@ let pendingShowMainWindow = false;
 let activeUrl = null;
 let activeLanUrl = null;
 let activeMobilePort = null;
+let mobileBridge = null;
 let lastFirewallCommand = null;
 let lastFirewallSuccess = null;
 let safeMode = false;
@@ -113,8 +114,16 @@ function killProcessTree(proc) {
   try { proc.kill(); } catch {}
 }
 
+function stopMobileBridge() {
+  if (mobileBridge) {
+    try { mobileBridge.close(); } catch {}
+    mobileBridge = null;
+  }
+}
+
 /** Controlled stop: detach listeners first so a deliberate kill is never misread as a crash. */
 function stopBackend() {
+  stopMobileBridge();
   if (!backend) return;
   const proc = backend;
   backend = null;
@@ -253,11 +262,18 @@ function spawnBackend() {
     delete env.ELECTRON_RUN_AS_NODE; // we spawn a real standalone node
 
     const mobileCfg = getMobileSettings();
-    let args = [p.dshBin, 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'];
+    let args = ['--max-http-header-size=1048576', p.dshBin, 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'];
+    const localIp = getLocalIp();
+    if (localIp) {
+      args.push('--trusted-host', localIp);
+    }
     if (mobileCfg.enabled) {
       const port = await resolveMobilePort(mobileCfg.port);
       activeMobilePort = port;
-      args = [p.dshBin, 'web', '--no-open', '--port', String(port), '--host', '0.0.0.0'];
+      if (localIp) {
+        args.push('--trusted-host', `${localIp}:${port}`);
+      }
+      tryAddFirewallRule(port).catch(() => {});
     } else {
       activeMobilePort = null;
       activeLanUrl = null;
@@ -268,7 +284,7 @@ function spawnBackend() {
       stdio: ['ignore', 'pipe', 'pipe']
     });
     backend = child;
-    pushLog(`starting backend: node=${p.nodeExe} DSH_HOME=${p.dshHome} host=${mobileCfg.enabled ? '0.0.0.0' : '127.0.0.1'} port=${mobileCfg.enabled ? activeMobilePort : '0'}\n`);
+    pushLog(`starting backend: node=${p.nodeExe} DSH_HOME=${p.dshHome} host=127.0.0.1 port=0 (mobileEnabled=${mobileCfg.enabled})\n`);
 
     let settled = false;
     const onUrl = (line) => {
@@ -276,13 +292,35 @@ function spawnBackend() {
       if (!m) return;
       const url = m[1].trim();
 
-      const lanMatch = /\(LAN:\s*(https?:\/\/[^\s)]+)\)/i.exec(line);
-      if (lanMatch) {
-        activeLanUrl = lanMatch[1].trim();
-      } else if (mobileCfg.enabled) {
-        const localIp = getLocalIp();
-        if (localIp) {
-          activeLanUrl = url.replace(/\/\/(?:127\.0\.0\.1|0\.0\.0\.0|localhost)/i, `//${localIp}`);
+      if (mobileCfg.enabled && activeMobilePort) {
+        stopMobileBridge();
+        try {
+          const parsedUrl = new URL(url);
+          const targetPort = Number(parsedUrl.port);
+          mobileBridge = net.createServer((clientSocket) => {
+            const upstream = net.connect({ port: targetPort, host: '127.0.0.1' }, () => {
+              clientSocket.pipe(upstream);
+              upstream.pipe(clientSocket);
+            });
+            clientSocket.on('error', () => upstream.destroy());
+            upstream.on('error', () => clientSocket.destroy());
+          });
+          mobileBridge.listen(activeMobilePort, '0.0.0.0', () => {
+            pushLog(`[mobile] 局域网端口桥接已启动: 0.0.0.0:${activeMobilePort} -> 127.0.0.1:${targetPort}\n`);
+          });
+          mobileBridge.on('error', (e) => {
+            pushLog(`[mobile] 局域网桥接异常: ${e.message}\n`);
+          });
+          if (localIp) {
+            activeLanUrl = `http://${localIp}:${activeMobilePort}/${parsedUrl.search}`;
+          }
+        } catch (e) {
+          pushLog(`[mobile] 构建转发桥失败: ${e.message}\n`);
+        }
+      } else {
+        const lanMatch = /\(LAN:\s*(https?:\/\/[^\s)]+)\)/i.exec(line);
+        if (lanMatch) {
+          activeLanUrl = lanMatch[1].trim();
         }
       }
 
@@ -854,6 +892,19 @@ function createChromiumWindow(url) {
   });
   Menu.setApplicationMenu(null);
   applyWindowHandlers(win);
+
+  win.webContents.session.webRequest.onErrorOccurred((details) => {
+    diag(`[NET ERROR] ${details.url.slice(0, 120)} -> ${details.error}`);
+  });
+  win.webContents.session.webRequest.onResponseStarted((details) => {
+    if (details.url.includes('/plugins/')) {
+      diag(`[NET RESPONSE] ${details.statusCode} ${details.url.slice(0, 120)}`);
+    }
+  });
+  win.webContents.on('console-message', (_e, level, msg, line, src) => {
+    diag(`[RENDERER CONSOLE ${level}] ${msg} (${src}:${line})`);
+  });
+
   win.loadURL(url);
 
   let displayed = false;
