@@ -40,6 +40,7 @@ input[type=radio], input[type=checkbox] { accent-color: #5e81ac; }
 <div class="row"><input type="radio" name="route" id="r-official" value="official"><label for="r-official">官方站（npmjs）<span class="dim">&nbsp;— 版本与依赖始终最新；国内网络可能较慢</span></label></div>
 <div id="routeNote"></div>
 <div class="kv">
+<div class="k">桌面版</div><div class="v" id="vShell">读取中…</div>
 <div class="k">当前版本</div><div class="v" id="vCurrent">读取中…</div>
 <div class="k">最新版本</div><div class="v" id="vLatest">未检查</div>
 <div class="k">更新状态</div><div class="v" id="vStatus">—</div>
@@ -90,6 +91,7 @@ function msg(text, isErr) { const el = $('msg'); el.textContent = text || ''; el
 function renderState(s) {
   if (!s) return;
   const ver = (s.versions && s.versions.dsh) || '未知';
+  $('vShell').textContent = (s.shellVersion || '未知') + (s.shellUpdateVersion ? '（可升级 ' + s.shellUpdateVersion + '）' : '');
   $('vCurrent').textContent = ver + (s.versions && s.versions.node ? ' · Node ' + s.versions.node : '');
   $('vLatest').textContent = (s.updateStatus && s.updateStatus.latest) || '未检查';
   $('vStatus').textContent = (s.updateStatus && s.updateStatus.message) || '—';

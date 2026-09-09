@@ -7,7 +7,8 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const mgr = require('./updater-backend');
-const diag = require('./diag-log').write;
+const diagLog = require('./diag-log');
+const diag = diagLog.write;
 
 // 任何主进程异常都先落到桌面日志，再向用户展示 —— 不再出现"无声崩溃"。
 process.on('uncaughtException', (err) => {
@@ -839,7 +840,8 @@ function settingsSnapshot() {
   let nodeDist = null; try { nodeDist = mgr.nodeDistInfo(); } catch {}
   let autoStart = false; try { autoStart = app.getLoginItemSettings().openAtLogin; } catch {}
   let safeMode = false; try { safeMode = mgr.safeModeActive(); } catch {}
-  return { settings, versions, updateStatus, shellUpdateVersion, registry, nodeDist, autoStart, safeMode };
+  let shellVersion = null; try { shellVersion = app.getVersion(); } catch {}
+  return { settings, versions, updateStatus, shellUpdateVersion, shellVersion, registry, nodeDist, autoStart, safeMode };
 }
 
 ipcMain.handle('settings:get', () => settingsSnapshot());
@@ -941,6 +943,8 @@ function scheduleSilentUpdates() {
   // a restart that applied an update.
   setTimeout(() => checkBackendUpdates(), 5000);
   setInterval(() => checkBackendUpdates(), 6 * 3600 * 1000);
+  // Daily log retention cleanup (archives pruned by count + age).
+  setInterval(() => { try { diagLog.housekeep(); } catch (_) {} }, 24 * 3600 * 1000);
 }
 
 async function requestEnterSafeMode() {
@@ -1002,6 +1006,10 @@ if (!gotLock) {
 
   app.whenReady().then(async () => {
     diag('启动流程开始', { hidden: autoStartHidden, packaged: isPackaged, versions: (() => { try { return mgr.currentVersions(); } catch { return null; } })() });
+    // 0) Log housekeeping: retention cleanup on every boot (runs again daily via
+    //    scheduleSilentUpdates). Logs live in the app logs dir, not the Desktop.
+    try { diagLog.housekeep(); } catch (_) {}
+    diag('日志目录:', diagLog.logsDir(), '| 错误清单:', diagLog.errorLogFile());
     if (!autoStartHidden) createSplash();
     try {
       // 1) Seed writable active dir from factory resources (first run).
