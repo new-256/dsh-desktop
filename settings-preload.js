@@ -11,7 +11,10 @@ contextBridge.exposeInMainWorld('dshSettings', {
   setAutostart: (on) => ipcRenderer.invoke('settings:set-autostart', !!on),
   setNodeDist: (dist) => ipcRenderer.invoke('settings:set-node-dist', dist),
   checkNode: () => ipcRenderer.invoke('settings:check-node'),
-  downloadNode: () => ipcRenderer.invoke('settings:download-node'),
+  downloadNode: (version) => ipcRenderer.invoke('settings:download-node', version || null),
+  listBackendVersions: () => ipcRenderer.invoke('backend:list-versions'),
+  compatPlan: (version) => ipcRenderer.invoke('backend:compat-plan', version),
+  rollbackTo: (version) => ipcRenderer.invoke('backend:rollback-to', version),
   openLog: () => ipcRenderer.invoke('settings:open-log'),
   restart: () => ipcRenderer.invoke('settings:restart-app')
 });

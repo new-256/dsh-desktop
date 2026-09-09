@@ -857,7 +857,12 @@ ipcMain.handle('settings:check-updates', async () => {
   if (silentBusy) return { busy: true };
   const info = await checkBackendUpdates({ includeNode: true });
   let registry = null; try { registry = mgr.registryInfo(); } catch {}
-  return { busy: false, info, status: updateStatus, registry };
+  let nodeGate = null;
+  try {
+    const target = info && info.latest && info.latest.dsh;
+    if (target) nodeGate = await mgr.backendEnginesFor(target);
+  } catch {}
+  return { busy: false, info, status: updateStatus, registry, nodeGate };
 });
 ipcMain.handle('settings:download-updates', async () => {
   if (silentBusy) return { busy: true };
@@ -918,12 +923,15 @@ ipcMain.handle('settings:check-node', async () => {
   const staged = mgr.stagedVersions()?.node || null;
   const req = mgr.nodeRequirement();
   let dist = null; try { dist = mgr.nodeDistInfo(); } catch {}
-  return { latest, current: cur, staged, required: req.required, reqOk: req.ok, err, dist };
+  let available = null;
+  try { available = await mgr.listNodeVersions(); } catch {}
+  let pinnedMajor = null; try { pinnedMajor = parseInt(process.env.DSH_NODE_MAJOR || '24', 10); } catch {}
+  return { latest, current: cur, staged, required: req.required, reqOk: req.ok, available, pinnedMajor, err, dist };
 });
-ipcMain.handle('settings:download-node', async () => {
+ipcMain.handle('settings:download-node', async (_e, version) => {
   if (silentBusy) return { busy: true };
   try {
-    const res = await mgr.stageNode({ onLog: (m) => pushLog('[node-stage] ' + m + '\n') });
+    const res = await mgr.stageNode({ onLog: (m) => pushLog('[node-stage] ' + m + '\n') }, version || null);
     const parent = settingsWindow || mainWindow;
     const r = await dialog.showMessageBox(parent, {
       type: 'info', buttons: ['立即重启并更新', '稍后'], defaultId: 0, cancelId: 1,
@@ -993,6 +1001,44 @@ ipcMain.handle('app:get-version', () => app.getVersion());
 ipcMain.handle('backend:versions', () => { try { return mgr.currentVersions(); } catch { return null; } });
 ipcMain.handle('env:isolation', () => { try { return mgr.describeEnvIsolation(); } catch { return null; } });
 ipcMain.handle('backend:check-updates', () => checkBackendUpdates({ includeNode: true }));
+// 后端全版本列表（npm 已发布全部版本，倒序）+ 当前/暂存/最新。
+ipcMain.handle('backend:list-versions', async () => {
+  try {
+    const info = await mgr.npmDshVersionsAll();
+    const cur = mgr.currentVersions()?.dsh || null;
+    const staged = mgr.stagedVersions()?.dsh || null;
+    return { all: info.all, latest: info.latest, current: cur, staged, engines: info.engines };
+  } catch (e) { return { err: (e && e.message) || '获取版本列表失败' }; }
+});
+// 回退兼容性分析：对目标版本给出各插件可用性判定 + 导出桌面报告。
+ipcMain.handle('backend:compat-plan', async (_e, version) => {
+  if (!version) return { err: '缺少目标版本' };
+  try {
+    const plan = await mgr.analyzeBackendRollback(String(version));
+    let file = null;
+    try { file = mgr.exportBackendCompatReport(plan); } catch (e) { diag('兼容报告导出失败:', e && e.message); }
+    diag('回退兼容分析:', { target: version, summary: plan.summary, exported: !!file });
+    return { plan, file };
+  } catch (e) { return { err: (e && e.message) || '分析失败' }; }
+});
+// 回退到指定后端版本（暂存 + 重启生效）。
+ipcMain.handle('backend:rollback-to', async (_e, version) => {
+  if (silentBusy) return { busy: true };
+  if (!version) return { ok: false, msg: '缺少目标版本' };
+  try {
+    const res = await mgr.stageDsh({ onLog: (m) => pushLog('[backend-rollback] ' + m + '\n') }, String(version));
+    const parent = settingsWindow || mainWindow;
+    const r = await dialog.showMessageBox(parent, {
+      type: 'info', buttons: ['立即重启并应用', '稍后'], defaultId: 0, cancelId: 1,
+      title: APP_NAME, message: '后端版本已暂存',
+      detail: `DSH 后端已暂存为 v${res.version}（当前 ${mgr.currentVersions()?.dsh || '未知'}）。\n\n回退前建议先执行「分析兼容性并导出报告」确认插件情况，重启应用后生效。`
+    });
+    if (r.response === 0) restartApp();
+    return { ok: true, version: res.version, reused: !!res.reused };
+  } catch (e) {
+    return { ok: false, msg: (e && e.message) || '回退暂存失败' };
+  }
+});
 ipcMain.handle('app:restart', () => restartApp());
 
 // ---------------------------------------------------------------------------

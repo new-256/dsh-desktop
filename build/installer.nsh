@@ -19,8 +19,9 @@ Function DshBackendVersionPageCreate
   Pop $DshBackendVersionCombo
   ${NSD_CB_AddString} $DshBackendVersionCombo "随安装包提供的版本（推荐）"
   ${NSD_CB_AddString} $DshBackendVersionCombo "在线最新版本（首次启动下载）"
-  ${NSD_CB_AddString} $DshBackendVersionCombo "0.1.2-alpha.4"
-  ${NSD_CB_AddString} $DshBackendVersionCombo "0.1.1-rc.2"
+  ${NSD_CB_AddString} $DshBackendVersionCombo "在线自选版本（安装后在设置窗选择全部版本）"
+  ${NSD_CB_AddString} $DshBackendVersionCombo "0.1.5-alpha.2"
+  ${NSD_CB_AddString} $DshBackendVersionCombo "0.1.5-alpha.1"
   ${NSD_CB_SelectString} $DshBackendVersionCombo "随安装包提供的版本（推荐）"
   ${NSD_CreateLabel} 0 78u 100% 46u "选择会在安装完成后的首次启动生效。用户会话、插件配置和凭据不会被删除。"
   Pop $0

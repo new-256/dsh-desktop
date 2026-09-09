@@ -454,7 +454,14 @@ async function npmDshPublished() {
   const doc = await fetchJson(`${npmRegistryUrl()}/@deepseek-ai%2Fdsh`);
   const versions = Object.keys((doc && doc.versions) || {});
   if (!versions.length) throw new Error('npm registry returned no versions');
-  return { versions, latest: highestSemver(versions) };
+  // 每个版本声明的 engines.node（可能缺失；缺失时调用方自行回退 FALLBACK_MIN_NODE）。
+  const engines = {};
+  for (const v of versions) {
+    const meta = doc.versions[v];
+    const en = meta && meta.engines && typeof meta.engines.node === 'string' ? meta.engines.node : null;
+    if (en) engines[v] = en;
+  }
+  return { versions, latest: highestSemver(versions), engines };
 }
 
 async function latestDshInfo() {
@@ -2153,13 +2160,57 @@ async function stageDsh(callbacks = {}, requestedVersion = null) {
   return { version: ver, reused: false, changes: info.changes || [], source: info.source };
 }
 
-async function stageNode(callbacks = {}) {
+/**
+ * List every installable Node version for rollback/selection: same pinned major
+ * (native-module ABI alignment) and at least DSH's minimum requirement.
+ */
+async function listNodeVersions() {
+  const idx = await fetchJson(`${nodeDistBase()}/index.json`);
+  const min = minNodeForDsh();
+  const re = new RegExp(`^v${PINNED_NODE_MAJOR}\\.\\d+\\.\\d+$`);
+  return (Array.isArray(idx) ? idx : [])
+    .filter((e) => e && e.version && re.test(e.version))
+    .map((e) => e.version.slice(1))
+    .filter((v) => nodeMeetsRequirement(v, min))
+    .sort((a, b) => compareSemver(b, a));
+}
+
+/**
+ * DSH 后端某版本声明的 Node 运行时要求（feature3 用）：engines.node 缺失时
+ * 回退 FALLBACK_MIN_NODE。返回 { version, required, declared, source, current, ok }。
+ */
+async function backendEnginesFor(version) {
+  let declared = null; let source = 'fallback';
+  try {
+    const doc = await fetchJson(`${npmRegistryUrl()}/@deepseek-ai%2Fdsh/${encodeURIComponent(version)}`);
+    declared = doc && doc.engines && typeof doc.engines.node === 'string' ? doc.engines.node : null;
+    source = declared ? 'engines' : 'fallback';
+  } catch { source = 'fallback'; }
+  const nums = [...String(declared || '').matchAll(/(\d+)\.(\d+)\.(\d+)/g)].map((x) => `${x[1]}.${x[2]}.${x[3]}`);
+  const required = highestSemver([...nums, FALLBACK_MIN_NODE]);
+  const current = nodeVersion(P().nodeExe);
+  return { version, required, declared, source, current, ok: nodeMeetsRequirement(current, required) };
+}
+
+/** npm 上全部已发布版本（倒序）+ 最新 + 各版本 engines.node 声明。 */
+async function npmDshVersionsAll() {
+  const { versions, latest, engines } = await npmDshPublished();
+  return { all: [...versions].sort((a, b) => compareSemver(b, a)), latest, engines: engines || {} };
+}
+
+async function stageNode(callbacks = {}, requestedVersion = null) {
   const p = P();
   const say = (m) => callbacks.onLog && callbacks.onLog(m);
   const progress = (f) => callbacks.onProgress && callbacks.onProgress(f);
-  const latest = await latestNodeVersion();
+  const latest = requestedVersion || await latestNodeVersion();
+  if (requestedVersion) {
+    const allowed = await listNodeVersions();
+    if (!allowed.includes(requestedVersion)) {
+      throw new Error(`Node v${requestedVersion} 不在可安装列表（需为 Node v${PINNED_NODE_MAJOR}.x 且 ≥ ${minNodeForDsh()}）。可选：${allowed.slice(0, 6).join(', ')}${allowed.length > 6 ? ' …' : ''}`);
+    }
+  }
   const staged = stagedVersions().node;
-  if (staged && compareSemver(staged, latest) >= 0) {
+  if (!requestedVersion && staged && compareSemver(staged, latest) >= 0) {
     log(`node version ${staged} is already staged (latest=${latest}); reusing`);
     say(`最新 Node 运行时 (${staged}) 已在暂存区，无需重复下载。`);
     return { version: staged, reused: true };
@@ -2182,6 +2233,123 @@ async function stageNode(callbacks = {}) {
   try { fs.unlinkSync(zip); } catch {}
   log('staged node', latest);
   return { version: latest, reused: false };
+}
+
+// --------------------------------------------------------------------------
+// BACKEND VERSION SELECTION & ROLLBACK ANALYSIS (0.3.31)
+// --------------------------------------------------------------------------
+/** npm 包型插件的本机 manifest（file:// 本地 .mjs 插件无 manifest）。 */
+function pluginManifestOf(name, home) {
+  const bare = String(name || '').split('?')[0].trim();
+  if (!bare || /^file:/i.test(bare)) return null;
+  const candidates = [path.join(home, 'profiles', 'web', 'node_modules'), path.join(home, 'profiles', 'node_modules'), path.join(home, 'node_modules')];
+  for (const rel of candidates) {
+    const link = path.join(rel, bare);
+    let st; try { st = fs.lstatSync(link); } catch { continue; }
+    let real;
+    try { real = st.isSymbolicLink() ? fs.realpathSync(link) : link; } catch { continue; }
+    try {
+      const m = readJson(path.join(real, 'package.json'), null);
+      if (m) return { dir: real, manifest: m };
+    } catch {}
+  }
+  return null;
+}
+
+/** plugins-store/plugin-manager.json 记录（entryId → 插件版本/安装时间）。 */
+function readPluginManager(home) {
+  try {
+    const list = readJson(path.join(home, 'plugins-store', 'plugin-manager.json'), []);
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+
+/**
+ * 分析把后端回退到 targetVersion 时各插件的可用性（feature4）。
+ * 判定口径（如实分级，绝不臆断）：
+ *  - 源文件缺失 → 不可用（硬性）
+ *  - 插件 manifest 声明了对 dsh 的版本约束（dshVersion / peerDependencies.dsh /
+ *    dependencies.dsh）且目标不满足 → 不兼容（声明违反）
+ *  - 目标 === 当前版本 → 兼容
+ *  - 其余（无声明约束且目标≠当前）→ 未验证（兼容性未知，诚实提示）
+ */
+async function analyzeBackendRollback(targetVersion) {
+  const home = dshHome();
+  const current = currentVersions().dsh;
+  let targetEngines = null;
+  try { targetEngines = await backendEnginesFor(targetVersion); } catch {}
+  const manager = readPluginManager(home);
+  const rows = pluginEntries(home).map((e) => {
+    const rec = manager.find((r) => (r.entryId && e.id && r.entryId === e.id) || (r.packageName && r.packageName === String(e.name).split('?')[0]));
+    const pkg = pluginManifestOf(e.name, home);
+    const m = pkg && pkg.manifest;
+    // 可用性判定：file:// 看文件是否存在；裸名看能否解析到 manifest（真实目录与
+    // junction 均算可用——2026-09-08 布局修复后 home/node_modules 下以真实目录
+    // 存放，pluginSourceAvailable 只认 junction 会误报缺失）。
+    let srcExists = false;
+    if (/^file:/i.test(String(e.name))) {
+      const sp = specToPath(e.name);
+      srcExists = !!(sp && fs.existsSync(sp));
+    } else {
+      srcExists = !!pkg;
+    }
+    let compatible = null; let reason = '';
+    if (!srcExists) {
+      compatible = false; reason = '插件源文件缺失或不可加载';
+    } else {
+      const dshConst = m && (m.dshVersion || (m.peerDependencies && m.peerDependencies['@deepseek-ai/dsh']) || (m.dependencies && m.dependencies['@deepseek-ai/dsh']));
+      if (dshConst) {
+        const want = String(dshConst).replace(/^[<>=^~ ]+/, '');
+        const okVer = compareSemver(targetVersion, want) >= 0;
+        compatible = okVer; reason = okVer ? `声明要求 dsh ≥ ${want}，目标满足` : `声明要求 dsh ≥ ${want}，目标 ${targetVersion} 不满足`;
+      } else if (targetVersion === current) {
+        compatible = true; reason = '目标即当前版本';
+      } else {
+        compatible = null; reason = '未声明 dsh 版本约束，与目标版本的兼容性未经验证';
+      }
+    }
+    return {
+      name: e.name, id: e.id, available: srcExists,
+      installed: rec ? { version: rec.version, installedAt: rec.installedAt } : null,
+      nodeEngine: m && m.engines && m.engines.node ? m.engines.node : null,
+      compatible, reason
+    };
+  });
+  const summary = {
+    total: rows.length,
+    incompatible: rows.filter((r) => r.compatible === false).length,
+    unverified: rows.filter((r) => r.compatible === null).length,
+    compatible: rows.filter((r) => r.compatible === true).length
+  };
+  return { target: targetVersion, current, analyzedAt: new Date().toISOString(), targetEngines, summary, rows };
+}
+
+/** 把兼容性分析结果导出到桌面（一次一文件，时间戳命名）。 */
+function exportBackendCompatReport(plan) {
+  const desktop = require('./diag-log').desktopDir();
+  mkdirp(desktop);
+  const stamp = new Date().toISOString().replace(/[:.]/g, '').replace('T', '-').slice(0, 17);
+  const file = path.join(desktop, `DSH-Desktop-回退兼容报告-${plan.target}-${stamp}.txt`);
+  const lines = [];
+  lines.push('DSH 后端回退兼容性报告');
+  lines.push('='.repeat(46));
+  lines.push(`目标后端版本：${plan.target}`);
+  lines.push(`当前后端版本：${plan.current || '未知'}`);
+  lines.push(`分析时间：${plan.analyzedAt}`);
+  if (plan.targetEngines) {
+    lines.push(`目标后端 Node 要求：${plan.targetEngines.declared ? plan.targetEngines.declared : `（未声明，按兜底 ≥ ${plan.targetEngines.required}）`}；当前 Node ${plan.targetEngines.current || '无'}${plan.targetEngines.ok ? ' 满足' : ' 不满足（建议先更新 Node）'}`);
+  }
+  lines.push(`插件数：${plan.summary.total}（可用 ${plan.summary.compatible} / 不可用 ${plan.summary.incompatible} / 未验证 ${plan.summary.unverified}）`);
+  lines.push('-' .repeat(46));
+  const stateLabel = (r) => (r.compatible === false ? '不可用' : r.compatible === null ? '未验证' : '兼容');
+  for (const r of plan.rows) {
+    lines.push(`[${stateLabel(r)}] ${r.name}${r.installed ? ` (v${r.installed.version}, ${String(r.installed.installedAt || '').slice(0, 10)}安装)` : ''}`);
+    lines.push(`    ${r.reason}${r.nodeEngine ? `；插件声明 Node ≥ ${r.nodeEngine}` : ''}`);
+  }
+  lines.push('');
+  lines.push('说明：仅有明确声明约束的违例判为「不可用」；「未验证」表示插件未声明对 dsh 版本的依赖，回退后可能需要验证。');
+  fs.writeFileSync(file, lines.join('\r\n'), 'utf8');
+  return file;
 }
 
 function rollbackDsh() {
@@ -2386,6 +2554,8 @@ module.exports = {
   readSettings, writeSettings, npmRegistryUrl, registryInfo, nodeDistInfo,
   safeModeActive, enterSafeMode, exitSafeMode, applySafeModeBoot,
   stageDsh, stageNode,
+  listNodeVersions, npmDshVersionsAll, backendEnginesFor,
+  analyzeBackendRollback, exportBackendCompatReport,
   latestDshVersion, latestDshInfo, latestNodeVersion, minNodeForDsh, nodeMeetsRequirement,
   compareSemver
 };
