@@ -21,7 +21,7 @@
     "prepare-runtime": "node scripts/prepare-runtime.js"
   },
   "devDependencies": {
-    "electron": "^44.3.0",
+    "electron": "^39.8.10",
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
