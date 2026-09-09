@@ -2,6 +2,14 @@
 
 这里记录每个版本改了什么。版本号和 `package.json` 保持一致。
 
+## 0.3.35（2026-09-10）
+
+**修复安装插件被别人的 peer 声明"连坐"拖失败。** pnpm 的 `auto-install-peers` 会把同一 profile 内**所有**插件声明的 peer 区间合并后一起解析。DSH 自家 client 包（`dsh-client-locale` / `dsh-client-store` / `dsh-client-ui-*` / `dsh-session` 等）只发预发布版（`0.1.1-rc.2`…`0.1.5-alpha.2`，`latest` 标签甚至停在 `0.0.1-rc.1`），而多个插件的 peer 声明合并后得到形如 `>=0.1.1 <0.2.0-0` 的区间 —— 按 semver 规则**不带预发布标识的区间不匹配任何预发布版本**，于是 `ERR_PNPM_NO_MATCHING_VERSION` 必然发生。后果：profile 里只要装过声明这类 peer 的插件（如 `dsh-dream-skin`），之后再装**任何**插件都可能失败，且报错指向一个用户根本没装的包，极难自查。官方站与 npmmirror 表现一致，非网络问题。
+
+修复：应用内安装通道（`installPluginViaCli`）默认设 `NPM_CONFIG_AUTO_INSTALL_PEERS=false` + `NPM_CONFIG_STRICT_PEER_DEPENDENCIES=false`。这些 peer 本就由 DSH 运行时在加载期注入，不需要真装进 profile；现在 peer 缺失只是 `WARN`，不再中断安装。新增 `options.extraEnv` 便于按需覆盖。
+
+配套：本机 profile 级插件恢复。因 0.3.33 之前的启动死循环触发 profile 隔离，`profiles/web/package.json` 被重置为仅基础 bundle（`dependencies` 清空、`dsh.profile.bundles` 只剩 2 项），导致**网络搜索、主题、宠物插件全部消失**（家级 `cordis.patch.yml` 的 6 个插件未受影响）。已用修复后的通道按原版本全部恢复：`web-search-panel@1.2.0`、`dsh-dream-skin@8.30.1`、`@captain1275/dsh-pet@0.3.3`（本地 tgz），并补上 `dsh-chrome@0.1.3`。会话数据（`sessions/` 148 项与 `storages/`）自始至终未受影响。
+
 ## 0.3.34（2026-09-10）
 
 **修"插件加载 431"和"装了 0.3.33 还是起不来"两件事，顺手把手机访问的网络结构改安全了。**

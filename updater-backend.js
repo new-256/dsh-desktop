@@ -2985,6 +2985,18 @@ function installPluginViaCli(spec, options = {}) {
   if (profile) args.push('--profile', profile);
   args.push(action, clean);
   const env = buildDedicatedEnv();
+  // pnpm 的 auto-install-peers 会把同一 profile 内各插件声明的 peer 区间**合并**后
+  // 一起解析。DSH 自家 client 包（dsh-client-locale/store/ui-* 等）只发预发布版
+  // （0.1.x-rc/alpha），而合并出的区间形如 `>=0.1.1 <0.2.0-0` —— 按 semver 规则
+  // **不含预发布标识的区间不匹配任何预发布版本**，于是必然 ERR_PNPM_NO_MATCHING_VERSION，
+  // 导致装任何插件都可能被别的插件的 peer 声明连坐拖失败（@captain1275/dsh-pet
+  // 就是这样装不上的）。这些 peer 本就由 DSH 运行时在加载期提供，不需要真的装进
+  // profile，因此关掉自动装 peer 并放宽 strict-peer-dependencies。
+  if (!Object.prototype.hasOwnProperty.call(env, 'NPM_CONFIG_AUTO_INSTALL_PEERS')) {
+    env.NPM_CONFIG_AUTO_INSTALL_PEERS = 'false';
+    env.NPM_CONFIG_STRICT_PEER_DEPENDENCIES = 'false';
+  }
+  Object.assign(env, options.extraEnv || {});
   log(`plugin ${action} via desktop CLI:`, clean, 'profile=', profile, 'DSH_HOME=', env.DSH_HOME);
   return new Promise((resolve) => {
     let out = '';
