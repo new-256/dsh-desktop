@@ -69,6 +69,7 @@ let backend = null;
 let backendLogs = [];
 let mainWindow = null;
 let splashWindow = null;
+let pendingShowMainWindow = false;
 let activeUrl = null;
 let activeLanUrl = null;
 let activeMobilePort = null;
@@ -79,6 +80,12 @@ let isQuitting = false;
 let tray = null;
 let trayHintShown = false;
 let crashNotified = false;
+// Boot phase drives the tray's disaster-recovery menu. The tray is armed
+// BEFORE the backend is spawned, so 'starting' / 'failed' are real states the
+// user can act on — previously the tray only appeared after a successful boot,
+// which meant a failed start left no recovery entry point at all.
+let bootPhase = 'starting'; // 'starting' | 'running' | 'failed'
+let lastBootError = null;
 
 function pushLog(line) {
   const text = line == null ? '' : line.toString();
@@ -349,6 +356,56 @@ async function startBackendWithHealing(opts = {}) {
     pushLog('backend start failed again; entering self-heal escalations\n');
   }
 
+  // Escalation 0a: the patch file is not a top-level YAML array at all. The
+  // loader rejects it before ANY plugin logic runs, so every later escalation
+  // (entry disable / junction repair / quarantine / Node repair) is guaranteed
+  // to spin uselessly — exactly what happened on 2026-09-09, where safe mode
+  // itself had left a comment-only patch file behind and the whole ladder ran
+  // dry into a fatal dialog. Fix the structure first, then retry.
+  try {
+    const logText = backendLogs.join('');
+    const structural = /must be a top-level YAML array|patches .* must be a top-level/i.test(logText);
+    const repairs = mgr.validateAndRepairPatchLayers();
+    if (repairs.length) {
+      const lines = repairs.map((r) => {
+        const how = r.strategy === 'append-empty-array' ? '已补回空数组标记（注释内容全部保留）'
+          : r.strategy === 'restore-backup' ? `已回退到最近的可用备份（${r.restoredFrom}）`
+          : r.strategy === 'reset-empty' ? '已重置为空补丁层（原内容已备份）' : '未能修复';
+        return `${r.file}\n原因：${r.reason}\n处理：${how}`;
+      });
+      pushLog(`自愈：插件配置文件结构损坏，已修复 ${repairs.length} 处。\n${lines.join('\n')}\n`);
+      diag('自愈 Escalation 0a 补丁结构修复:', repairs);
+      stopBackend();
+      await new Promise((r) => setTimeout(r, 600));
+      try {
+        const urlFixed = await spawnBackend();
+        if (!autoStartHidden) {
+          dialog.showMessageBox(null, {
+            type: 'info', buttons: ['好'], defaultId: 0, title: APP_NAME,
+            message: '已修复损坏的插件配置文件并正常启动',
+            detail: lines.join('\n\n') + '\n\n修复前的文件已按 .broken-*.bak 备份；你的会话、密钥、设置均未受影响。'
+          }).catch(() => {});
+        }
+        return urlFixed;
+      } catch (afterStructural) {
+        pushLog('backend start failed after patch structure repair\n');
+      }
+    } else if (structural) {
+      // The loader complained about structure but every layer validates now —
+      // someone/something already repaired it; a plain retry is the right move.
+      pushLog('自愈：日志报告补丁结构错误，但当前各补丁层校验均通过，直接重试。\n');
+      stopBackend();
+      await new Promise((r) => setTimeout(r, 600));
+      try {
+        return await spawnBackend();
+      } catch (afterRecheck) {
+        pushLog('backend start failed after structure re-check retry\n');
+      }
+    }
+  } catch (e) {
+    pushLog('补丁结构自愈失败（继续后续自愈）: ' + (e && e.message) + '\n');
+  }
+
   // Escalation 0: home-level patch entries that CONFLICT at the Cordis loader
   // level (duplicate loader id / multi-source client package). These are config
   // problems — profile quarantine and Node repair can never fix them, so
@@ -612,6 +669,31 @@ function closeSplash() { if (splashWindow) { try { splashWindow.close(); } catch
 // ---------------------------------------------------------------------------
 // System tray / close-to-tray — DSH is a keep-alive app by default
 // ---------------------------------------------------------------------------
+/** Recovery entries that work WITHOUT a running backend. */
+function recoveryMenuItems() {
+  const diagMod = require('./diag-log');
+  const openPath = (p, what) => {
+    try { shell.openPath(p); } catch (e) { pushLog(`打开${what}失败: ${e && e.message}\n`); }
+  };
+  return [
+    { label: '查看启动日志', click: () => openPath(diagMod.logFile(), '日志') },
+    { label: '查看错误清单', click: () => openPath(diagMod.errorLogFile(), '错误清单') },
+    { label: '打开日志目录', click: () => openPath(diagMod.logsDir(), '日志目录') },
+    { type: 'separator' },
+    { label: '重试启动', click: () => restartApp() },
+    {
+      label: mgr.safeModeActive() ? '退出安全模式并重启' : '以安全模式重启（仅核心组件）',
+      click: () => (mgr.safeModeActive() ? requestExitSafeMode() : requestEnterSafeMode())
+    },
+    { label: '修复插件配置文件…', click: () => requestPatchRepair() },
+    { type: 'separator' },
+    {
+      label: '打开数据目录（会话/密钥/设置）',
+      click: () => { try { openPath(mgr.dshHome(), '数据目录'); } catch {} }
+    }
+  ];
+}
+
 function trayMenuTemplate() {
   let autoStartItem;
   if (isPackaged) {
@@ -633,6 +715,28 @@ function trayMenuTemplate() {
   } else {
     autoStartItem = { label: '开机自启（仅安装版可用）', enabled: false };
   }
+
+  // Backend not up: the tray IS the disaster-recovery console.
+  if (bootPhase !== 'running') {
+    const failed = bootPhase === 'failed';
+    const head = failed
+      ? [{ label: '⚠ 后端启动失败 — 可在此自救', enabled: false },
+         { label: lastBootError ? `原因：${String(lastBootError).slice(0, 60)}` : '原因见启动日志', enabled: false }]
+      : [{ label: '● 正在启动后端…', enabled: false }];
+    return [
+      ...head,
+      { type: 'separator' },
+      ...recoveryMenuItems(),
+      { type: 'separator' },
+      { label: '设置…', click: () => createSettingsWindow(), enabled: failed },
+      { label: '打开 DSH Desktop', click: () => showMainWindow() },
+      { type: 'separator' },
+      autoStartItem,
+      { type: 'separator' },
+      { label: '退出', click: () => quitApp() }
+    ];
+  }
+
   return [
     { label: '设置…', click: () => createSettingsWindow() },
     { label: '手机配对二维码', click: () => openQrWindow() },
@@ -641,6 +745,7 @@ function trayMenuTemplate() {
       label: mgr.safeModeActive() ? '退出安全模式并重启' : '以安全模式重启（维修）',
       click: () => (mgr.safeModeActive() ? requestExitSafeMode() : requestEnterSafeMode())
     },
+    { label: '诊断与自救…', submenu: recoveryMenuItems() },
     { type: 'separator' },
     { label: '打开 DSH Desktop', click: () => showMainWindow() },
     { type: 'separator' },
@@ -648,6 +753,24 @@ function trayMenuTemplate() {
     { type: 'separator' },
     { label: '退出', click: () => quitApp() }
   ];
+}
+
+/** Reflect a new boot phase in the tray (icon tooltip + menu + balloon). */
+function setBootPhase(phase, err) {
+  bootPhase = phase;
+  if (err) lastBootError = err && err.message ? err.message : String(err);
+  refreshTray();
+}
+
+function refreshTray() {
+  if (!tray || tray.isDestroyed()) return;
+  try {
+    tray.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate()));
+    const tip = bootPhase === 'running' ? APP_NAME
+      : bootPhase === 'failed' ? `${APP_NAME} — 启动失败（右键自救）`
+      : `${APP_NAME} — 正在启动…`;
+    tray.setToolTip(tip);
+  } catch {}
 }
 
 function createTray() {
@@ -672,21 +795,38 @@ function createTray() {
   tray.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate()));
   tray.on('click', () => showMainWindow());
   tray.on('double-click', () => showMainWindow());
-  // Refresh the context menu on every right-click so the 开机自启 checkbox
-  // always reflects the current login-item state.
-  tray.on('right-click', () => { try { tray.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate())); } catch {} });
+  // Refresh the context menu on every right-click so the 开机自启 checkbox and
+  // the boot-phase recovery entries always reflect the current state.
+  tray.on('right-click', () => refreshTray());
+  refreshTray();
   return tray;
 }
 
 function showMainWindow() {
+  diag('调用 showMainWindow（唤醒主窗口）');
+  pendingShowMainWindow = true;
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
+    mainWindow.setAlwaysOnTop(true);
     mainWindow.focus();
+    mainWindow.setAlwaysOnTop(false);
     return;
   }
   // Window was actually closed (should not happen while tray is alive); rebuild it.
-  if (activeUrl) createMainWindow(activeUrl);
+  if (activeUrl) {
+    createMainWindow(activeUrl);
+  } else if (splashWindow && !splashWindow.isDestroyed()) {
+    if (splashWindow.isMinimized()) splashWindow.restore();
+    splashWindow.show();
+    splashWindow.setAlwaysOnTop(true);
+    splashWindow.focus();
+    splashWindow.setAlwaysOnTop(false);
+  } else if (bootPhase === 'failed') {
+    // Boot never produced a window — re-open the recovery dialog instead of
+    // silently doing nothing (the user clicked the tray expecting a response).
+    showFatal(lastBootError || new Error('后端启动失败'));
+  }
 }
 
 function quitApp() {
@@ -715,10 +855,34 @@ function createChromiumWindow(url) {
   Menu.setApplicationMenu(null);
   applyWindowHandlers(win);
   win.loadURL(url);
+
+  let displayed = false;
+  const doDisplay = () => {
+    if (displayed || win.isDestroyed()) return;
+    displayed = true;
+    closeSplash();
+    if (autoStartHidden && !pendingShowMainWindow) {
+      pushLog('开机自启动隐藏模式：主窗口已就绪并留在托盘\n');
+      return;
+    }
+    win.show();
+    win.setAlwaysOnTop(true);
+    win.focus();
+    win.setAlwaysOnTop(false);
+    pushLog('主窗口已显示并获取焦点\n');
+  };
+
   win.once('ready-to-show', () => {
-    if (autoStartHidden) { closeSplash(); return; } // auto-started at login: stay in tray
-    win.show(); closeSplash();
+    diag('窗口 ready-to-show 触发');
+    doDisplay();
   });
+  // 保底定时器：即使前端渲染滞后或未触发 ready-to-show，2.5秒后强制显示主窗口
+  setTimeout(() => {
+    if (!displayed && !win.isDestroyed()) {
+      diag('ready-to-show 超时，执行保底显示主窗口');
+      doDisplay();
+    }
+  }, 2500);
   // Window-load resilience: the backend binds a fresh random port on every
   // boot (--port 0), so a load that raced a restart just needs to follow the
   // CURRENT address. Auto-retry bounded, main frame only (9/8 17:xx incident:
@@ -763,11 +927,55 @@ async function createMainWindow(url) {
 
 function showFatal(err) {
   diag('启动失败（fatal）:', err);
-  dialog.showErrorBox(`${APP_NAME} 启动失败`,
-    (err && err.stack ? err.stack : String(err)) +
-    '\n\n--- 后端日志（末尾）---\n' + backendLogs.join('').split(/\r?\n/).slice(-40).join('\n') +
-    '\n\n--- 详细诊断日志已写入桌面：DSH-Desktop-日志.txt ---');
-  app.quit();
+  setBootPhase('failed', err);
+  closeSplash();
+  const tail = backendLogs.join('').split(/\r?\n/).filter(Boolean).slice(-30).join('\n');
+  let logPath = 'DSH-Desktop-日志.txt';
+  try { logPath = diagLog.logFile(); } catch {}
+
+  // Without a tray there is no recovery console at all — keep the old terminal
+  // behaviour rather than leaving an invisible, unusable process behind.
+  if (!tray || tray.isDestroyed()) {
+    dialog.showErrorBox(`${APP_NAME} 启动失败`,
+      (err && err.stack ? err.stack : String(err)) +
+      '\n\n--- 后端日志（末尾）---\n' + tail +
+      `\n\n--- 详细诊断日志：${logPath} ---`);
+    app.quit();
+    return;
+  }
+
+  // Tray is alive: stay resident as a recovery console. Exiting here is what
+  // used to strand the user — no tray icon, no safe mode, no way back in.
+  try {
+    tray.displayBalloon({
+      iconType: 'error', title: `${APP_NAME} 启动失败`,
+      content: '右键托盘图标可查看日志、修复配置或以安全模式重启。'
+    });
+  } catch {}
+  pushLog('启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。\n');
+
+  dialog.showMessageBox(null, {
+    type: 'error',
+    buttons: ['查看启动日志', '修复插件配置', '以安全模式重启', '重试启动', '留在托盘稍后处理', '退出'],
+    defaultId: 0, cancelId: 4, noLink: true,
+    title: `${APP_NAME} 启动失败`,
+    message: '后端没能启动 —— 自救入口已就绪',
+    detail: (err && err.message ? err.message : String(err)) +
+      '\n\n--- 后端日志（末尾）---\n' + tail +
+      `\n\n完整日志：${logPath}` +
+      '\n\n你的会话、密钥、设置都在独立数据目录里，不受影响。' +
+      '\n关闭此窗口后，右键系统托盘的 DSH 图标随时可以再进这些操作。'
+  }).then(async (r) => {
+    switch (r.response) {
+      case 0: try { shell.openPath(logPath); } catch {} break;
+      case 1: await requestPatchRepair(); break;
+      case 2: await requestEnterSafeMode(); break;
+      case 3: await restartApp(); break;
+      case 4: break; // stay resident; tray remains the recovery console
+      case 5: quitApp(); break;
+      default: break;
+    }
+  }).catch(() => {});
 }
 
 function isRealFeedUrl(urlStr) {
@@ -1438,6 +1646,46 @@ async function requestExitSafeMode() {
   await restartApp();
 }
 
+/**
+ * Tray-driven repair of the patch layers — the recovery path for a patch file
+ * that no longer parses as a top-level YAML array. Reports what it found even
+ * when nothing needed fixing, so the user is never left guessing.
+ */
+async function requestPatchRepair() {
+  let repairs = [];
+  let err = null;
+  try { repairs = mgr.validateAndRepairPatchLayers() || []; }
+  catch (e) { err = e; }
+  if (err) {
+    try { dialog.showErrorBox(APP_NAME, '检查插件配置文件失败：' + (err && err.message)); } catch {}
+    return;
+  }
+  if (!repairs.length) {
+    const r = await dialog.showMessageBox(null, {
+      type: 'info', buttons: ['好', '仍要重启'], defaultId: 0, cancelId: 0,
+      title: APP_NAME,
+      message: '插件配置文件结构正常',
+      detail: '各补丁层都是合法的顶层数组，没有需要修复的地方。\n\n如果启动仍然失败，问题不在配置结构上，请在托盘菜单选「查看启动日志」查看具体原因。'
+    });
+    if (r.response === 1) await restartApp();
+    return;
+  }
+  const lines = repairs.map((x) => {
+    const how = x.strategy === 'append-empty-array' ? '已补回空数组标记（注释内容全部保留）'
+      : x.strategy === 'restore-backup' ? `已回退到最近的可用备份（${x.restoredFrom}）`
+      : x.strategy === 'reset-empty' ? '已重置为空补丁层（原内容已备份）' : '未能修复';
+    return `${x.file}\n原因：${x.reason}\n处理：${how}`;
+  });
+  pushLog(`托盘修复：插件配置文件结构已修复 ${repairs.length} 处。\n`);
+  const r = await dialog.showMessageBox(null, {
+    type: 'info', buttons: ['立即重启', '稍后'], defaultId: 0, cancelId: 1,
+    title: APP_NAME,
+    message: `已修复 ${repairs.length} 处配置文件结构问题`,
+    detail: lines.join('\n\n') + '\n\n修复前的文件已按 .broken-*.bak 备份；会话、密钥、设置均未受影响。建议立即重启以生效。'
+  });
+  if (r.response === 0) await restartApp();
+}
+
 async function restartApp(extraArgs = []) {
   diag('restartApp：准备重启（更新应用流程）');
   isQuitting = true;
@@ -1630,7 +1878,10 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => showMainWindow());
+  app.on('second-instance', (_e, argv) => {
+    diag('收到 second-instance 多实例唤醒通知', { argv });
+    showMainWindow();
+  });
 
   app.whenReady().then(async () => {
     diag('启动流程开始', { hidden: autoStartHidden, packaged: isPackaged, versions: (() => { try { return mgr.currentVersions(); } catch { return null; } })() });
@@ -1639,6 +1890,18 @@ if (!gotLock) {
     try { diagLog.housekeep(); } catch (_) {}
     diag('日志目录:', diagLog.logsDir(), '| 错误清单:', diagLog.errorLogFile());
     if (!autoStartHidden) createSplash();
+    // 0b) Arm the tray IMMEDIATELY — before anything that can fail. The tray is
+    // the disaster-recovery console (logs / retry / safe mode / config repair),
+    // so it must exist exactly when boot goes wrong. Previously it was created
+    // only after a successful backend start, which is why a failed boot left
+    // the user with a fatal dialog and no tray icon at all.
+    bootPhase = 'starting';
+    try {
+      createTray();
+      diag('步骤0b 托盘已提前创建（灾备入口就绪）', { hasTray: !!tray });
+    } catch (e) {
+      diag('步骤0b 托盘提前创建失败:', e && e.message);
+    }
     try {
       // 1) Seed writable active dir from factory resources (first run).
       diag('步骤1 初始化活跃目录 ensureSeeded');
@@ -1749,6 +2012,42 @@ if (!gotLock) {
         pushLog('预设兼容性迁移失败（跳过，不影响启动）: ' + (e && e.message) + '\n');
         diag('预设迁移异常:', e);
       }
+      // 4.4) Pre-flight STRUCTURE check: every patch layer must still be a
+      // top-level YAML array or the loader refuses to boot at all ("must be a
+      // top-level YAML array of loader patch entries"). A comment-only file —
+      // what safe mode used to leave behind — parses as null and crashed the
+      // backend before any plugin logic ran, which no self-heal escalation
+      // could fix. Repair first, then the id-conflict scan below can run.
+      try {
+        const repairs = mgr.validateAndRepairPatchLayers();
+        if (repairs.length) {
+          diag('启动预检：补丁文件结构修复', repairs);
+          updateSplash('已修复损坏的插件配置文件…');
+          for (const r of repairs) {
+            const how = r.strategy === 'append-empty-array' ? '补回空数组标记（注释内容全部保留）'
+              : r.strategy === 'restore-backup' ? `已回退到最近的可用备份（${r.restoredFrom}）`
+              : r.strategy === 'reset-empty' ? '已重置为空补丁层（原内容已备份）' : '未修复';
+            pushLog(`启动预检：插件配置文件 ${r.file} 结构损坏（${r.reason}），${how}。\n`);
+          }
+          if (!autoStartHidden) {
+            await dialog.showMessageBox(null, {
+              type: 'warning', buttons: ['继续启动'], defaultId: 0,
+              title: APP_NAME,
+              message: '已修复损坏的插件配置文件',
+              detail: repairs.map((r) => {
+                const how = r.strategy === 'append-empty-array' ? '已补回空数组标记，注释掉的配置一行没动'
+                  : r.strategy === 'restore-backup' ? `已回退到最近的可用备份：${r.restoredFrom}`
+                  : r.strategy === 'reset-empty' ? '已重置为空补丁层，原内容完整备份' : '未能修复';
+                return `${r.file}\n原因：${r.reason}\n处理：${how}`;
+              }).join('\n\n') +
+                '\n\n修复前的文件已按 .broken-*.bak 备份，你的会话、密钥、设置均未受影响。'
+            }).catch(() => {});
+          }
+        }
+      } catch (e) {
+        pushLog('补丁结构预检失败（跳过，不影响启动）: ' + (e && e.message) + '\n');
+        diag('补丁结构预检异常:', e);
+      }
       // 4.5) Pre-flight: ONE-PASS scan for problems that would crash the cold
       // start. The Cordis loader reports only the FIRST issue it meets, so
       // crash-retry healing surfaces one problem per boot; this scan catches
@@ -1806,9 +2105,10 @@ if (!gotLock) {
       diag('步骤5 启动后端');
       const url = await startBackendWithPluginIsolation(shouldIsolatePlugins);
       diag('步骤5 后端已启动:', url);
-      // 6) Show UI + arm the keep-alive tray (close button hides to tray).
+      // 6) Show UI + promote the tray to its normal (running) menu.
       await createMainWindow(url);
       createTray();
+      setBootPhase('running');
       diag('步骤6 主窗口与托盘就绪');
       // 7) Background: shell updater + silent backend updates.
       setupShellUpdater();

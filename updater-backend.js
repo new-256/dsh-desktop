@@ -1353,7 +1353,7 @@ function disableIncompatiblePlugins(home, report) {
 }
 function pluginIsolationStatePath() { return path.join(P().root, 'plugin-isolation.json'); }
 function readPatchText(home) { try { return fs.readFileSync(path.join(home, 'cordis.patch.yml'), 'utf8'); } catch { return null; } }
-function writePatchText(home, text) { const file = path.join(home, 'cordis.patch.yml'); mkdirp(path.dirname(file)); fs.writeFileSync(file, text, 'utf8'); }
+function writePatchText(home, text) { const file = path.join(home, 'cordis.patch.yml'); mkdirp(path.dirname(file)); fs.writeFileSync(file, ensurePatchArrayText(text), 'utf8'); }
 function patchBlocks(home) {
   const text = readPatchText(home); return text == null ? { text: null, blocks: [] } : { text, blocks: parseHomePatchBlocks(text) };
 }
@@ -1368,7 +1368,7 @@ function commentPatchBlocks(text, selected = null) {
       }
     }
   }
-  return lines.join(eol);
+  return ensurePatchArrayText(lines.join(eol), eol);
 }
 function preparePluginIsolation() {
   const p = P(); const parsed = patchBlocks(p.dshHome);
@@ -1420,7 +1420,140 @@ function commentPatchEntries(text, selected) {
       if (l && !l.trimStart().startsWith('#')) lines[block.start] = '#' + l;
     }
   }
-  return lines.join(eol);
+  // CRITICAL: a patch file that is left with nothing but comments parses as
+  // YAML `null`, and the upstream loader rejects it with "must be a top-level
+  // YAML array of loader patch entries" — which used to make safe mode (it
+  // comments EVERY entry) corrupt the very file it was meant to neutralize,
+  // turning the repair entry point into a harder crash. Always keep a valid
+  // empty array in that case.
+  return ensurePatchArrayText(lines.join(eol), eol);
+}
+
+/**
+ * Guarantee the patch text still parses as a top-level YAML array: when no
+ * active (uncommented) content is left, append an explicit `[]`.
+ */
+function ensurePatchArrayText(text, eolHint) {
+  const eol = eolHint || (String(text).includes('\r\n') ? '\r\n' : '\n');
+  const lines = String(text).split(/\r?\n/);
+  const hasActive = lines.some((l) => l.trim() !== '' && !l.trimStart().startsWith('#'));
+  if (hasActive) return text;
+  const tail = text.endsWith(eol) || text === '' ? '' : eol;
+  return text + tail + '[]' + eol;
+}
+
+/**
+ * Structural check that a patch file still is a top-level YAML array — the
+ * exact contract the upstream loader enforces before it will boot
+ * ("must be a top-level YAML array of loader patch entries"). Cheap and
+ * dependency-free: the loader only accepts either an explicit flow array
+ * (`[]`) or a block sequence, so the first ACTIVE line must open one.
+ * Returns { file, exists, valid, reason, activeLines, firstActive }.
+ */
+function validatePatchFile(patchPath) {
+  const res = { file: patchPath, exists: false, valid: true, reason: null, activeLines: 0, firstActive: null };
+  let text;
+  try {
+    if (!fs.existsSync(patchPath)) return res; // absent is legal (no patch layer)
+    res.exists = true;
+    text = fs.readFileSync(patchPath, 'utf8');
+  } catch (e) {
+    res.valid = false; res.reason = '无法读取补丁文件: ' + e.message; return res;
+  }
+  const active = text.split(/\r?\n/).filter((l) => l.trim() !== '' && !l.trimStart().startsWith('#'));
+  res.activeLines = active.length;
+  res.firstActive = active[0] || null;
+  if (active.length === 0) {
+    res.valid = false;
+    res.reason = '文件只剩注释，YAML 会解析成 null（上游要求顶层必须是数组）';
+    return res;
+  }
+  const first = active[0].trim();
+  if (!(first.startsWith('- ') || first === '-' || first.startsWith('['))) {
+    res.valid = false;
+    res.reason = `顶层不是 YAML 数组（首个有效行是「${first.slice(0, 40)}」，应以「- 」或「[」开头）`;
+  }
+  return res;
+}
+
+/**
+ * Repair an invalid patch file WITHOUT losing user configuration:
+ *   1. comment-only file  → append `[]` (keeps every commented line intact)
+ *   2. otherwise          → restore the newest *.bak that validates
+ *   3. last resort        → reset to `[]` (original kept as .broken-<ts>.bak)
+ * The pre-repair file is always backed up first. Returns
+ * { repaired, strategy, backup, restoredFrom, reason }.
+ */
+function repairPatchFile(patchPath) {
+  const check = validatePatchFile(patchPath);
+  if (!check.exists || check.valid) return { repaired: false, strategy: 'none', reason: check.reason };
+
+  let text = '';
+  try { text = fs.readFileSync(patchPath, 'utf8'); } catch {}
+  const ts = formatDateTimestamp();
+  const backup = patchPath + `.broken-${ts}.bak`;
+  try { fs.writeFileSync(backup, text, 'utf8'); }
+  catch (e) { log('backup broken patch failed:', e.message); return { repaired: false, strategy: 'none', reason: '备份失败: ' + e.message }; }
+
+  // 1) Comment-only: keep every line, just restore the empty-array contract.
+  if (check.activeLines === 0) {
+    try {
+      fs.writeFileSync(patchPath, ensurePatchArrayText(text), 'utf8');
+      log(`repaired patch (appended []): ${patchPath}`);
+      return { repaired: true, strategy: 'append-empty-array', backup, reason: check.reason };
+    } catch (e) { log('append [] failed:', e.message); }
+  }
+
+  // 2) Newest backup that actually validates.
+  try {
+    const dir = path.dirname(patchPath);
+    const base = path.basename(patchPath);
+    const cands = fs.readdirSync(dir)
+      .filter((f) => f.startsWith(base) && f !== base && /\.bak$/i.test(f) && !f.includes(`.broken-${ts}.`))
+      .map((f) => { const full = path.join(dir, f); let mtime = 0; try { mtime = fs.statSync(full).mtimeMs; } catch {} return { full, f, mtime }; })
+      .sort((a, b) => b.mtime - a.mtime);
+    for (const c of cands) {
+      if (validatePatchFile(c.full).valid) {
+        fs.copyFileSync(c.full, patchPath);
+        log(`repaired patch by restoring backup: ${c.f}`);
+        return { repaired: true, strategy: 'restore-backup', backup, restoredFrom: c.f, reason: check.reason };
+      }
+    }
+  } catch (e) { log('backup scan failed:', e.message); }
+
+  // 3) Last resort — bootable empty patch layer; user config preserved in backup.
+  try {
+    fs.writeFileSync(patchPath, '[]\n', 'utf8');
+    log(`repaired patch by reset to []: ${patchPath} (original: ${backup})`);
+    return { repaired: true, strategy: 'reset-empty', backup, reason: check.reason };
+  } catch (e) {
+    return { repaired: false, strategy: 'none', backup, reason: '写入失败: ' + e.message };
+  }
+}
+
+/**
+ * Pre-flight over EVERY patch layer the loader will read (home + each
+ * profile), repairing invalid ones. Returns [{ file, ...repairResult }].
+ */
+function validateAndRepairPatchLayers() {
+  const home = dshHome();
+  const files = [path.join(home, 'cordis.patch.yml')];
+  try {
+    const profilesDir = path.join(home, 'profiles');
+    for (const d of fs.readdirSync(profilesDir, { withFileTypes: true })) {
+      if (!d.isDirectory() || d.name === 'node_modules') continue;
+      files.push(path.join(profilesDir, d.name, 'cordis.patch.yml'));
+    }
+  } catch {}
+  const out = [];
+  for (const f of files) {
+    const check = validatePatchFile(f);
+    if (!check.exists || check.valid) continue;
+    const fix = repairPatchFile(f);
+    out.push({ file: f, ...fix });
+  }
+  if (out.length) log('patch layer repairs:', out.map((r) => `${path.basename(path.dirname(r.file))}:${r.strategy}`).join(', '));
+  return out;
 }
 
 /** Enable ONE plugin entry alone: comment everything except `entryIndex`. */
@@ -2956,6 +3089,7 @@ module.exports = {
   repairProfileJunctions, quarantineProfiles, repairNodeForBackendFailure, nodeRequirement,
   analyzeBackendFailure, disableBrokenPatchPlugins, analyzeConfigEntryConflicts,
   findLoaderIdConflicts, applyLoaderConflictFixes, disablePatchEntriesInFile,
+  validatePatchFile, repairPatchFile, validateAndRepairPatchLayers, ensurePatchArrayText,
   preflightBareNameResolution, migrateAgentPresetPersonaText,
   // main.js spawns the backend with this dedicated/isolated environment.
   buildDedicatedEnv, describeEnvIsolation, enableCorepack,
