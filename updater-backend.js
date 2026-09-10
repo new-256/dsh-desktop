@@ -1637,15 +1637,19 @@ function failingSpecifiersFromLogs(logText) {
     while ((m = re.exec(logText)) !== null) { cannotFind = true; add(m[1]); }
   }
 
-  // 2) Loader/plugin-tree failure signals.
+  // 2) Loader/plugin-tree failure signals. "failed to import loader entry" is
+  //    cordis-plugin-loader's updateError wrapper (dsh 0.1.2-rc.1+ format) —
+  //    it MUST count as a plugin-tree failure or crash-mode attribution never
+  //    engages for it (the codebuddy-first-bridge@1.1.7 incident fell through
+  //    the whole ladder to whole-tree safe mode precisely because of this gap).
   const pluginTree = /plugin tree failed to load/i.test(logText) ||
     /The following plugins? (?:were unable to load|failed to load)/i.test(logText) ||
-    /failed to (?:load|mount|apply loader entry)/i.test(logText);
+    /failed to (?:load|mount|import|apply)(?: loader entry)?/i.test(logText);
 
   // 3) Error lines that name the crashing module (file:// URL, quoted token,
   //    path-like spec, or kebab-case bare name). Attribution happens against
   //    patch entry names later, so over-collection is harmless.
-  const errLineRe = /^.*\b(?:SyntaxError|TypeError|ReferenceError|ERR_[A-Z0-9_]+|is not a function|is not defined|does not provide an export named|failed to (?:load|mount)|unable to load|Cannot (?:find|read|resolve|parse)|no such file|Cannot find module).*$/gim;
+  const errLineRe = /^.*\b(?:SyntaxError|TypeError|ReferenceError|ERR_[A-Z0-9_]+|is not a function|is not defined|does not provide an export named|failed to (?:load|mount|import|apply)(?: loader entry)?|loaded without registering|unable to load|Cannot (?:find|read|resolve|parse)|no such file|Cannot find module).*$/gim;
   let line;
   while ((line = errLineRe.exec(logText)) !== null) {
     const l = line[0];
@@ -1656,6 +1660,13 @@ function failingSpecifiersFromLogs(logText) {
     // Unquoted loader names: "loader entry pet", "plugin pet" (covers bare
     // names without hyphens that the kebab pattern above cannot see).
     for (const b of l.matchAll(/(?:loader entry|plugin)\s+([A-Za-z0-9@_.\/-]+)/gi)) add(b[1]);
+    // "failed to import loader entry <hash> (<pkg>)" — the wrapper names the
+    // npm package in PARENTHESES; the bare <hash> is an internal entry id
+    // that maps to nothing. Extracted explicitly so scoped names (@scope/pkg
+    // without a hyphen, invisible to the kebab pattern) still attribute.
+    for (const e of l.matchAll(/loader entry\s+\S+\s*\(\s*([^)\s]+)\s*\)/gi)) add(e[1]);
+    // dsh-client-modules combo runtime: 'bundle <pkg> loaded without registering "<pkg>"'.
+    for (const w of l.matchAll(/(?:loaded without registering|failed to register)\s+["']?([A-Za-z0-9@_.\/-]+)["']?/gi)) add(w[1]);
   }
 
   return { specifiers: out, pluginTree, cannotFind };
@@ -1897,6 +1908,63 @@ function disableBrokenPatchPlugins(home, brokenEntries) {
   const patchPath = path.join(home, 'cordis.patch.yml');
   const ids = (brokenEntries || []).map((e) => e && e.id).filter(Boolean);
   return disablePatchEntriesInFile(patchPath, ids);
+}
+
+/**
+ * Identify PROFILE BUNDLES (dsh.profile.bundles) that the backend log names as
+ * failing — the codebuddy-first-bridge@1.1.7 class: a bundle whose client
+ * module registers the wrong loader id fails the combo import, yet it is NOT a
+ * home-patch entry, so disableBrokenPatchPlugins() has nothing to grab and the
+ * ladder used to fall through to whole-tree safe mode (secondary damage: every
+ * innocent plugin disappeared). Returns [{ name, reason }].
+ */
+function analyzeFailingBundles(home, logText) {
+  const out = [];
+  if (!logText) return out;
+  const parsed = failingSpecifiersFromLogs(logText);
+  if (!parsed.specifiers.size) return out;
+  // Act only on real load/import failure signals — a package name that merely
+  // appears in an informational line must never disable a bundle.
+  if (!parsed.pluginTree && !parsed.cannotFind) return out;
+  let reg = null;
+  try { reg = readProfileRegistry(home, 'web'); } catch { return out; }
+  for (const name of (reg.bundles || [])) {
+    if (BASE_BUNDLES.has(name)) continue;
+    if (parsed.specifiers.has(normalizeSpecifier(name))) {
+      out.push({
+        name,
+        reason: parsed.pluginTree ? '插件树加载/导入失败，日志点名该插件包' : '插件包源文件缺失或不可加载'
+      });
+    }
+  }
+  if (out.length) log('failing profile bundles detected:', out.map((b) => b.name).join(', '));
+  return out;
+}
+
+/**
+ * Temporarily remove ONLY the given profile bundles from
+ * dsh.profile.bundles — dependencies stay installed, so re-enabling is a
+ * one-line edit against the timestamped backup. Mirrors
+ * disableBrokenPatchPlugins' entry-level surgery for the bundle layer.
+ * Returns { disabled: [names], backup: <path|null> }.
+ */
+function disableFailingBundles(home, names) {
+  const want = new Set((names || []).map((n) => String(n || '').trim()).filter(Boolean));
+  if (!want.size) return { disabled: [], backup: null };
+  const pkgPath = profilePkgPath(home, 'web');
+  if (!fs.existsSync(pkgPath)) return { disabled: [], backup: null };
+  let pkg = null;
+  try { pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')); } catch (e) { log('read profile pkg failed:', e.message); return { disabled: [], backup: null }; }
+  const bundles = (pkg.dsh && pkg.dsh.profile && pkg.dsh.profile.bundles) || [];
+  const disabled = bundles.filter((b) => want.has(b));
+  if (!disabled.length) return { disabled: [], backup: null };
+  const ts = formatDateTimestamp();
+  const backup = pkgPath + `.bundles-off-${ts}.bak`;
+  try { fs.copyFileSync(pkgPath, backup); } catch (e) { log('backup profile pkg failed:', e.message); return { disabled: [], backup: null }; }
+  pkg.dsh.profile.bundles = bundles.filter((b) => !want.has(b));
+  try { fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n'); } catch (e) { log('write profile pkg failed:', e.message); return { disabled: [], backup: null }; }
+  log(`disabled failing profile bundles: ${disabled.join(', ')} (backup: ${backup})`);
+  return { disabled, backup };
 }
 
 // --------------------------------------------------------------------------
@@ -3100,6 +3168,7 @@ module.exports = {
   ensureSeeded, migrateProjectionCache, applyStaged, ensureNodeMeetsRequirement,
   repairProfileJunctions, quarantineProfiles, repairNodeForBackendFailure, nodeRequirement,
   analyzeBackendFailure, disableBrokenPatchPlugins, analyzeConfigEntryConflicts,
+  analyzeFailingBundles, disableFailingBundles, BASE_BUNDLES,
   findLoaderIdConflicts, applyLoaderConflictFixes, disablePatchEntriesInFile,
   validatePatchFile, repairPatchFile, validateAndRepairPatchLayers, ensurePatchArrayText,
   preflightBareNameResolution, migrateAgentPresetPersonaText,

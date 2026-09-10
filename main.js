@@ -379,6 +379,43 @@ async function startBackendWithHealing(opts = {}) {
     }
   }
 
+  // Escalation 1c: PROFILE BUNDLE the log names as failing — the
+  // codebuddy-first-bridge@1.1.7 class (client registers a wrong loader id;
+  // the combo import fails server-side). These are NOT home-patch entries, so
+  // 1b cannot see them, and quarantine would nuke innocent registrations.
+  // Remove just the named bundle(s) from dsh.profile.bundles (dependencies
+  // stay installed), then retry — never the whole-tree safe mode.
+  try {
+    const failingBundles = mgr.analyzeFailingBundles(p.dshHome, backendLogs.join(''));
+    if (failingBundles.length) {
+      const res1c = mgr.disableFailingBundles(p.dshHome, failingBundles.map((b) => b.name));
+      if (res1c.disabled.length) {
+        pushLog(`临时禁用加载失败的插件包（仅从加载清单移除，依赖保留）：${res1c.disabled.join(', ')}（备份：${res1c.backup}）。\n`);
+        try {
+          const r1c = await dialog.showMessageBox(null, {
+            type: 'warning', buttons: ['继续启动', '退出'], defaultId: 0, cancelId: 1,
+            title: APP_NAME,
+            message: '已临时禁用加载失败的插件包',
+            detail: '以下插件包导致插件树加载失败，已仅从加载清单移除，其余插件、会话与设置均不受影响：\n\n' +
+              failingBundles.map((b) => `${b.name}（${b.reason}）`).join('\n') +
+              `\n\n原配置已备份到：\n${res1c.backup}\n\n修复或更新该插件后，把备份中对应的条目加回 profiles/web/package.json 的 dsh.profile.bundles 即可重新启用。`
+          });
+          if (r1c.response === 1) { isQuitting = true; app.exit(0); return; }
+        } catch {}
+        stopBackend();
+        await new Promise((r) => setTimeout(r, 800));
+        try {
+          pushLog('retrying backend after disabling failing bundles…\n');
+          return await spawnBackend();
+        } catch (retryErr1c) {
+          pushLog('backend start failed after bundle disable\n');
+        }
+      }
+    }
+  } catch (e) {
+    pushLog('bundle disable analysis failed: ' + (e && e.message) + '\n');
+  }
+
   // Escalation 2 (LAST resort): quarantine the broken profiles dir — dsh
   // rebuilds a fresh tree — but FIRST preserve third-party registrations
   // (bundles / dependencies / profile patches) so a successful rebuild can
@@ -738,6 +775,16 @@ function createChromiumWindow(url) {
   });
   win.webContents.on('console-message', (_e, level, msg, line, src) => {
     diag(`[RENDERER CONSOLE ${level}] ${msg} (${src}:${line})`);
+    // Client-module registration failures arrive here while the backend
+    // process itself stays healthy — the web UI bricks on its fatal
+    // "Failed to load plugins" page and no boot-ladder escalation fires
+    // (the codebuddy-first-bridge@1.1.7 incident: backend up, UI dead, and
+    // the only escape hatch left was whole-tree safe mode). Triage
+    // surgically: disable ONLY the named bundle and relaunch.
+    const text = String(msg || '');
+    const regFail = /loaded without registering\s+["']?([A-Za-z0-9@_.\/-]+)["']?/i.exec(text)
+      || /failed to import loader entry\s+\S+\s*\(\s*([^)\s]+)\s*\)/i.exec(text);
+    if (regFail) handleClientBundleFailure(regFail[1]).catch(() => {});
   });
 
   win.loadURL(url);
@@ -1196,6 +1243,47 @@ function scheduleSilentUpdates() {
   setInterval(() => checkBackendUpdates(), 6 * 3600 * 1000);
   // Daily log retention cleanup (archives pruned by count + age).
   setInterval(() => { try { diagLog.housekeep(); } catch (_) {} }, 24 * 3600 * 1000);
+}
+
+/**
+ * Renderer-side single-bundle triage. The backend process is healthy, but the
+ * web UI's combo loader just named a bundle whose client module failed to
+ * register — the window is bricked on the "Failed to load plugins" fatal page
+ * and no boot-ladder escalation will fire. Disable ONLY that bundle
+ * (dependencies stay installed), then relaunch. Guarded once per package per
+ * app run so a mis-attribution can never reboot-loop.
+ */
+const clientDisabledBundles = new Set();
+async function handleClientBundleFailure(name) {
+  if (!name || clientDisabledBundles.has(name)) return;
+  let isBundle = false;
+  let paths = null;
+  try {
+    paths = activePaths();
+    const reg = mgr.readProfileRegistry(paths.dshHome, 'web');
+    const base = mgr.BASE_BUNDLES || [];
+    isBundle = (reg.bundles || []).indexOf(name) !== -1 && base.indexOf(name) === -1;
+  } catch { return; }
+  if (!isBundle) return; // not a profile bundle — log-only, nothing to triage
+  clientDisabledBundles.add(name);
+  const res = mgr.disableFailingBundles(paths.dshHome, [name]);
+  if (!res || !res.disabled || !res.disabled.length) return;
+  pushLog(`插件包 ${name} 客户端注册失败（后端进程正常）。已仅从加载清单移除该插件（依赖保留，其余插件、会话与设置不受影响），备份：${res.backup}。\n`);
+  diag('client bundle registration failure — surgically disabled one bundle', { name, backup: res.backup });
+  let restart = true;
+  if (!autoStartHidden) {
+    try {
+      const r = await dialog.showMessageBox(null, {
+        type: 'warning', buttons: ['立即重启', '稍后手动重启'], defaultId: 0, cancelId: 1,
+        title: APP_NAME,
+        message: `已临时禁用加载失败的插件包：${name}`,
+        detail: '该插件的客户端模块未按加载器约定注册（注册 id 必须与包名一致），已仅从加载清单移除这一个插件，其余插件、会话与设置均不受影响。\n\n' +
+          `原配置已备份到：\n${res.backup}\n\n修复或更新该插件后，把备份中对应的条目加回 profiles/web/package.json 的 dsh.profile.bundles 即可重新启用。`
+      });
+      restart = r.response === 0;
+    } catch {}
+  }
+  if (restart) await restartApp();
 }
 
 async function requestEnterSafeMode() {

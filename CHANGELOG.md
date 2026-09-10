@@ -2,6 +2,18 @@
 
 这里记录每个版本改了什么。版本号和 `package.json` 保持一致。
 
+## 0.3.37（2026-09-10）
+
+**单插件故障不再触发全量安全模式——补上 bundle 级定向隔离与两处归因缺口。** 起因：`codebuddy-first-bridge@1.1.7` 客户端注册 id 与包名不符，插件树加载失败后自愈阶梯一路跑空，用户只能走安全模式，造成"全部插件消失"的二次伤害。逐项核对后，壳层责任有三处，均已整改：
+
+1. **归因正则不认识新报错格式。** 后端（cordis-plugin-loader 的 updateError 包装器）实际输出 `failed to import loader entry <hash> (<包名>)`，而 `failingSpecifiersFromLogs` 的错误行正则只认 `failed to (load|mount)`，不含 `import` —— 肇事行根本进不了扫描；即便进了，裸名提取也只会抓到内部哈希而非括号里的包名。已扩展：`import/apply` 计入 plugin-tree 失败信号；错误行正则同步扩充；新增括号包名提取（覆盖 `@scope/pkg` 这类 kebab 正则看不见的作用域名）与 `loaded without registering "<包名>"` 提取。
+2. **肇事者是 profile bundle 时没有任何定向手段。** 阶梯 1b 级"仅禁用肇事条目"只作用于家级补丁行；`codebuddy-first-bridge` 注册在 `dsh.profile.bundles`，1b 无从下手，只能落到隔离 profile / 安全模式。新增阶梯 1c 级（`analyzeFailingBundles` + `disableFailingBundles`）：日志点名的 bundle 仅从加载清单移除（`dependencies` 保留，重启用一行即可），带时间戳备份 + 对话框说明，然后重试启动。误杀防护：仅在有真实加载/导入失败信号时动作，信息性行点名不触发，官方基础 bundle（dsh-base/dsh-web-app）永不列入。
+3. **后端活着、界面全砖时阶梯根本不触发。** 客户端注册失败发生在浏览器侧（dsh-client-modules 抛错 → Web UI 满屏"Failed to load plugins"致命页），后端进程正常，任何崩溃检测都看不见。主窗口 `console-message` 处理器新增探测器：识别 `loaded without registering "<包名>"` / `failed to import loader entry <hash> (<包名>)`，确认是 profile bundle 后仅禁用该插件并重启应用。防循环：每个包每次运行只处理一次（误判重启不会成环）；`autoStartHidden` 隐藏模式免打扰直接重启；宠物插件一类的 `locale register failed: ... without inject` 旧告警经测试不误触。
+
+安全模式保持原样，仍是归因失败时的最后手段（最小已知良好状态）；本次修复让单插件故障在这之前就被外科手术式解决。
+
+验证：19 项断言的隔离测试（临时 home，不碰真实数据）全过 —— 事故原句归因、修复前对照（归因为空）、仅删肇事 bundle（依赖/其余 bundles/备份原状、重复禁用无操作）、渲染层两条探测正则、作用域包名变体、老格式零回退（`Cannot find package 'X'`、`loader entry X` 裸名、`apply loader entry`、`duplicate loader entry id`）、负例（信息行、官方基础 bundle）不误杀。
+
 ## 0.3.36（2026-09-10）
 
 **壳层彻底移除手机端功能，回到「零本体污染」。** 依据 `plugins/mobile-companion/docs/DESKTOP-SHELL-HANDOVER.md`：手机能力已由 mobile-companion 插件（`cordis.patch.yml` 合法挂载点）与独立 `dsh-mobile-tray` CLI 承载，壳内不该再保留任何手机代码。本次从 `main.js` / `settings.html` / `settings-preload.js` 精确切除共约 450 行：
