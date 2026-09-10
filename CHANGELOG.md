@@ -2,6 +2,22 @@
 
 这里记录每个版本改了什么。版本号和 `package.json` 保持一致。
 
+## 0.3.36（2026-09-10）
+
+**壳层彻底移除手机端功能，回到「零本体污染」。** 依据 `plugins/mobile-companion/docs/DESKTOP-SHELL-HANDOVER.md`：手机能力已由 mobile-companion 插件（`cordis.patch.yml` 合法挂载点）与独立 `dsh-mobile-tray` CLI 承载，壳内不该再保留任何手机代码。本次从 `main.js` / `settings.html` / `settings-preload.js` 精确切除共约 450 行：
+
+1. **局域网桥接与端口逻辑** —— `mobileBridge`（`net.createServer` 转发 `0.0.0.0:<port>` → `127.0.0.1`）、`resolveMobilePort()` 端口顺延试探、`checkPortAvailable()`、`stopMobileBridge()`、`activeMobilePort` / `activeLanUrl` 状态。
+2. **防火墙操作** —— `tryAddFirewallRule()` 及其 `netsh advfirewall` 增删规则调用、`lastFirewallCommand` / `lastFirewallSuccess`。壳层不再擅自改动系统防火墙。
+3. **配对二维码** —— 托盘「手机配对二维码」入口、`openQrWindow()`、内联二维码页面与 `qrSvg` 渲染，以及对 `plugins/mobile-companion/lib/qr.mjs` 的路径引用（壳不再引用插件目录内文件）。
+4. **设置页与 IPC** —— 「手机访问」整节 UI（启用开关/端口/生效状态/防火墙提示/打开二维码）、`loadMobile()` / `saveMobile()`、`mobile:get` / `mobile:set` / `mobile:openQr` / `mobile:copy-text` 四个 IPC 通道及 preload 的 `getMobile` / `setMobile` / `openMobileQr` / `mobile.*` 暴露。
+5. **连带清理** —— 随之失去引用的 `getLocalIp()`、`escapeHtml()`，以及不再使用的 `net` / `os` / `exec` / `spawnSync` / `pathToFileURL` 导入。
+
+**刻意保留（勿误删）：** 后端启动参数中的 `--max-http-header-size=1048576`。它与手机功能无关——Web 端把所有插件 client.js 拼成单个组合脚本 URL，插件一多即超过 Node 默认 16KB 请求头上限，后端会以 HTTP 431 拒绝，表现为「插件全部加载失败」（0.3.34 修复）。后端仍固定 `--host 127.0.0.1`，全文已无 `0.0.0.0` 与 `--trusted-host`。
+
+`mobile:copy-text` 承担的复制功能仍被「插件安装与终端」区使用，已改挂到与手机无关的 `shell:copy-text` 通道。
+
+修正：本次开工前工作区曾被外部回退到 0.3.31 基线，`package.json` / `CHANGELOG.md` 与四个壳文件一并退回，导致 0.3.32~0.3.35 的插件迁移、启动死循环修复、HTTP 431 修复、pnpm peer 修复全部丢失。已从 `24c82d6` 恢复后再执行切除，四代修复均经逐项校验在位。
+
 ## 0.3.35（2026-09-10）
 
 **修复安装插件被别人的 peer 声明"连坐"拖失败。** pnpm 的 `auto-install-peers` 会把同一 profile 内**所有**插件声明的 peer 区间合并后一起解析。DSH 自家 client 包（`dsh-client-locale` / `dsh-client-store` / `dsh-client-ui-*` / `dsh-session` 等）只发预发布版（`0.1.1-rc.2`…`0.1.5-alpha.2`，`latest` 标签甚至停在 `0.0.1-rc.1`），而多个插件的 peer 声明合并后得到形如 `>=0.1.1 <0.2.0-0` 的区间 —— 按 semver 规则**不带预发布标识的区间不匹配任何预发布版本**，于是 `ERR_PNPM_NO_MATCHING_VERSION` 必然发生。后果：profile 里只要装过声明这类 peer 的插件（如 `dsh-dream-skin`），之后再装**任何**插件都可能失败，且报错指向一个用户根本没装的包，极难自查。官方站与 npmmirror 表现一致，非网络问题。

@@ -146,31 +146,6 @@ pre.log { margin-top: 6px; max-height: 190px; overflow: auto; background: #070b1
 </div>
 
 <div class="section">
-<h2>手机访问</h2>
-<div class="row"><input type="checkbox" id="mEnabled"><label for="mEnabled">启用手机访问（局域网）</label></div>
-<div class="row"><label for="mPort">服务端口：</label><input type="number" id="mPort" min="1" max="65535" value="47896"><span class="dim">默认 47896；冲突时自动递增试探</span></div>
-<div class="kv">
-<div class="k">生效状态</div><div class="v" id="mStatus">读取中…</div>
-<div class="k">实际端口</div><div class="v" id="mPortVal">—</div>
-<div class="k">防火墙状态</div><div class="v" id="mFwStatus">—</div>
-</div>
-<div id="mFwBox" style="display:none;margin:8px 0;padding:8px 10px;background:#1a202c;border:1px solid #bf616a;border-radius:6px;font-size:12px;">
-<div class="err" style="margin-bottom:4px;">⚠ 防火墙入站规则未自动添加（可能需要管理员权限）。若手机无法连接，请在管理员 CMD/PowerShell 中执行：</div>
-<div style="display:flex;gap:8px;align-items:center;">
-<code id="mFwCmd" style="flex:1;user-select:text;word-break:break-all;color:#ebcb8b;font-family:Consolas,monospace;font-size:11px;"></code>
-<button id="btnCopyFw" style="padding:3px 8px;font-size:11px;">复制</button>
-</div>
-</div>
-<div class="actions">
-<button id="btnOpenQr" class="primary" disabled>打开配对二维码</button>
-</div>
-<details>
-<summary>高级说明</summary>
-<div class="dim" style="margin-top:6px;line-height:1.6;">开启后，DSH 后端将监听 0.0.0.0，同一局域网内的手机或平板设备均可通过局域网 IP 与端口访问 DSH 界面及服务。<br>建议仅在家庭、办公室等可信 Wi-Fi 环境下开启；在公共 Wi-Fi 或不可信网络中建议关闭此功能。<br>修改开关或端口后，需要重启应用后生效。</div>
-</details>
-</div>
-
-<div class="section">
 <h2>外壳与系统</h2>
 <div class="row"><input type="checkbox" id="autoStart"><label for="autoStart">开机自启（登录后后台运行）</label></div>
 <div class="row"><span>维修通道（安全模式）：<span id="safeModeState">读取中…</span></span></div>
@@ -211,7 +186,6 @@ function renderState(s) {
 
 async function refresh() {
   renderState(await api.get());
-  if (typeof loadMobile === 'function') await loadMobile();
 }
 
 document.querySelectorAll('input[name=route]').forEach((el) => el.addEventListener('change', async () => {
@@ -362,88 +336,6 @@ $('btnBInstall').addEventListener('click', async () => {
   if (r && r.busy) { msg('正在检查或下载更新，请稍候', true); return; }
   if (r && r.ok === false) msg(r.msg || '暂存失败', true);
   else if (r && r.ok) { refresh(); loadBackendVersions(); /* 对话框流程已接管 */ }
-});
-
-let currentMobile = { enabled: false, port: 47896 };
-
-async function loadMobile() {
-  if (!api || !api.getMobile) return;
-  const m = await api.getMobile();
-  if (!m) return;
-  currentMobile = m;
-  $('mEnabled').checked = !!m.enabled;
-  $('mPort').value = m.port || 47896;
-  $('btnOpenQr').disabled = !m.enabled;
-
-  if (m.enabled) {
-    if (m.activePort) {
-      $('mStatus').innerHTML = '<span class="good">已生效（局域网可访问）</span>';
-      $('mPortVal').textContent = m.activePort + (m.activePort !== m.port ? '（设置端口 ' + m.port + ' 占用，自动顺延）' : '');
-    } else {
-      $('mStatus').innerHTML = '<span class="mid">已开启，重启应用后生效</span>';
-      $('mPortVal').textContent = '待重启生效（预期 ' + m.port + '）';
-    }
-  } else {
-    $('mStatus').textContent = '未启用（仅本机 127.0.0.1 可访问）';
-    $('mPortVal').textContent = '—';
-  }
-
-  const fwBox = $('mFwBox');
-  const fwCmd = $('mFwCmd');
-  if (m.firewallOk === true) {
-    $('mFwStatus').innerHTML = '<span class="good">已配置入站放行规则</span>';
-    fwBox.style.display = 'none';
-  } else if (m.firewallOk === false) {
-    $('mFwStatus').innerHTML = '<span class="bad">未自动放行（需手动执行）</span>';
-    fwCmd.textContent = m.firewallCommand || ('netsh advfirewall firewall add rule name="DSH Desktop Mobile" dir=in action=allow protocol=TCP localport=' + (m.port || 47896));
-    fwBox.style.display = 'block';
-  } else {
-    $('mFwStatus').textContent = m.enabled ? '未检测（首次开启时自动添加）' : '未开启';
-    fwBox.style.display = 'none';
-  }
-}
-
-async function saveMobile() {
-  const enabled = $('mEnabled').checked;
-  const port = parseInt($('mPort').value, 10);
-  if (isNaN(port) || port < 1 || port > 65535) {
-    msg('端口必须在 1-65535 之间', true);
-    $('mPort').value = currentMobile.port || 47896;
-    return;
-  }
-  $('btnOpenQr').disabled = !enabled;
-  const res = await api.setMobile({ enabled, port });
-  if (res) {
-    currentMobile = res;
-    msg('手机访问设置已保存，重启应用后生效。');
-    loadMobile();
-  } else {
-    msg('保存手机访问设置失败', true);
-  }
-}
-
-$('mEnabled').addEventListener('change', saveMobile);
-$('mPort').addEventListener('change', saveMobile);
-$('btnOpenQr').addEventListener('click', () => {
-  if (api && api.openMobileQr) api.openMobileQr();
-});
-$('btnCopyFw').addEventListener('click', () => {
-  const cmd = $('mFwCmd').textContent;
-  if (!cmd) return;
-  const finish = () => msg('防火墙命令已复制');
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(cmd).then(finish).catch(() => {
-      const t = document.createElement('textarea');
-      t.value = cmd; document.body.appendChild(t); t.select();
-      document.execCommand('copy'); document.body.removeChild(t);
-      finish();
-    });
-  } else {
-    const t = document.createElement('textarea');
-    t.value = cmd; document.body.appendChild(t); t.select();
-    document.execCommand('copy'); document.body.removeChild(t);
-    finish();
-  }
 });
 
 // ══════════════════════════════════════════════════════════════════════════

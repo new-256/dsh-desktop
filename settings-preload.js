@@ -31,13 +31,6 @@ contextBridge.exposeInMainWorld('dshSettings', {
     return () => ipcRenderer.removeListener('plugins:log', fn);
   },
   openSettings: () => ipcRenderer.invoke('settings:open'),
-  getMobile: () => ipcRenderer.invoke('mobile:get'),
-  setMobile: (data) => ipcRenderer.invoke('mobile:set', data),
-  openMobileQr: () => ipcRenderer.invoke('mobile:openQr'),
-  copyText: (text) => ipcRenderer.invoke('mobile:copy-text', text),
-  mobile: {
-    get: () => ipcRenderer.invoke('mobile:get'),
-    set: (data) => ipcRenderer.invoke('mobile:set', data),
-    openQr: () => ipcRenderer.invoke('mobile:openQr')
-  }
+  // 通用剪贴板（供「插件安装与终端」区复制命令用；与手机功能无关）
+  copyText: (text) => ipcRenderer.invoke('shell:copy-text', text)
 });

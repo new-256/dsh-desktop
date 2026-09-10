@@ -1,13 +1,10 @@
 'use strict';
 
 const { app, BrowserWindow, Menu, shell, dialog, ipcMain, Tray, nativeImage, clipboard } = require('electron');
-const { spawn, spawnSync, exec } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const net = require('net');
-const os = require('os');
-const { pathToFileURL } = require('url');
 const mgr = require('./updater-backend');
 const diagLog = require('./diag-log');
 const diag = diagLog.write;
@@ -71,11 +68,6 @@ let mainWindow = null;
 let splashWindow = null;
 let pendingShowMainWindow = false;
 let activeUrl = null;
-let activeLanUrl = null;
-let activeMobilePort = null;
-let mobileBridge = null;
-let lastFirewallCommand = null;
-let lastFirewallSuccess = null;
 let safeMode = false;
 let isQuitting = false;
 let tray = null;
@@ -114,22 +106,12 @@ function killProcessTree(proc) {
   try { proc.kill(); } catch {}
 }
 
-function stopMobileBridge() {
-  if (mobileBridge) {
-    try { mobileBridge.close(); } catch {}
-    mobileBridge = null;
-  }
-}
-
 /** Controlled stop: detach listeners first so a deliberate kill is never misread as a crash. */
 function stopBackend() {
-  stopMobileBridge();
   if (!backend) return;
   const proc = backend;
   backend = null;
   activeUrl = null;
-  activeLanUrl = null;
-  activeMobilePort = null;
   try { proc.removeAllListeners('exit'); } catch {}
   killProcessTree(proc);
 }
@@ -147,107 +129,6 @@ function updateSplash(message) {
   splashWindow.webContents.executeJavaScript(`(() => { const el = document.querySelector('.sub'); if (el) el.textContent = '${text}'; })()`).catch(() => {});
 }
 
-function escapeHtml(str) {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function getLocalIp() {
-  try {
-    const nets = os.networkInterfaces();
-    for (const name of Object.keys(nets)) {
-      for (const net of nets[name]) {
-        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('127.')) {
-          return net.address;
-        }
-      }
-    }
-  } catch {}
-  return null;
-}
-
-function getMobileSettings() {
-  let settings = {};
-  try { settings = mgr.readSettings() || {}; } catch {}
-  const m = settings.mobile || {};
-  const port = parseInt(m.port, 10);
-  return {
-    enabled: typeof m.enabled === 'boolean' ? m.enabled : false,
-    port: port >= 1 && port <= 65535 ? port : 47896
-  };
-}
-
-function saveMobileSettings(cfg) {
-  const current = getMobileSettings();
-  const enabled = typeof cfg.enabled === 'boolean' ? cfg.enabled : current.enabled;
-  const portNum = parseInt(cfg.port, 10);
-  const port = portNum >= 1 && portNum <= 65535 ? portNum : current.port;
-  const updated = { enabled, port };
-  try { mgr.writeSettings({ mobile: updated }); } catch (e) {
-    pushLog(`[mobile] 保存设置失败: ${e.message}\n`);
-  }
-  return updated;
-}
-
-function checkPortAvailable(port) {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.unref();
-    server.on('error', () => resolve(false));
-    server.listen({ port, host: '0.0.0.0' }, () => {
-      server.close(() => resolve(true));
-    });
-  });
-}
-
-async function resolveMobilePort(preferredPort) {
-  const startPort = Math.max(1, Math.min(65535, Number(preferredPort) || 47896));
-  for (let offset = 0; offset <= 10; offset++) {
-    const candidate = startPort + offset;
-    if (candidate > 65535) break;
-    const ok = await checkPortAvailable(candidate);
-    if (ok) {
-      if (offset > 0) {
-        pushLog(`[mobile] 端口 ${startPort} 冲突，已递增试探至可用端口 ${candidate}\n`);
-      }
-      return candidate;
-    }
-  }
-  pushLog(`[mobile] 端口 ${startPort} 连续 10 次试探冲突，回退使用默认端口\n`);
-  return startPort;
-}
-
-function tryAddFirewallRule(port) {
-  return new Promise((resolve) => {
-    if (process.platform !== 'win32') {
-      lastFirewallSuccess = true;
-      return resolve(true);
-    }
-    const cmd = `netsh advfirewall firewall add rule name="DSH Desktop Mobile" dir=in action=allow protocol=TCP localport=${port}`;
-    lastFirewallCommand = cmd;
-    const delCmd = 'netsh advfirewall firewall delete rule name="DSH Desktop Mobile"';
-    exec(delCmd, { windowsHide: true }, () => {
-      exec(cmd, { windowsHide: true }, (err) => {
-        if (err) {
-          diag('防火墙规则添加失败 (可能需要管理员权限):', err.message);
-          pushLog(`[mobile] 防火墙入站规则添加失败: ${err.message}\n`);
-          lastFirewallSuccess = false;
-          resolve(false);
-        } else {
-          diag('防火墙规则已添加: TCP', port);
-          pushLog(`[mobile] 已成功添加入站防火墙规则: TCP ${port}\n`);
-          lastFirewallSuccess = true;
-          resolve(true);
-        }
-      });
-    });
-  });
-}
-
 function spawnBackend() {
   return new Promise(async (resolve, reject) => {
     const p = activePaths();
@@ -261,68 +142,23 @@ function spawnBackend() {
     env.DSH_HOME = p.dshHome;
     delete env.ELECTRON_RUN_AS_NODE; // we spawn a real standalone node
 
-    const mobileCfg = getMobileSettings();
-    let args = ['--max-http-header-size=1048576', p.dshBin, 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'];
-    const localIp = getLocalIp();
-    if (localIp) {
-      args.push('--trusted-host', localIp);
-    }
-    if (mobileCfg.enabled) {
-      const port = await resolveMobilePort(mobileCfg.port);
-      activeMobilePort = port;
-      if (localIp) {
-        args.push('--trusted-host', `${localIp}:${port}`);
-      }
-      tryAddFirewallRule(port).catch(() => {});
-    } else {
-      activeMobilePort = null;
-      activeLanUrl = null;
-    }
+    // 后端只监听回环地址。--max-http-header-size 是必需的：Web 端把所有插件
+    // client.js 拼成一个组合脚本 URL，插件一多就超过 Node 默认 16KB 请求头上限，
+    // 后端会以 HTTP 431 拒绝，表现为「插件全部加载失败」。与手机功能无关，勿删。
+    const args = ['--max-http-header-size=1048576', p.dshBin, 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'];
 
     const child = spawn(p.nodeExe, args, {
       cwd: path.dirname(p.dshBin), env, windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe']
     });
     backend = child;
-    pushLog(`starting backend: node=${p.nodeExe} DSH_HOME=${p.dshHome} host=127.0.0.1 port=0 (mobileEnabled=${mobileCfg.enabled})\n`);
+    pushLog(`starting backend: node=${p.nodeExe} DSH_HOME=${p.dshHome} host=127.0.0.1 port=0\n`);
 
     let settled = false;
     const onUrl = (line) => {
       const m = /dsh web:\s*(https?:\/\/[^\s]+)/i.exec(line);
       if (!m) return;
       const url = m[1].trim();
-
-      if (mobileCfg.enabled && activeMobilePort) {
-        stopMobileBridge();
-        try {
-          const parsedUrl = new URL(url);
-          const targetPort = Number(parsedUrl.port);
-          mobileBridge = net.createServer((clientSocket) => {
-            const upstream = net.connect({ port: targetPort, host: '127.0.0.1' }, () => {
-              clientSocket.pipe(upstream);
-              upstream.pipe(clientSocket);
-            });
-            clientSocket.on('error', () => upstream.destroy());
-            upstream.on('error', () => clientSocket.destroy());
-          });
-          mobileBridge.listen(activeMobilePort, '0.0.0.0', () => {
-            pushLog(`[mobile] 局域网端口桥接已启动: 0.0.0.0:${activeMobilePort} -> 127.0.0.1:${targetPort}\n`);
-          });
-          mobileBridge.on('error', (e) => {
-            pushLog(`[mobile] 局域网桥接异常: ${e.message}\n`);
-          });
-          if (localIp) {
-            activeLanUrl = `http://${localIp}:${activeMobilePort}/${parsedUrl.search}`;
-          }
-        } catch (e) {
-          pushLog(`[mobile] 构建转发桥失败: ${e.message}\n`);
-        }
-      } else {
-        const lanMatch = /\(LAN:\s*(https?:\/\/[^\s)]+)\)/i.exec(line);
-        if (lanMatch) {
-          activeLanUrl = lanMatch[1].trim();
-        }
-      }
 
       if (settled) return;
       settled = true;
@@ -777,7 +613,6 @@ function trayMenuTemplate() {
 
   return [
     { label: '设置…', click: () => createSettingsWindow() },
-    { label: '手机配对二维码', click: () => openQrWindow() },
     { type: 'separator' },
     {
       label: mgr.safeModeActive() ? '退出安全模式并重启' : '以安全模式重启（维修）',
@@ -1338,327 +1173,9 @@ ipcMain.handle('settings:download-node', async (_e, version) => {
 });
 
 // ---------------------------------------------------------------------------
-// Mobile companion — QR window and IPC
+// 通用剪贴板（供设置窗「插件安装与终端」区复制命令用）
 // ---------------------------------------------------------------------------
-let qrSvgFn = null;
-async function getQrSvg() {
-  if (!qrSvgFn) {
-    const qrPath = path.join(__dirname, 'plugins', 'mobile-companion', 'lib', 'qr.mjs');
-    const mod = await import(pathToFileURL(qrPath).href);
-    qrSvgFn = mod.qrSvg;
-  }
-  return qrSvgFn;
-}
-
-let qrWindow = null;
-
-async function renderQrWindow(win) {
-  const mobileCfg = getMobileSettings();
-  let html = '';
-  if (activeLanUrl) {
-    let svg = '';
-    try {
-      const qrSvg = await getQrSvg();
-      svg = qrSvg(activeLanUrl, { scale: 5, quiet: 2 });
-    } catch (e) {
-      svg = `<div style="color:#bf616a;padding:20px;font-size:12px;">生成二维码失败: ${escapeHtml(e.message)}</div>`;
-    }
-    html = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>手机配对二维码</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: #ffffff;
-    color: #1a202c;
-    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-    padding: 20px 18px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    user-select: none;
-  }
-  h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #111827; }
-  .qr-box {
-    width: 200px;
-    height: 200px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    padding: 8px;
-    background: #ffffff;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-  }
-  .qr-box svg { width: 100%; height: 100%; display: block; }
-  .url-card {
-    margin-top: 12px;
-    width: 100%;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 12px;
-    color: #334155;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .url-text {
-    flex: 1;
-    text-align: left;
-    font-family: Consolas, Monaco, monospace;
-    font-size: 11px;
-    word-break: break-all;
-    user-select: text;
-  }
-  .btn-copy {
-    background: #2563eb;
-    color: #ffffff;
-    border: none;
-    border-radius: 4px;
-    padding: 5px 10px;
-    font-size: 12px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .btn-copy:hover { background: #1d4ed8; }
-  .btn-copy.copied { background: #16a34a; }
-  .steps {
-    margin-top: 14px;
-    text-align: left;
-    width: 100%;
-    background: #f9fafb;
-    border-radius: 6px;
-    padding: 10px 12px 10px 28px;
-    font-size: 12px;
-    color: #4b5563;
-    line-height: 1.6;
-  }
-  .steps li { margin-bottom: 2px; }
-  .steps li:last-child { margin-bottom: 0; }
-</style>
-</head>
-<body>
-  <h2>手机配对</h2>
-  <div class="qr-box">${svg}</div>
-  <div class="url-card">
-    <div class="url-text" id="urlText">${escapeHtml(activeLanUrl)}</div>
-    <button class="btn-copy" id="btnCopy" onclick="copyUrl()">复制</button>
-  </div>
-  <ol class="steps">
-    <li>手机安装 <b>DSH 手机版 App</b> 扫码连接</li>
-    <li>或手机浏览器直接打开该 URL 后访问 <b>/m/</b></li>
-    <li>请确保手机与电脑在同一局域网（Wi-Fi）</li>
-  </ol>
-  <script>
-    function copyUrl() {
-      const text = document.getElementById('urlText').innerText;
-      const btn = document.getElementById('btnCopy');
-      const finish = () => {
-        btn.textContent = '已复制！';
-        btn.className = 'btn-copy copied';
-        setTimeout(() => { btn.textContent = '复制'; btn.className = 'btn-copy'; }, 1500);
-      };
-      if (window.dshSettings && window.dshSettings.copyText) {
-        window.dshSettings.copyText(text).then(finish);
-      } else if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(finish).catch(() => fallback(text, finish));
-      } else {
-        fallback(text, finish);
-      }
-    }
-    function fallback(text, cb) {
-      const t = document.createElement('textarea');
-      t.value = text;
-      document.body.appendChild(t);
-      t.select();
-      try { document.execCommand('copy'); cb(); } catch {}
-      document.body.removeChild(t);
-    }
-  </script>
-</body>
-</html>`;
-  } else {
-    html = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>手机配对二维码</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: #ffffff;
-    color: #1a202c;
-    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-    padding: 28px 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-  .icon { font-size: 36px; margin-bottom: 10px; }
-  h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #111827; }
-  .guide {
-    background: #fffbeb;
-    border: 1px solid #fef3c7;
-    border-radius: 6px;
-    padding: 10px 14px;
-    color: #b45309;
-    font-size: 13px;
-    font-weight: 500;
-    margin-bottom: 16px;
-    width: 100%;
-  }
-  .status-list {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    padding: 12px 14px;
-    width: 100%;
-    text-align: left;
-    font-size: 12px;
-    margin-bottom: 20px;
-  }
-  .row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #edf2f7; }
-  .row:last-child { border-bottom: none; }
-  .k { color: #64748b; }
-  .v { color: #0f172a; font-weight: 500; }
-  .actions { display: flex; gap: 10px; width: 100%; }
-  button {
-    flex: 1;
-    background: #2563eb;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 8px 12px;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  button:hover { background: #1d4ed8; }
-  button.secondary {
-    background: #f1f5f9;
-    color: #334155;
-    border: 1px solid #cbd5e1;
-  }
-  button.secondary:hover { background: #e2e8f0; }
-</style>
-</head>
-<body>
-  <div class="icon">📱</div>
-  <h2>未获取到局域网访问地址</h2>
-  <div class="guide">请先在设置中启用手机访问并重启后端</div>
-  <div class="status-list">
-    <div class="row"><span class="k">手机访问设置</span><span class="v">${mobileCfg.enabled ? '已开启' : '未开启'}</span></div>
-    <div class="row"><span class="k">设置端口</span><span class="v">${mobileCfg.port}</span></div>
-    <div class="row"><span class="k">后端运行状态</span><span class="v">${backend ? (activeMobilePort ? `运行中（端口 ${activeMobilePort}）` : '运行中（本地模式）') : '未运行'}</span></div>
-  </div>
-  <div class="actions">
-    <button class="secondary" onclick="openSettings()">打开设置</button>
-    <button onclick="restart()">重启应用</button>
-  </div>
-  <script>
-    function openSettings() {
-      if (window.dshSettings && window.dshSettings.openSettings) {
-        window.dshSettings.openSettings();
-      } else {
-        window.location.hash = '#open-settings';
-      }
-    }
-    function restart() {
-      if (window.dshSettings && window.dshSettings.restart) {
-        window.dshSettings.restart();
-      } else {
-        window.location.hash = '#restart';
-      }
-    }
-  </script>
-</body>
-</html>`;
-  }
-  await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
-}
-
-async function openQrWindow() {
-  if (qrWindow && !qrWindow.isDestroyed()) {
-    await renderQrWindow(qrWindow);
-    qrWindow.show();
-    qrWindow.focus();
-    return;
-  }
-
-  qrWindow = new BrowserWindow({
-    width: 380,
-    height: 480,
-    show: false,
-    resizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    title: '手机配对二维码',
-    backgroundColor: '#ffffff',
-    autoHideMenuBar: true,
-    icon: path.join(__dirname, 'assets', 'icon.png'),
-    webPreferences: {
-      preload: path.join(__dirname, 'settings-preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    }
-  });
-
-  Menu.setApplicationMenu(null);
-  qrWindow.webContents.on('will-navigate', (event, url) => {
-    if (url.includes('#open-settings')) {
-      event.preventDefault();
-      createSettingsWindow();
-    } else if (url.includes('#restart')) {
-      event.preventDefault();
-      restartApp();
-    }
-  });
-
-  await renderQrWindow(qrWindow);
-  qrWindow.once('ready-to-show', () => {
-    if (qrWindow && !qrWindow.isDestroyed()) {
-      qrWindow.show();
-      qrWindow.focus();
-    }
-  });
-  qrWindow.on('closed', () => { qrWindow = null; });
-}
-
-function getMobileStatus() {
-  const cfg = getMobileSettings();
-  return {
-    enabled: cfg.enabled,
-    port: cfg.port,
-    activePort: activeMobilePort,
-    lanUrl: activeLanUrl,
-    firewallOk: lastFirewallSuccess,
-    firewallCommand: lastFirewallCommand || `netsh advfirewall firewall add rule name="DSH Desktop Mobile" dir=in action=allow protocol=TCP localport=${cfg.port}`
-  };
-}
-
-ipcMain.handle('mobile:get', () => getMobileStatus());
-ipcMain.handle('mobile:set', async (_e, data) => {
-  const prev = getMobileSettings();
-  const next = saveMobileSettings(data || {});
-  if (!prev.enabled && next.enabled) {
-    await tryAddFirewallRule(next.port);
-  }
-  return getMobileStatus();
-});
-ipcMain.handle('mobile:openQr', async () => {
-  await openQrWindow();
-  return true;
-});
-ipcMain.handle('mobile:copy-text', (_e, text) => {
+ipcMain.handle('shell:copy-text', (_e, text) => {
   try {
     clipboard.writeText(String(text || ''));
     return true;
