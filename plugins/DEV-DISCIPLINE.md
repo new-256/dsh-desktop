@@ -36,7 +36,7 @@
 | `bot-gateway`（→ `dsh-bot-gateway@0.2.0-beta` 本地 tgz） | tgz 制品 | ⚠️ 制品态，注意 tgz 存放位置稳定性 |
 | `dsh-plugin-manager`（→ junction `profiles\node_modules\dsh-plugin-manager-plus`） | **junction 直连本源码目录** | ❌ 开发态接线（纪律 1/2）：仓库迁移即断，需转制品或显式标注 |
 | `mobile-companion`（→ `dsh-home\node_modules\dsh-mobile-companion`） | 目录拷贝安装 | ⚠️ 拷贝与源码可能漂移，更新时按闭环流程重装并核验 |
-| `agentrouter-proxy` / `session-cleaner`（单文件 + `?v=N`） | 复制到 `dsh-home\` 根 + 缓存破坏参数 | ⚠️ 源码正本与部署副本需同步；**每次改动必须 bump `?v=N` 并重启验证** |
+| `agentrouter-proxy` / `session-cleaner`（单文件 + `?v=N`） | 复制到 `dsh-home\` 根 + 缓存破坏参数 | ⚠️ 源码正本（`plugins\web\`）与部署副本需同步；**每次改动必须 bump `?v=N` 并重启验证**。2026-09-12 纪律审计发现部署副本长期领先正本（session-cleaner +1087/-192、agentrouter +221/-42），已回同步归位 |
 
 ## 事故背景
 
