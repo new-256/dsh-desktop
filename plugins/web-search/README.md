@@ -2,6 +2,8 @@
 
 DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会话**注册多引擎网页搜索与 URL 抓取工具，并提供 设置→插件 页配置卡片。零依赖（单文件 ESM，host realm 全 Node 权限）。
 
+> **开发纪律**：本插件经 npm 制品 `web-search-panel@1.2.0` registry 安装部署——制品态标杆。发版流程遵循[开发-制品闭环](../DEV-DISCIPLINE.md)。
+
 ## auto 智能路由（默认开启）
 
 `engine=auto`（默认）时由 **DSH 分析查询特性**（语言/领域/意图/时效）自动选择合适引擎或多引擎**并行同步搜索 + RRF 融合**，模型无需手动选引擎：
