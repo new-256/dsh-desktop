@@ -36,6 +36,8 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+// 打包后立即生成运行时完整性清单（分卷哈希必须在本轮分卷定稿后计算）。
+const { buildManifest } = require('./write-vendor-manifest');
 
 const ROOT = path.join(__dirname, '..');
 const VENDOR = path.join(ROOT, 'vendor');
@@ -221,7 +223,7 @@ function isFresh(parts) {
   return oldestPart >= newestInput;
 }
 
-function main() {
+async function main() {
   assertExists(SEVEN_ZA, '捆绑的 7za.exe');
   assertExists(RUNTIME_DIR, 'vendor/runtime');
   assertExists(DSH_DIR, 'vendor/dsh');
@@ -232,6 +234,8 @@ function main() {
   if (isFresh(parts)) {
     let totalSize = 0;
     for (const p of parts) totalSize += fs.statSync(p).size;
+    // 分卷没变，但清单可能过期（vendor 树改过、或清单被删过）——重新生成一遍。
+    await buildManifest();
     log(`已是最新的 ${N} 个分卷（均比所有输入文件新），跳过重打包。合计=${(totalSize / 1048576).toFixed(1)} MB`);
     return;
   }
@@ -284,6 +288,12 @@ function main() {
 
   const secs = ((Date.now() - started) / 1000).toFixed(1);
   log(`packed ${totalPacked} files into ${N} parts, total size=${(totalSize / 1048576).toFixed(2)} MB (${totalSize} bytes), pack time=${secs}s`);
+
+  // 分卷刚刚定稿 —— 此时算出的分卷哈希才与产物一致。
+  await buildManifest();
 }
 
-main();
+main().catch((err) => {
+  console.error('[pack-vendor] 失败：' + (err && err.stack ? err.stack : err));
+  process.exit(1);
+});

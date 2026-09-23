@@ -1757,6 +1757,58 @@ if (!gotLock) {
         pushLog('启动预检失败（跳过，不影响启动）: ' + (e && e.message) + '\n');
         diag('启动预检异常:', e);
       }
+      // 4.6) 版本耦合软闸门（0.3.38 / P1-1）：不硬耦合官方的 release.version
+      // 强校验。当前 shell × dsh 组合不在「已验证组合」清单时，普通启动一次性
+      // 提示（可继续、可不再提醒）；autoStartHidden 只记录，不弹窗。
+      try {
+        const gate = mgr.comboGateCheck(app.getVersion());
+        diag('版本耦合软闸门:', { combo: gate.combo, validated: gate.validated });
+        if (!gate.validated && gate.shouldPrompt && !autoStartHidden) {
+          const rGate = await dialog.showMessageBox(null, {
+            type: 'warning', buttons: ['继续启动', '本次不再提醒该组合'], defaultId: 0, cancelId: 0,
+            title: APP_NAME,
+            message: '当前外壳与后端组合未经验证',
+            detail: `外壳 ${app.getVersion()} × DSH 后端 ${gate.dshVersion || '未知'}\n\n` +
+              '该组合不在已验证清单中，可能出现插件不兼容等问题（仍可正常启动）。\n' +
+              '如遇异常，可在设置中回退到已验证的后端版本。'
+          });
+          if (rGate.response === 1) mgr.dismissComboPrompt(gate.combo);
+        }
+      } catch (e) {
+        pushLog('版本耦合软闸门失败（跳过，不影响启动）: ' + (e && e.message) + '\n');
+      }
+
+      // 4.7) Python 运行时检测引导（0.3.38 / P0-2）：dsh-skill-office 的 Office
+      // 技能需要 Python 3.9+（结构检查仅标准库，生成/编辑需编写库）。后端环境
+      // 拿不到时一次性引导，绝不静默；autoStartHidden 只记录。
+      try {
+        const py = mgr.pythonBootCheck();
+        diag('Python 检测:', { available: py.info.available, version: py.info.version, reason: py.info.reason });
+        if (py.shouldPrompt && !autoStartHidden) {
+          const missing = (py.info.missingAuthoring || []).join('、');
+          const detailLines = [];
+          if (!py.info.available || !py.info.meetsMinimum) {
+            detailLines.push('Office 文档技能（Word/Excel/PowerPoint 的结构检查与生成）需要 Python 3.9 或更高版本。');
+            detailLines.push('当前状态：' + py.info.reason);
+            detailLines.push('', '安装方式：', '  1) 前往 https://www.python.org/downloads/ 下载 Windows 版；', '  2) 安装时勾选「Add python.exe to PATH」；', '  3) 重启 DSH Desktop。');
+          } else {
+            detailLines.push(`已检测到 Python ${py.info.version}（${py.info.executable || ''}），但缺少以下编写库：`);
+            detailLines.push('  ' + missing);
+            detailLines.push('', '在命令行执行：', '  python -m pip install python-docx python-pptx openpyxl Pillow lxml pandas');
+          }
+          const rPy = await dialog.showMessageBox(null, {
+            type: 'warning', buttons: ['知道了', '不再提醒'], defaultId: 0, cancelId: 0,
+            title: APP_NAME,
+            message: 'Office 技能所需的 Python 环境未就绪',
+            detail: detailLines.join('\n')
+          });
+          if (rPy.response === 1) mgr.dismissPythonPrompt(py.dismissKey);
+        }
+        if (py.info.available) pushLog(`python gate: ${py.info.version} ${py.info.reason}\n`);
+      } catch (e) {
+        pushLog('Python 检测失败（跳过，不影响启动）: ' + (e && e.message) + '\n');
+      }
+
       // 5) Start backend (self-heals and retries on profile/symlink errors).
       diag('步骤5 启动后端');
       const url = await startBackendWithPluginIsolation(shouldIsolatePlugins);
@@ -1766,6 +1818,13 @@ if (!gotLock) {
       createTray();
       setBootPhase('running');
       diag('步骤6 主窗口与托盘就绪');
+      // 更新 journal：后端已启动且主窗口加载成功，把 applied 记录推进到
+      // verified。一条 applied 却从未 verified 的记录意味着上次更新在验证前
+      // 崩溃 —— 这里闭环。
+      try {
+        const nV = mgr.journalMarkVerified();
+        if (nV) diag(`journal：${nV} 条 applied 记录已标记 verified`);
+      } catch {}
       // 7) Background: shell updater + silent backend updates.
       setupShellUpdater();
       scheduleSilentUpdates();

@@ -30,6 +30,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const https = require('https');
+const crypto = require('crypto');
 
 // 更新路线：托盘「设置」窗可切换 'mirror'（npmmirror，国内快、同步滞后）与
 // 'official'（npmjs，版本始终最新）。未设置时退回环境变量，再退回镜像站。
@@ -563,6 +564,173 @@ function discoverVendorParts(p) {
 // PowerShell single-quote escaping (double any embedded single quote).
 function psQuote(s) { return "'" + String(s).replace(/'/g, "''") + "'"; }
 
+// --------------------------------------------------------------------------
+// payload 完整性校验（vendor-manifest.json）
+// --------------------------------------------------------------------------
+/**
+ * 借鉴官方 apps/desktop 的 desktop-runtime.json + verifyDesktopRuntime()：
+ * 构建期（scripts/write-vendor-manifest.js）把关键文件的 bytes/sha256、两棵树
+ * 的顶层条目、dsh 树的文件数/字节数、以及每个 payload 分卷的哈希写进
+ * resources/payload/vendor-manifest.json，这里在首次解压前后各校验一次。
+ *
+ * 与官方的差别（有意为之）：官方对整棵运行时树逐文件哈希，启动前全量校验；
+ * 这里只对 4 个「决定能否启动 / 唯一标识版本」的关键文件做哈希，加上 dsh 树的
+ * 规模对账 —— 目的是把校验成本压到几百毫秒，同时仍能抓到分卷漏拷、解压中断、
+ * 版本错配这三类真实故障。整棵树的逐文件哈希对桌面版是过度设计。
+ *
+ * 兼容性：旧安装包不带清单时全部跳过（返回 ok:true, skipped:true），
+ * 行为与改动前完全一致，不会因为缺少清单而拒绝启动。
+ */
+
+/** 流式 sha256（node.exe 有 80+ MB，不能整文件读进内存）。 */
+function sha256FileSync(file) {
+  const h = crypto.createHash('sha256');
+  const fd = fs.openSync(file, 'r');
+  try {
+    const buf = Buffer.allocUnsafe(1024 * 1024);
+    let n;
+    while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) h.update(buf.subarray(0, n));
+  } finally {
+    try { fs.closeSync(fd); } catch {}
+  }
+  return h.digest('hex');
+}
+
+/**
+ * 清单相对路径 → 绝对路径，拒绝一切可能逃出 root 的写法。
+ * 与官方 runtime-tree.ts 的 runtimePath() 同一条纪律：绝对路径、反斜杠、
+ * 盘符、空段、`.`、`..` 一律判非法。
+ */
+function manifestPath(root, rel) {
+  if (typeof rel !== 'string' || rel === '' || path.isAbsolute(rel) || rel.includes('\\') || rel.includes(':')) return null;
+  const segs = rel.split('/');
+  if (segs.some((s) => s === '' || s === '.' || s === '..')) return null;
+  return path.join(root, ...segs);
+}
+
+/** 统计一棵树的文件数与字节数（跳过符号链接，与构建期统计口径一致）。 */
+function countTree(dir) {
+  let files = 0; let bytes = 0;
+  const stack = [dir];
+  while (stack.length) {
+    const cur = stack.pop();
+    let entries;
+    try { entries = fs.readdirSync(cur, { withFileTypes: true }); } catch { continue; }
+    for (const ent of entries) {
+      const full = path.join(cur, ent.name);
+      let st;
+      try { st = fs.lstatSync(full); } catch { continue; }
+      if (st.isSymbolicLink()) continue;
+      if (st.isDirectory()) stack.push(full);
+      else { files++; bytes += st.size; }
+    }
+  }
+  return { files, bytes };
+}
+
+/**
+ * 解压**前**校验 payload 分卷本身（快：~137MB，约 1 秒）。
+ * 分卷坏了就没必要再花 30+ 秒去解压一棵坏树。
+ */
+function verifyPayloadParts(p, manifest) {
+  const list = Array.isArray(manifest.parts) ? manifest.parts : [];
+  if (list.length === 0) return { ok: true, checked: 0 };
+  for (const entry of list) {
+    const name = entry && entry.file;
+    // 分卷名只允许是 payload 目录下的裸文件名。
+    if (typeof name !== 'string' || name === '' || name.includes('/') || name.includes('\\') || name.includes(':')) {
+      return { ok: false, reason: `清单中的分卷名非法：${JSON.stringify(name)}` };
+    }
+    const abs = path.join(p.seedPayloadDir, name);
+    if (!fs.existsSync(abs)) return { ok: false, reason: `缺少分卷 ${name}` };
+    const size = fs.statSync(abs).size;
+    if (typeof entry.bytes === 'number' && size !== entry.bytes) {
+      return { ok: false, reason: `分卷 ${name} 大小不符（期望 ${entry.bytes}，实际 ${size}）` };
+    }
+    if (entry.sha256) {
+      const got = sha256FileSync(abs);
+      if (got !== entry.sha256) {
+        return { ok: false, reason: `分卷 ${name} 校验和不符（期望 ${String(entry.sha256).slice(0, 12)}…，实际 ${got.slice(0, 12)}…）` };
+      }
+    }
+  }
+  return { ok: true, checked: list.length };
+}
+
+/** 解压**后**校验落地的后端树。 */
+function verifyVendorManifest(p, manifest) {
+  let checked = 0;
+
+  // 1) 关键文件：逐字节 sha256
+  for (const item of Array.isArray(manifest.critical) ? manifest.critical : []) {
+    const rel = item && item.path;
+    const abs = manifestPath(p.root, rel);
+    if (!abs) return { ok: false, reason: `清单中的路径非法：${JSON.stringify(rel)}` };
+    if (!fs.existsSync(abs)) return { ok: false, reason: `缺少关键文件 ${rel}` };
+    const size = fs.statSync(abs).size;
+    if (typeof item.bytes === 'number' && size !== item.bytes) {
+      return { ok: false, reason: `关键文件 ${rel} 大小不符（期望 ${item.bytes}，实际 ${size}）` };
+    }
+    if (item.sha256) {
+      const got = sha256FileSync(abs);
+      if (got !== item.sha256) return { ok: false, reason: `关键文件 ${rel} 校验和不符` };
+    }
+    checked++;
+  }
+
+  // 2) 顶层条目：捕捉「少解压了一整个目录」
+  for (const base of ['runtime', 'dsh']) {
+    const baseRoot = base === 'dsh' ? p.dshDir : p.root;
+    for (const name of ((manifest.topLevel && manifest.topLevel[base]) || [])) {
+      if (typeof name !== 'string' || name === '' || name === '.' || name === '..' || name.includes('/') || name.includes('\\')) {
+        return { ok: false, reason: `清单 topLevel.${base} 条目非法：${JSON.stringify(name)}` };
+      }
+      if (!fs.existsSync(path.join(baseRoot, name))) {
+        return { ok: false, reason: `缺少顶层条目 ${base}/${name}` };
+      }
+      checked++;
+    }
+  }
+
+  // 3) dsh 树规模：解压是否完整的最强信号。
+  //    只统计 dsh 树 —— 后端根目录混有运行期的 downloads/.npm-cache/dsh.new 等，
+  //    对它做全量统计既慢又会被更新暂存内容误判。
+  const want = manifest.totals && manifest.totals.dsh;
+  if (want && typeof want.files === 'number') {
+    const got = countTree(p.dshDir);
+    if (got.files !== want.files || (typeof want.bytes === 'number' && got.bytes !== want.bytes)) {
+      return {
+        ok: false,
+        reason: `dsh 树规模不符（期望 ${want.files} 个文件 / ${want.bytes} 字节，实际 ${got.files} 个文件 / ${got.bytes} 字节）`
+      };
+    }
+    checked++;
+  }
+
+  // 4) 版本对账：清单声明的 dsh 版本必须等于解压出来的版本
+  if (manifest.dshVersion) {
+    const pkg = readJson(p.dshPkg, null);
+    const actual = pkg && pkg.version ? pkg.version : null;
+    if (actual !== manifest.dshVersion) {
+      return { ok: false, reason: `dsh 版本不符（清单 ${manifest.dshVersion}，实际 ${actual || '未知'}）` };
+    }
+    checked++;
+  }
+
+  return { ok: true, checked };
+}
+
+/**
+ * 校验失败时清掉**刚解压出来的**两棵树，确保下次启动 needNode/needDsh 仍为真而重试。
+ * 不碰 downloads/、dsh.new/、dsh.previous/、plugin-state.json —— 那些是更新暂存与
+ * 用户状态，删掉会造成比校验失败更严重的后果。
+ */
+function quarantineSeededBackend(p) {
+  try { rimraf(p.dshDir); } catch (e) { log('quarantine dshDir failed: ' + e.message); }
+  try { if (fs.existsSync(p.nodeExe)) fs.unlinkSync(p.nodeExe); } catch (e) { log('quarantine node.exe failed: ' + e.message); }
+  try { rimraf(p.npmDir); } catch (e) { log('quarantine npm failed: ' + e.message); }
+}
+
 /**
  * Extract the packed vendor payload straight into the backend root using the
  * bundled 7za. Each part stores runtime files at its root and the dsh tree under
@@ -577,64 +745,258 @@ function psQuote(s) { return "'" + String(s).replace(/'/g, "''") + "'"; }
  * cost); a single `7za x` writes with one thread regardless of decode threads.
  * Returns true only when extraction succeeded AND the expected files landed.
  */
+function extractPayloadParts(p, parts) {
+  mkdirp(p.root);
+
+  if (parts.length === 1) {
+    // Legacy single archive: one blocking extract, no PowerShell needed.
+    // x = extract with full paths; -aoa = overwrite all; -mmt=on = multi-thread.
+    execFileSync(p.seedVendor7za, ['x', parts[0], '-aoa', '-mmt=on', '-o' + p.root], { stdio: 'ignore' });
+    return;
+  }
+
+  // Build an inline PowerShell command that spawns one hidden 7za per part
+  // and waits for all of them. No helper script is written to disk.
+  //
+  // Quoting matters and is NOT optional: Start-Process joins -ArgumentList
+  // ARRAY elements with spaces WITHOUT quoting them, so the array form breaks
+  // on the real paths, which always contain a space ("DSH Desktop"). That
+  // failure is silent -- 7za still exits 0 while extracting nothing -- so the
+  // arguments are passed as ONE pre-quoted string instead. Trailing
+  // backslashes are stripped so the closing quote of "-o..." cannot be escaped.
+  const rootArg = String(p.root).replace(/\\+$/, '');
+  const partsLiteral = parts.map(psQuote).join(',');
+  const ps = [
+    "$ErrorActionPreference='Stop';",
+    '$exe=' + psQuote(p.seedVendor7za) + ';',
+    '$root=' + psQuote(rootArg) + ';',
+    '$parts=@(' + partsLiteral + ');',
+    '$procs=@();',
+    'foreach($pt in $parts){',
+    '  $a=\'x "\'+$pt+\'" -aoa -mmt=on "-o\'+$root+\'"\';',
+    '  $procs+=Start-Process -FilePath $exe -ArgumentList $a -PassThru -WindowStyle Hidden;',
+    '}',
+    '$procs | Wait-Process;',
+    '$fail=0; foreach($pr in $procs){ if($pr.ExitCode -ne 0){ $fail++ } }',
+    'if($fail -gt 0){ Write-Output ("parts failed: "+$fail); exit 1 }; exit 0'
+  ].join(' ');
+  const res = require('child_process').spawnSync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps],
+    { encoding: 'utf8', windowsHide: true }
+  );
+  if (res.error) throw res.error;
+  if (res.status !== 0) {
+    const out = String((res.stdout || '') + (res.stderr || '')).trim().slice(-400);
+    throw new Error(`并行解压有分卷失败(code ${res.status})${out ? ': ' + out : ''}`);
+  }
+}
+
+/**
+ * 解压 payload 并做完整性校验（清单存在时）。校验不过就清掉重来一次，
+ * 两次都不过则判定安装包损坏并明确报错 —— 绝不把一棵坏树交给 dsh 去跑。
+ */
 function seedFromArchive(p) {
   const parts = discoverVendorParts(p);
   if (parts.length === 0 || !fs.existsSync(p.seedVendor7za)) return false;
-  try {
-    mkdirp(p.root);
-    log(`seeding backend from ${parts.length} payload part(s) via concurrent 7za extract …`);
 
-    if (parts.length === 1) {
-      // Legacy single archive: one blocking extract, no PowerShell needed.
-      // x = extract with full paths; -aoa = overwrite all; -mmt=on = multi-thread.
-      execFileSync(p.seedVendor7za, ['x', parts[0], '-aoa', '-mmt=on', '-o' + p.root], { stdio: 'ignore' });
-    } else {
-      // Build an inline PowerShell command that spawns one hidden 7za per part
-      // and waits for all of them. No helper script is written to disk.
-      //
-      // Quoting matters and is NOT optional: Start-Process joins -ArgumentList
-      // ARRAY elements with spaces WITHOUT quoting them, so the array form breaks
-      // on the real paths, which always contain a space ("DSH Desktop"). That
-      // failure is silent -- 7za still exits 0 while extracting nothing -- so the
-      // arguments are passed as ONE pre-quoted string instead. Trailing
-      // backslashes are stripped so the closing quote of "-o..." cannot be escaped.
-      const rootArg = String(p.root).replace(/\\+$/, '');
-      const partsLiteral = parts.map(psQuote).join(',');
-      const ps = [
-        "$ErrorActionPreference='Stop';",
-        '$exe=' + psQuote(p.seedVendor7za) + ';',
-        '$root=' + psQuote(rootArg) + ';',
-        '$parts=@(' + partsLiteral + ');',
-        '$procs=@();',
-        'foreach($pt in $parts){',
-        '  $a=\'x "\'+$pt+\'" -aoa -mmt=on "-o\'+$root+\'"\';',
-        '  $procs+=Start-Process -FilePath $exe -ArgumentList $a -PassThru -WindowStyle Hidden;',
-        '}',
-        '$procs | Wait-Process;',
-        '$fail=0; foreach($pr in $procs){ if($pr.ExitCode -ne 0){ $fail++ } }',
-        'if($fail -gt 0){ Write-Output ("parts failed: "+$fail); exit 1 }; exit 0'
-      ].join(' ');
-      const res = require('child_process').spawnSync(
-        'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps],
-        { encoding: 'utf8', windowsHide: true }
-      );
-      if (res.error) throw res.error;
-      if (res.status !== 0) {
-        const out = String((res.stdout || '') + (res.stderr || '')).trim().slice(-400);
-        throw new Error(`并行解压有分卷失败(code ${res.status})${out ? ': ' + out : ''}`);
+  const manifest = readJson(path.join(p.seedPayloadDir, 'vendor-manifest.json'), null);
+  if (manifest) {
+    log(`payload 清单：dsh=${manifest.dshVersion || '未知'} node=${manifest.nodeVersion || '未知'} parts=${(manifest.parts || []).length}`);
+    const pre = verifyPayloadParts(p, manifest);
+    if (!pre.ok) {
+      // 分卷本身坏了：解压也只会得到坏树，直接说清楚，不浪费一次解压。
+      log(`payload 分卷校验失败：${pre.reason}`);
+      log('安装包 payload 已损坏，请重新下载 / 重新安装。本次不再尝试解压。');
+      return false;
+    }
+  } else {
+    log('未随包提供 vendor-manifest.json（旧安装包），跳过完整性校验。');
+  }
+
+  // 清单存在时允许重试一次：首次失败更可能是解压被打断，清干净重来往往就好了；
+  // 第二次仍失败即可判定 payload 损坏，不再无休止重试。
+  const maxAttempts = manifest ? 2 : 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      log(`seeding backend from ${parts.length} payload part(s) via concurrent 7za extract …（第 ${attempt}/${maxAttempts} 次）`);
+      extractPayloadParts(p, parts);
+
+      if (!fs.existsSync(p.nodeExe) || !fs.existsSync(p.dshBin)) {
+        log('payload extracted but expected files missing; falling back to directory copy');
+        return false;
       }
-    }
 
-    if (fs.existsSync(p.nodeExe) && fs.existsSync(p.dshBin)) {
-      log(`已并行解压 ${parts.length} 个分卷完成后端初始化`);
-      return true;
+      if (!manifest) {
+        log(`已并行解压 ${parts.length} 个分卷完成后端初始化`);
+        return true;
+      }
+
+      const post = verifyVendorManifest(p, manifest);
+      if (post.ok) {
+        log(`已并行解压 ${parts.length} 个分卷，完整性校验通过（${post.checked} 项）`);
+        return true;
+      }
+
+      log(`完整性校验未通过（第 ${attempt}/${maxAttempts} 次）：${post.reason}`);
+      quarantineSeededBackend(p);
+      if (attempt < maxAttempts) {
+        log('已清除本次解压产物，重试解压…');
+        continue;
+      }
+      log('完整性校验重试后仍失败 —— 安装包 payload 可能已损坏，请重新下载安装包。');
+      return false;
+    } catch (e) {
+      log('payload seed failed (' + e.message + '); falling back to directory copy');
+      // 半途失败的解压会留下「node.exe 在、dsh 树残缺」的假象，让下次启动
+      // 误判为无需 seed 而永久卡死。清掉，保证下次启动会重试（源码检出场景
+      // 下则由紧随其后的目录复制兜底）。
+      quarantineSeededBackend(p);
+      return false;
     }
-    log('payload extracted but expected files missing; falling back to directory copy');
-  } catch (e) {
-    log('payload seed failed (' + e.message + '); falling back to directory copy');
   }
   return false;
+}
+
+// ==========================================================================
+// Python 运行时检测引导 + 版本耦合软闸门（0.3.38）
+//
+// 官方 apps/desktop 把整套 Python + 编写库打进安装包（+150~250MB），我们不
+// 照抄：dsh-skill-office 本就设计为「由部署方提供 Python」。这里改做轻量
+// 探测——用后端**真实的隔离环境**判断它的子进程能否拿到 Python 3.9+ 与核心
+// 编写库；拿不到就在普通启动时一次性引导，绝不静默。
+// ==========================================================================
+const pythonCheckStatePath = () => path.join(P().root, 'python-check.json');
+
+function readPythonCheckState() {
+  try { return JSON.parse(fs.readFileSync(pythonCheckStatePath(), 'utf8')); } catch { return {}; }
+}
+function writePythonCheckState(obj) {
+  try { fs.writeFileSync(pythonCheckStatePath(), JSON.stringify(obj, null, 2) + '\n'); } catch (e) { log('write python-check state failed:', e.message); }
+}
+
+const PY_MIN_MAJOR = 3;
+const PY_MIN_MINOR = 9;
+/**
+ * 编写库探针：与官方内置清单对齐。结构检查器（check_office.py）只用标准库，
+ * 所以这里区分「结构检查可用（标准库够）」与「生成/编辑可用（需要这些库）」。
+ */
+const PY_AUTHORING_LIBS = ['docx', 'pptx', 'openpyxl', 'PIL', 'lxml', 'pandas'];
+
+function parsePythonVersion(text) {
+  const m = /Python\s+(\d+)\.(\d+)\.(\d+)/i.exec(String(text || ''));
+  if (!m) return null;
+  return { major: parseInt(m[1], 10), minor: parseInt(m[2], 10), patch: parseInt(m[3], 10), raw: `${m[1]}.${m[2]}.${m[3]}` };
+}
+
+/**
+ * 用后端的**专用隔离环境**探测 Python —— 不是探测构建外壳自己的 PATH，而是探测
+ * dsh 及其子进程实际拿到的环境（PATH 已剔除外来 node 目录、变量已隔离）。
+ * 返回：
+ *   { available, version, meetsMinimum, executable, authoring: {name,ok},
+ *     missingAuthoring, checksOnly, reason }
+ */
+function detectPythonRuntime() {
+  let env;
+  try { env = buildDedicatedEnv(); } catch (e) { return { available: false, reason: '构建隔离环境失败：' + e.message }; }
+
+  const runPy = (code) => {
+    try {
+      return execFileSync('python', ['-c', code], { env, encoding: 'utf8', windowsHide: true, timeout: 15000 }).trim();
+    } catch { return null; }
+  };
+
+  const verText = runPy('import sys; print("Python " + ".".join(str(x) for x in sys.version_info[:3]))');
+  if (!verText) return { available: false, reason: '后端环境中找不到 python（未安装或未加入 PATH）' };
+
+  const version = parsePythonVersion(verText);
+  if (!version) return { available: false, reason: '无法解析 Python 版本：' + verText };
+
+  const meetsMinimum = version.major > PY_MIN_MAJOR || (version.major === PY_MIN_MAJOR && version.minor >= PY_MIN_MINOR);
+  let executable = null;
+  const exeText = runPy('import sys; print(sys.executable)');
+  if (exeText) executable = exeText.split(/\r?\n/).pop().trim();
+
+  const authoring = PY_AUTHORING_LIBS.map((name) => {
+    const ok = runPy(`import ${name}`) !== null;
+    return { name, ok };
+  });
+  const missingAuthoring = authoring.filter((x) => !x.ok).map((x) => x.name);
+
+  return {
+    available: true,
+    version: version.raw,
+    meetsMinimum,
+    executable,
+    authoring,
+    missingAuthoring,
+    checksOnly: meetsMinimum, // 标准库在即可跑结构检查
+    reason: !meetsMinimum ? `Python ${version.raw} 低于要求的 ${PY_MIN_MAJOR}.${PY_MIN_MINOR}+`
+      : missingAuthoring.length ? 'Python 可用，但部分编写库缺失' : 'Python 与编写库均可用'
+  };
+}
+
+/**
+ * 启动期调用：探测 Python；仅当「需要提醒」且本组合还没提醒过时返回待展示信息。
+ * 用户确认后写状态，同版本/同来源不再打扰。autoStartHidden 由 main.js 侧自行决定
+ * 是否弹窗，这里只负责探测与状态。
+ */
+function pythonBootCheck() {
+  const info = detectPythonRuntime();
+  const state = readPythonCheckState();
+  const key = info.available ? (info.executable || info.version) : 'missing';
+
+  const needWarn = !info.available || !info.meetsMinimum || info.missingAuthoring.length > 0;
+  if (!needWarn) {
+    writePythonCheckState({ ...state, lastGood: { at: new Date().toISOString(), version: info.version, executable: info.executable } });
+    return { info, shouldPrompt: false };
+  }
+  const dismissed = state.dismissed && state.dismissed.key === key;
+  return { info, shouldPrompt: !dismissed, dismissKey: key };
+}
+
+/** 用户已看到引导并选择「不再提醒」时，记录当前问题指纹。 */
+function dismissPythonPrompt(key) {
+  const state = readPythonCheckState();
+  writePythonCheckState({ ...state, dismissed: { key, at: new Date().toISOString() } });
+}
+
+// --------------------------------------------------------------------------
+// 版本耦合软闸门：不硬耦合官方的 release.version 强校验，而是维护一份「已验证
+// 组合」清单，未验证组合首次启动一次性提示（可继续），同组合不再烦扰。
+// --------------------------------------------------------------------------
+/**
+ * 已验证的 dsh 后端版本（按「官方同期发布 + 本机实测可正常启动」登记）。
+ * 0.1.7-alpha.2 = 当前随 0.3.38 一起验证的后端。后续每验证一个版本往这里加。
+ */
+const VALIDATED_DSH_VERSIONS = [
+  '0.1.7-alpha.2'
+];
+
+const comboGateStatePath = () => path.join(P().root, 'combo-gate.json');
+function readComboGateState() {
+  try { return JSON.parse(fs.readFileSync(comboGateStatePath(), 'utf8')); } catch { return {}; }
+}
+function writeComboGateState(obj) {
+  try { fs.writeFileSync(comboGateStatePath(), JSON.stringify(obj, null, 2) + '\n'); } catch (e) { log('write combo-gate state failed:', e.message); }
+}
+
+/**
+ * 判断当前 shell × dsh 组合是否已验证。
+ * 返回 { combo, validated, dshVersion, shellVersion, shouldPrompt }
+ */
+function comboGateCheck(shellVersion) {
+  const dshVersion = currentVersions().dsh || null;
+  const validated = dshVersion ? VALIDATED_DSH_VERSIONS.includes(dshVersion) : false;
+  const combo = `${shellVersion}__${dshVersion || 'none'}`;
+  const state = readComboGateState();
+  const shouldPrompt = !validated && !(state.dismissed && state.dismissed.combo === combo);
+  return { combo, validated, dshVersion, shellVersion, shouldPrompt };
+}
+function dismissComboPrompt(combo) {
+  const state = readComboGateState();
+  writeComboGateState({ ...state, dismissed: { combo, at: new Date().toISOString() } });
 }
 
 function requestedBackendVersion() {
@@ -2293,6 +2655,65 @@ function migrateAgentPresetPersonaText() {
   return out;
 }
 
+// --------------------------------------------------------------------------
+// UPDATE JOURNAL（0.3.38 / P2-1）：把每次更新的「暂存 → 应用 → 验证」三态
+// 持久化到 root/update-journal.json。更新在「后端未运行」时应用，顺序本身是
+// 对的；journal 补上的是崩溃/断电后的可恢复与精确归因 —— 一条 applied 却从未
+// verified 的记录，下次启动一眼可见。
+// --------------------------------------------------------------------------
+const updateJournalPath = () => path.join(P().root, 'update-journal.json');
+const JOURNAL_MAX = 30;
+
+function readUpdateJournal() {
+  try {
+    const doc = JSON.parse(fs.readFileSync(updateJournalPath(), 'utf8'));
+    return { entries: Array.isArray(doc.entries) ? doc.entries : [] };
+  } catch { return { entries: [] }; }
+}
+function writeUpdateJournal(entries) {
+  const keep = entries.slice(-JOURNAL_MAX);
+  try { writeJson(updateJournalPath(), { schemaVersion: 1, entries: keep }); }
+  catch (e) { log('write update-journal failed:', e.message); }
+}
+/**
+ * 追加一条更新记录。
+ * @param {string} kind   'dsh' | 'node'
+ * @param {string} state  'staged' | 'applied' | 'verified' | 'failed'
+ * @param {object} extra  { from, to, reason }
+ */
+function journalAdd(kind, state, extra = {}) {
+  const { entries } = readUpdateJournal();
+  entries.push({
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+    kind, state,
+    at: new Date().toISOString(),
+    from: extra.from || null,
+    to: extra.to || null,
+    reason: extra.reason || null
+  });
+  writeUpdateJournal(entries);
+}
+/**
+ * 把给定 kind 的、状态为 applied 的记录推进到 verified（后端已成功启动并加载
+ * 窗口后调用）。返回推进条数。
+ */
+function journalMarkVerified(kind) {
+  const { entries } = readUpdateJournal();
+  let n = 0;
+  for (const e of entries) {
+    if ((!kind || e.kind === kind) && e.state === 'applied') { e.state = 'verified'; n++; }
+  }
+  if (n) writeUpdateJournal(entries);
+  return n;
+}
+/**
+ * 恢复检查：返回 applied 但从未 verified 的记录 —— 上次更新在验证前就崩了。
+ * 调用方据此决定是否提示/回滚（当前版本只报告，不自动回滚）。
+ */
+function journalUnverified() {
+  return readUpdateJournal().entries.filter((e) => e.state === 'applied');
+}
+
 function stagedVersions() {
   const p = P();
   let dsh = null;
@@ -2347,6 +2768,7 @@ async function stageDsh(callbacks = {}, requestedVersion = null) {
     });
   } catch (e) {
     const msg = (e && e.message) || String(e);
+    journalAdd('dsh', 'failed', { to: latest, reason: String(msg).slice(0, 300) });
     if (/ETARGET|No matching version found/i.test(msg)) {
       // 2026-09-08 晚上事故：dsh@0.1.5-alpha.1 在 npmmirror 上存在，但其依赖
       // dsh-fs-local@^0.1.5-alpha.1 尚未同步 → ETARGET → 整个安装回滚。给出可
@@ -2357,9 +2779,14 @@ async function stageDsh(callbacks = {}, requestedVersion = null) {
     throw e;
   }
   const newBin = path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
-  if (!fs.existsSync(newBin)) { rimraf(p.dshNew); throw new Error('后端暂存安装后未找到 dsh，已放弃（当前版本不受影响）。'); }
+  if (!fs.existsSync(newBin)) {
+    rimraf(p.dshNew);
+    journalAdd('dsh', 'failed', { to: latest, reason: 'staged install completed but bin.js missing' });
+    throw new Error('后端暂存安装后未找到 dsh，已放弃（当前版本不受影响）。');
+  }
   const ver = readJson(path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'package.json'), {}).version || null;
   log('staged dsh', ver);
+  journalAdd('dsh', 'staged', { from: currentVersions().dsh, to: ver });
   return { version: ver, reused: false, changes: info.changes || [], source: info.source };
 }
 
@@ -2595,11 +3022,13 @@ function applyStaged() {
       if (fs.existsSync(nmSrc)) copyDir(nmSrc, path.join(p.root, 'node_modules'));
       applied.node = nodeVersion(p.nodeExe);
       log('applied staged Node prefix', applied.node);
+      journalAdd('node', 'applied', { to: applied.node });
       try { enableCorepack(env); } catch {}
       rimraf(p.nodeNew); // discard staging only after a confirmed successful apply
     } catch (e) {
       // Keep node.new so the update is retried on the next launch.
       log('apply staged node failed (node.new kept for next launch):', e.message);
+      journalAdd('node', 'failed', { reason: String(e.message).slice(0, 300) });
     }
   }
 
@@ -2641,7 +3070,11 @@ function applyStaged() {
         log('apply staged dsh failed; dsh.new kept for next launch:', (e && e.message) || (lastErr && lastErr.message));
       }
     }
-    if (swapped) { applied.dsh = dshVersion(); log('applied staged dsh', applied.dsh); }
+    if (swapped) {
+      applied.dsh = dshVersion();
+      log('applied staged dsh', applied.dsh);
+      journalAdd('dsh', 'applied', { from: readJson(p.versionsJson, {}).dsh, to: applied.dsh });
+    }
   }
 
   if (applied.node || applied.dsh) {
@@ -3190,5 +3623,11 @@ module.exports = {
   writeWrapperScripts, userPathStatus, setUserPathEntry,
   installPluginViaCli, importLegacyPlugins, exportLegacyImportReport,
   latestDshVersion, latestDshInfo, latestNodeVersion, minNodeForDsh, nodeMeetsRequirement,
-  compareSemver
+  compareSemver,
+  // payload 完整性校验（vendor-manifest.json）：供测试与诊断调用
+  verifyPayloadParts, verifyVendorManifest, quarantineSeededBackend, manifestPath, countTree,
+  // 0.3.38 Python 检测引导 / 版本耦合软闸门 / 更新 journal
+  detectPythonRuntime, pythonBootCheck, dismissPythonPrompt,
+  comboGateCheck, dismissComboPrompt,
+  journalAdd, readUpdateJournal, journalMarkVerified, journalUnverified
 };

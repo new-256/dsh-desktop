@@ -1,7 +1,7 @@
 {
   "name": "dsh-desktop",
   "productName": "DSH Desktop",
-  "version": "0.3.37",
+  "version": "0.3.38",
   "description": "DSH (DeepSeek Harness) 桌面版：独立窗口运行 Web GUI，免浏览器，隔离数据目录，启动自动修复，静默更新重启生效。",
   "author": "DSH Desktop Packager",
   "license": "MIT",
@@ -15,6 +15,7 @@
     "postinstall": "node scripts/install-backend.js && node scripts/prepare-runtime.js",
     "start": "electron .",
     "pack-vendor": "node scripts/pack-vendor.js",
+    "write-vendor-manifest": "node scripts/write-vendor-manifest.js",
     "dist": "node scripts/pack-vendor.js && electron-builder --win",
     "dist:dir": "node scripts/pack-vendor.js && electron-builder --win --dir",
     "make-icon": "node scripts/make-icon.js",
@@ -54,7 +55,8 @@
         "from": "build/payload",
         "to": "payload",
         "filter": [
-          "*.7z"
+          "*.7z",
+          "vendor-manifest.json"
         ]
       },
       {

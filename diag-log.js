@@ -113,11 +113,12 @@ function pruneArchives(dir, nameRe, keep, days) {
     const S = 24 * 3600 * 1000;
     files.forEach((f, idx) => {
       const m = /-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})(?:-\d+)?\.txt$/.exec(f);
-      let ageMs = Infinity;
-      if (m) {
-        const date = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
-        ageMs = now - Date.parse(date);
-      }
+      // P2-2 纪律：只删除「文件名带可解析时间戳」的我方存档。匹配了前缀却解析
+      // 不出日期的文件可能是改名/外部文件 —— 永不因排序位置而误删。
+      if (!m) return;
+      const t = Date.parse(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`);
+      if (Number.isNaN(t)) return;
+      const ageMs = now - t;
       if (idx >= keep || ageMs > days * S) { try { fs.unlinkSync(f); } catch (_) {} }
     });
   } catch (_) {}
