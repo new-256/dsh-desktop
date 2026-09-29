@@ -1,7 +1,7 @@
 {
   "name": "web-search-panel",
   "description": "DSH (DeepSeek Harness) 网页搜索增强插件：39 引擎/渠道 · 8 大类 · auto 智能路由（查询特性分析→自动选引擎/多引擎并行 RRF 融合）+ web_fetch_url 抓取 + 插件页行配置卡片。一条命令安装：dsh plugin --profile web add web-search-panel",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "type": "module",
   "main": "./lib/index.mjs",
   "exports": {

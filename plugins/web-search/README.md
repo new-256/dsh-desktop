@@ -2,7 +2,7 @@
 
 DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会话**注册多引擎网页搜索与 URL 抓取工具，并提供 插件页 行配置卡片。零依赖（单文件 ESM，host realm 全 Node 权限）。
 
-> **开发纪律**：本插件经 npm 制品 `web-search-panel@1.3.0` registry 安装部署——制品态标杆。发版流程遵循[开发-制品闭环](../DEV-DISCIPLINE.md)。
+> **开发纪律**：本插件经 npm 制品 `web-search-panel@1.4.0` registry 安装部署——制品态标杆。发版流程遵循[开发-制品闭环](../DEV-DISCIPLINE.md)。
 
 ## auto 智能路由（默认开启）
 
@@ -139,6 +139,10 @@ DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会
 
 > **槽位版本兼容**（0.1.7 起）：本卡片优先注册 `plugins.row.config`；`settings.plugin.item`（≤0.1.3 旧槽位，新版已移除）仅作老版本回退。数据源同样双路：新版宿主经 `props.form` 注入 `{state, mutate}`，旧版回退 `settingsScope` 服务（用 `ctx.get()` 探测，**不写进 `inject`**）。`inject` 始终只声明 `["slots"]`——声明一个新版已移除的服务会让插件在 import 期直接失败（0.1.3 时代 `@captain1275/dsh-pet` 正是这样挂掉的）。
 
+> **0.1.7 配置命名空间的两道门槛**（1.4.0 起补齐，缺一不可）：
+> 1. host 必须 `export const Config`（schemastery schema）——宿主 `describe()` 只认 `entry.fiber.runtime.Config`，`settings.register` 在 0.1.7 已不存在；没有 Config 导出，命名空间永远进不了客户端镜像，卡片就一直"读取设置…"。
+> 2. schema 每个字段都要 `.volatile()`——`volatileForm()` 只收录有 volatile 字段的 entry；一个都没有则整条 entry 被跳过（即使导出了 Config）。API key 字段还应 `.role('secret')` 以便写回脱敏。
+
 ## 安装
 
 ### 方式一：npm 安装（推荐，一条命令）
@@ -218,19 +222,20 @@ dsh plugin --profile web add web-search-panel
 验证 `profiles/web/package.json` 恢复两项后**重启 DSH**：
 
 ```json
-"dependencies": { "web-search-panel": "^1.3.0" },
+"dependencies": { "web-search-panel": "^1.4.0" },
 "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "web-search-panel"] } }
 ```
 
 重启后 `GET /web-search/health` 应返回 `engineCount: 39`。
 
-### 升级 DSH 后工具正常、但配置卡片不见了
+### 升级 DSH 后工具正常、但配置卡片「读取设置…」或不见了
 
-DSH 0.1.7 重构了插件页的扩展点，旧的 `settings.plugin.item` 槽位与 `settingsScope` 客户端服务**已被移除**。1.3.0 起已适配新契约（`plugins.row.config` + 宿主 `props.form`）并保留旧版回退。若卡片仍不出现：
+DSH 0.1.7 重构了插件页的扩展点，旧的 `settings.plugin.item` 槽位与 `settingsScope` 客户端服务**已被移除**。1.3.0 起已适配新契约（`plugins.row.config` + 宿主 `props.form`）并保留旧版回退；**1.4.0 补齐了 host 侧两道门槛**（`Config` 导出 + 字段 `.volatile()`，见上文设置页说明）。排查顺序：
 
-1. 浏览器控制台执行 `window.__webSearchPanel`，看 `registered` / `registeredVia` / `lastError`
-2. `registeredVia` 应为 `plugins.row.config(direct)`；`registered:false` 说明槽位候选全败，`lastError` 会给出原因
-3. 卡片的入口在**插件页 → 本插件（web-search-panel）→ 该行 → 配置**，不再是「设置 → 插件」旧路径
+1. 若卡片一直「读取设置…」：说明 `props.form` 未解析——宿主 `describe()` 没收录 `web-search` 命名空间。多半是装的旧版（<1.4.0，缺 Config/volatile）；升级后重启即可
+2. 若卡片完全不出现：浏览器控制台执行 `window.__webSearchPanel`，看 `registered` / `registeredVia` / `lastError`
+3. `registeredVia` 应为 `plugins.row.config(direct)`；`registered:false` 说明槽位候选全败，`lastError` 会给出原因
+4. 卡片的入口在**插件页 → 本插件（web-search-panel）→ 该行 → 配置**，不再是「设置 → 插件」旧路径
 
 ### 插件随其它插件一起“消失”（profile 被隔离重建）
 

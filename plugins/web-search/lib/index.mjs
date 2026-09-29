@@ -547,6 +547,68 @@ const CATEGORY_LABELS = {
   reference: '资料参考',
 }
 
+// ── settings schema ─────────────────────────────────────────────────────────
+// 0.1.7+ 起配置命名空间经「entry 的 Config 导出」向宿主 describe 暴露：entry 行
+// （id=web-search）的 runtime.Config 就是这个 schema，describe() 据此把命名空间
+// web-search 送进客户端镜像，插件页行配置槽位（plugins.row.config）才能拿到
+// form。同时 apply() 里复用它作为运行期 BASE 兜底（settings.register 在 0.1.7
+// 已不存在，仅老版本曾用）。
+function buildConfigSchema() {
+  if (!Schema) return undefined
+  return Schema.object({
+    enabled: Schema.boolean().default(true).description('总开关：关闭后 web_search_multi 返回禁用提示').volatile(),
+    smartRouting: Schema.boolean().default(true).description('auto 智能路由：由 DSH 分析查询特性（语言/领域/意图/时效）自动选择合适引擎或多引擎并行 RRF 融合；关闭则回退传统语言感知回退链').volatile(),
+    defaultEngine: Schema.union(['auto', ...Object.keys(ENGINE_CATEGORY)]).default('auto').description('默认引擎；auto = 智能路由（按查询特性自动选引擎/并行融合）+ 回退链；显式指定其他引擎时跳过智能路由').volatile(),
+    enableDdgApi: Schema.boolean().default(true).description('启用 DuckDuckGo Instant Answer API（事实/实体类快答）').volatile(),
+    enableDdgHtml: Schema.boolean().default(true).description('启用 DuckDuckGo HTML 抓取（通用搜索）').volatile(),
+    enableBing: Schema.boolean().default(true).description('启用 Bing 抓取（大陆可达的通用搜索）').volatile(),
+    enableBaidu: Schema.boolean().default(true).description('启用百度抓取（中文搜索，mu 属性取真实 URL）').volatile(),
+    enableSo360: Schema.boolean().default(true).description('启用 360 搜索抓取（中文，data-mdurl 取真实 URL）').volatile(),
+    enableBrave: Schema.boolean().default(true).description('启用 Brave 抓取（独立索引，英文覆盖好）').volatile(),
+    enableAnysearch: Schema.boolean().default(true).description('启用 AnySearch（AI 搜索基础设施，匿名可用限速较低；配置 key 后进入 auto 链）').volatile(),
+    enableWikipedia: Schema.boolean().default(true).description('启用 Wikipedia API（语言感知：中文查询→zh.wikipedia；部分地区网络不可达）').volatile(),
+    enableArxiv: Schema.boolean().default(true).description('启用 arXiv 学术论文 API（垂直渠道，显式指定 engine=arxiv）').volatile(),
+    enableGithub: Schema.boolean().default(true).description('启用 GitHub 仓库搜索 API（垂直渠道，engine=github；未认证限 10 次/分钟）').volatile(),
+    enableStackexchange: Schema.boolean().default(true).description('启用 Stack Overflow 编程问答 API（垂直渠道，engine=stackexchange）').volatile(),
+    enableHn: Schema.boolean().default(true).description('启用 Hacker News 搜索（Algolia API，垂直渠道，engine=hn）').volatile(),
+    enableNews: Schema.boolean().default(true).description('启用新闻搜索（Bing News RSS → Google News RSS 兜底，垂直渠道，engine=news）').volatile(),
+    enableMarginalia: Schema.boolean().default(true).description('启用 Marginalia 独立小众索引 API（垂直渠道，engine=marginalia）').volatile(),
+    enableBilibili: Schema.boolean().default(true).description('启用哔哩哔哩视频搜索 API（垂直渠道，engine=bilibili）').volatile(),
+    enableWechat: Schema.boolean().default(true).description('启用微信公众号文章搜索（搜狗微信抓取，垂直渠道，engine=wechat）').volatile(),
+    enableOpenalex: Schema.boolean().default(true).description('启用 OpenAlex 学术全景索引 API（垂直渠道，engine=openalex，2.5 亿学术作品）').volatile(),
+    enableCrossref: Schema.boolean().default(true).description('启用 Crossref DOI/学术元数据 API（垂直渠道，engine=crossref）').volatile(),
+    enableNpm: Schema.boolean().default(true).description('启用 npm 包搜索 API（垂直渠道，engine=npm）').volatile(),
+    enableCsdn: Schema.boolean().default(true).description('启用 CSDN 中文技术博客搜索（垂直渠道，engine=csdn）').volatile(),
+    enableYoutube: Schema.boolean().default(true).description('启用 YouTube 视频搜索（垂直渠道，engine=youtube；部分地区需代理）').volatile(),
+    enableImages: Schema.boolean().default(true).description('启用 Bing 图片搜索（垂直渠道，engine=images，返回图片直链）').volatile(),
+    enableAggregate: Schema.boolean().default(true).description('启用聚合搜索（engine=aggregate：并行多引擎 + RRF 融合去重，查全率最高但请求多；支持复合语法 aggregate:引擎1,引擎2 聚合任意子集）').volatile(),
+    enablePubmed: Schema.boolean().default(true).description('启用 PubMed 生物医学文献搜索（垂直渠道，engine=pubmed）').volatile(),
+    enableBooks: Schema.boolean().default(true).description('启用 Open Library 图书搜索（垂直渠道，engine=books）').volatile(),
+    enableItunes: Schema.boolean().default(true).description('启用 iTunes 媒体搜索（垂直渠道，engine=itunes；音乐/电影/播客/应用）').volatile(),
+    enableMaps: Schema.boolean().default(true).description('启用 OpenStreetMap 地点搜索（垂直渠道，engine=maps；返回坐标与 OSM 链接）').volatile(),
+    enableDblp: Schema.boolean().default(true).description('启用 dblp 计算机科学文献库（垂直渠道，engine=dblp）').volatile(),
+    enableEuropepmc: Schema.boolean().default(true).description('启用 Europe PMC 生物医学+预印本（垂直渠道，engine=europepmc）').volatile(),
+    enableCrates: Schema.boolean().default(true).description('启用 crates.io Rust 包搜索（垂直渠道，engine=crates）').volatile(),
+    enableDockerhub: Schema.boolean().default(true).description('启用 Docker Hub 镜像搜索（垂直渠道，engine=dockerhub）').volatile(),
+    enableMdn: Schema.boolean().default(true).description('启用 MDN Web 开发文档搜索（垂直渠道，engine=mdn）').volatile(),
+    enableZhidao: Schema.boolean().default(true).description('启用百度知道中文问答搜索（垂直渠道，engine=zhidao）').volatile(),
+    enableWikidata: Schema.boolean().default(true).description('启用 Wikidata 结构化实体搜索（垂直渠道，engine=wikidata；语言感知）').volatile(),
+    enableArchive: Schema.boolean().default(true).description('启用 Internet Archive 档案资料搜索（垂直渠道，engine=archive）').volatile(),
+    apiInAuto: Schema.boolean().default(true).description('auto 链优先使用已配置 key 的 API 引擎（会消耗 API 配额，关闭则 auto 只用免费引擎）').volatile(),
+    tavilyApiKey: Schema.string().default('').role('secret').volatile().description('Tavily API key（api.tavily.com，配置后 tavily 引擎可用；获取：https://app.tavily.com）'),
+    serperApiKey: Schema.string().default('').role('secret').volatile().description('Serper.dev API key（google.serper.dev，Google 结果，配置后 serper 引擎可用；获取：https://serper.dev/signup）'),
+    braveApiKey: Schema.string().default('').role('secret').volatile().description('Brave Search API key（api.search.brave.com，配置后 brave-api 引擎可用；获取：https://brave.com/search/api/）'),
+    exaApiKey: Schema.string().default('').role('secret').volatile().description('Exa API key（api.exa.ai，神经/语义搜索，配置后 exa 引擎可用；获取：https://dashboard.exa.ai）'),
+    anysearchApiKey: Schema.string().default('').role('secret').volatile().description('AnySearch API key（www.anysearch.com，可选——匿名也能用但限速低；配置后 anysearch 进入 auto 优先链；获取：官网 → Pricing/Support）'),
+    maxResults: Schema.number().default(10).description('每次搜索默认返回条数（1-50）').volatile(),
+    timeoutMs: Schema.number().default(20000).description('单引擎请求超时毫秒数（3000-90000）').volatile(),
+    userAgent: Schema.string().default(DEFAULT_UA).description('抓取用 User-Agent').volatile(),
+  })
+}
+
+/** entry Config：0.1.7+ 插件页配置命名空间凭此进 configEditor/describe。 */
+export const Config = buildConfigSchema()
+
 function makeEngines(readSettings) {
   const engines = {
     'ddg-api': {
@@ -1854,66 +1916,13 @@ export function apply(ctx, config) {
     return d
   }
 
-  // 1. settings namespace（存在 settings 服务时注册；schema 从 harness 解析）
+  // 1. settings 命名空间：0.1.7+ 由 entry 的 Config 导出自动暴露（见模块顶部
+  //    buildConfigSchema / export Config），此处仅兼容老版本（≤0.1.3 的
+  //    settings.register 服务）。新版该服务不存在，guard 直接跳过，无副作用。
   ctx.inject(['settings'], (settingsCtx) => {
     const settings = settingsCtx.get('settings')
     if (!settings || typeof settings.register !== 'function') return
-    let schema
-    try {
-      if (Schema) {
-        schema = Schema.object({
-          enabled: Schema.boolean().default(true).description('总开关：关闭后 web_search_multi 返回禁用提示'),
-          smartRouting: Schema.boolean().default(true).description('auto 智能路由：由 DSH 分析查询特性（语言/领域/意图/时效）自动选择合适引擎或多引擎并行 RRF 融合；关闭则回退传统语言感知回退链'),
-          defaultEngine: Schema.union(['auto', ...Object.keys(ENGINE_CATEGORY)]).default('auto').description('默认引擎；auto = 智能路由（按查询特性自动选引擎/并行融合）+ 回退链；显式指定其他引擎时跳过智能路由'),
-          enableDdgApi: Schema.boolean().default(true).description('启用 DuckDuckGo Instant Answer API（事实/实体类快答）'),
-          enableDdgHtml: Schema.boolean().default(true).description('启用 DuckDuckGo HTML 抓取（通用搜索）'),
-          enableBing: Schema.boolean().default(true).description('启用 Bing 抓取（大陆可达的通用搜索）'),
-          enableBaidu: Schema.boolean().default(true).description('启用百度抓取（中文搜索，mu 属性取真实 URL）'),
-          enableSo360: Schema.boolean().default(true).description('启用 360 搜索抓取（中文，data-mdurl 取真实 URL）'),
-          enableBrave: Schema.boolean().default(true).description('启用 Brave 抓取（独立索引，英文覆盖好）'),
-          enableAnysearch: Schema.boolean().default(true).description('启用 AnySearch（AI 搜索基础设施，匿名可用限速较低；配置 key 后进入 auto 链）'),
-          enableWikipedia: Schema.boolean().default(true).description('启用 Wikipedia API（语言感知：中文查询→zh.wikipedia；部分地区网络不可达）'),
-          enableArxiv: Schema.boolean().default(true).description('启用 arXiv 学术论文 API（垂直渠道，显式指定 engine=arxiv）'),
-          enableGithub: Schema.boolean().default(true).description('启用 GitHub 仓库搜索 API（垂直渠道，engine=github；未认证限 10 次/分钟）'),
-          enableStackexchange: Schema.boolean().default(true).description('启用 Stack Overflow 编程问答 API（垂直渠道，engine=stackexchange）'),
-          enableHn: Schema.boolean().default(true).description('启用 Hacker News 搜索（Algolia API，垂直渠道，engine=hn）'),
-          enableNews: Schema.boolean().default(true).description('启用新闻搜索（Bing News RSS → Google News RSS 兜底，垂直渠道，engine=news）'),
-          enableMarginalia: Schema.boolean().default(true).description('启用 Marginalia 独立小众索引 API（垂直渠道，engine=marginalia）'),
-          enableBilibili: Schema.boolean().default(true).description('启用哔哩哔哩视频搜索 API（垂直渠道，engine=bilibili）'),
-          enableWechat: Schema.boolean().default(true).description('启用微信公众号文章搜索（搜狗微信抓取，垂直渠道，engine=wechat）'),
-          enableOpenalex: Schema.boolean().default(true).description('启用 OpenAlex 学术全景索引 API（垂直渠道，engine=openalex，2.5 亿学术作品）'),
-          enableCrossref: Schema.boolean().default(true).description('启用 Crossref DOI/学术元数据 API（垂直渠道，engine=crossref）'),
-          enableNpm: Schema.boolean().default(true).description('启用 npm 包搜索 API（垂直渠道，engine=npm）'),
-          enableCsdn: Schema.boolean().default(true).description('启用 CSDN 中文技术博客搜索（垂直渠道，engine=csdn）'),
-          enableYoutube: Schema.boolean().default(true).description('启用 YouTube 视频搜索（垂直渠道，engine=youtube；部分地区需代理）'),
-          enableImages: Schema.boolean().default(true).description('启用 Bing 图片搜索（垂直渠道，engine=images，返回图片直链）'),
-          enableAggregate: Schema.boolean().default(true).description('启用聚合搜索（engine=aggregate：并行多引擎 + RRF 融合去重，查全率最高但请求多；支持复合语法 aggregate:引擎1,引擎2 聚合任意子集）'),
-          enablePubmed: Schema.boolean().default(true).description('启用 PubMed 生物医学文献搜索（垂直渠道，engine=pubmed）'),
-          enableBooks: Schema.boolean().default(true).description('启用 Open Library 图书搜索（垂直渠道，engine=books）'),
-          enableItunes: Schema.boolean().default(true).description('启用 iTunes 媒体搜索（垂直渠道，engine=itunes；音乐/电影/播客/应用）'),
-          enableMaps: Schema.boolean().default(true).description('启用 OpenStreetMap 地点搜索（垂直渠道，engine=maps；返回坐标与 OSM 链接）'),
-          enableDblp: Schema.boolean().default(true).description('启用 dblp 计算机科学文献库（垂直渠道，engine=dblp）'),
-          enableEuropepmc: Schema.boolean().default(true).description('启用 Europe PMC 生物医学+预印本（垂直渠道，engine=europepmc）'),
-          enableCrates: Schema.boolean().default(true).description('启用 crates.io Rust 包搜索（垂直渠道，engine=crates）'),
-          enableDockerhub: Schema.boolean().default(true).description('启用 Docker Hub 镜像搜索（垂直渠道，engine=dockerhub）'),
-          enableMdn: Schema.boolean().default(true).description('启用 MDN Web 开发文档搜索（垂直渠道，engine=mdn）'),
-          enableZhidao: Schema.boolean().default(true).description('启用百度知道中文问答搜索（垂直渠道，engine=zhidao）'),
-          enableWikidata: Schema.boolean().default(true).description('启用 Wikidata 结构化实体搜索（垂直渠道，engine=wikidata；语言感知）'),
-          enableArchive: Schema.boolean().default(true).description('启用 Internet Archive 档案资料搜索（垂直渠道，engine=archive）'),
-          apiInAuto: Schema.boolean().default(true).description('auto 链优先使用已配置 key 的 API 引擎（会消耗 API 配额，关闭则 auto 只用免费引擎）'),
-          tavilyApiKey: Schema.string().default('').description('Tavily API key（api.tavily.com，配置后 tavily 引擎可用；获取：https://app.tavily.com）'),
-          serperApiKey: Schema.string().default('').description('Serper.dev API key（google.serper.dev，Google 结果，配置后 serper 引擎可用；获取：https://serper.dev/signup）'),
-          braveApiKey: Schema.string().default('').description('Brave Search API key（api.search.brave.com，配置后 brave-api 引擎可用；获取：https://brave.com/search/api/）'),
-          exaApiKey: Schema.string().default('').description('Exa API key（api.exa.ai，神经/语义搜索，配置后 exa 引擎可用；获取：https://dashboard.exa.ai）'),
-    anysearchApiKey: Schema.string().default('').description('AnySearch API key（www.anysearch.com，可选——匿名也能用但限速低；配置后 anysearch 进入 auto 优先链；获取：官网 → Pricing/Support）'),
-          maxResults: Schema.number().default(10).description('每次搜索默认返回条数（1-50）'),
-          timeoutMs: Schema.number().default(20000).description('单引擎请求超时毫秒数（3000-90000）'),
-          userAgent: Schema.string().default(DEFAULT_UA).description('抓取用 User-Agent'),
-        })
-      }
-    } catch {
-      schema = undefined
-    }
+    const schema = buildConfigSchema()
     if (!schema) return
     try {
       settingsScope = settings.register(SETTINGS_NS, schema, {
