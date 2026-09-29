@@ -1,13 +1,17 @@
 // web-search-panel — client half（浏览器花名册经 dsh-home/node_modules 裸包名
 // junction 加载；改本文件后刷新浏览器即生效，无需重启）。
 //
-// 在 设置→插件（settings.plugin.item 键控槽位，key = "web-search"）注册
-// 「网页搜索」配置卡片：总开关 / 各引擎开关 / 默认引擎 / 条数 / 超时 / UA，
-// 读写走产品 settingsScope（remote.settings.mutate → settings.yaml，热生效），
-// 附「测试」按钮调 host 的 /web-search/test 实测引擎连通性。
+// 在 插件页「行配置」槽位（plugins.row.config，键 = "<包名>#<row id>" =
+// "web-search-panel#web-search"，DSH 0.1.7 起的新契约）注册「网页搜索」配置卡片：
+// 总开关 / 各引擎开关 / 默认引擎 / 条数 / 超时 / UA；读写走宿主经 props.form
+// 传入的 settings 表单（configForms → settings.yaml，热生效），附「测试」按钮
+// 调 host 的 /web-search/test 实测引擎连通性。
+// 旧版（≤0.1.3）兼容：settingsScope 服务存在时回退绑定，卡片自动择一。
 //
 // 纪律（沿用 dsh-model-status 踩坑结论）：
-//   1) inject 只写 ["slots", "settingsScope"]——客户端没有 timer 服务；
+//   1) inject 只写 ["slots"]——绝不声明可能不存在的服务。旧版 dsh-pet 正是
+//      因声明了新版已移除的 @deepseek-ai/dsh-settings 导出而 import 即死；
+//      可选服务一律 ctx.get() 探测，不进 inject。
 //   2) 不触碰 ctx/scope 的 interval 属性；
 //   3) 自带 zh/en 字典，不依赖 locale 座位契约；
 //   4) 组件自包含（数据从闭包 scope 取，不依赖外部 props 契约）；
@@ -24,6 +28,7 @@ window.__ModuleLoader__.load({
 			module: "loaded",
 			applied: false,
 			registered: false,
+			registeredVia: null,
 			rendered: 0,
 			lastError: null
 		};
@@ -33,6 +38,7 @@ window.__ModuleLoader__.load({
 			const react = require("react");
 
 			const NS = "web-search";
+			const PKG_NAME = "web-search-panel";
 
 			// 与 host 半边 schema 相同的默认值（卡片「恢复默认」用；host 是权威）。
 			const DEFAULTS = {
@@ -279,8 +285,15 @@ window.__ModuleLoader__.load({
 				document.head.appendChild(tag);
 			}
 
-			// apply() 里绑定；组件从闭包取。
+			// apply() 里绑定（旧版 ≤0.1.3 的 settingsScope 路径）；组件从闭包取。
 			let boundScope = null;
+
+			// 无数据源时的占位 scope：保证 hook 调用顺序恒定（React 规则）。
+			const EMPTY_SCOPE = {
+				getSnapshot: () => ({ status: "loading", value: {}, user: {}, revision: undefined }),
+				subscribe: () => () => {},
+				mutate: async () => false
+			};
 
 			/** 订阅 scope 快照（useState+useEffect 版本，全 React 兼容）。 */
 			function useScopeSnapshot(scope) {
@@ -300,11 +313,25 @@ window.__ModuleLoader__.load({
 			function WebSearchCard(_props) {
 				diag.rendered += 1;
 				const t = dict();
-				const scope = boundScope;
-				if (scope === null) {
-					return react.createElement("p", { className: "wsp-note" }, "web-search-panel: scope not bound");
-				}
-				const snap = useScopeSnapshot(scope);
+
+				// 数据源二选一：
+				//  新版（0.1.7+）宿主经 props.form 传入 { state, mutate }，
+				//    state 即 ConfigFormController 快照（status/value/user/revision/writable），
+				//    父页订阅 settings 镜像后会带新 state 重渲染，故无需自订阅；
+				//  旧版（≤0.1.3）无 form，回退 apply() 绑定的 settingsScope 服务。
+				const form = _props && _props.form ? _props.form : null;
+				const legacy = boundScope || EMPTY_SCOPE;
+
+				// hook 恒定调用（React 规则），两条路径都经过它。
+				const legacySnap = useScopeSnapshot(legacy);
+
+				const snap = form ? form.state : legacySnap;
+				const mutate = (ops, revision) =>
+					form ? form.mutate(ops, revision) : legacy.mutate(ops, revision);
+
+				// 新版宿主会以 view:'summary' 取走一行简介（插件页行详情里的描述），
+				// 此时只回文案，不渲染整张表单。旧版无 view，走完整卡片。
+				if (_props && _props.view === "summary") return t.description;
 
 				// staged 表单：以快照 revision 为同步锚点，非编辑态跟随远端。
 				const value = (snap && snap.value) || {};
@@ -362,7 +389,7 @@ window.__ModuleLoader__.load({
 					setBusy(true);
 					setNote(null);
 					try {
-						await scope.mutate(ops, snap.revision);
+						await mutate(ops, snap.revision);
 						setDirty(false);
 						setNote({ kind: "ok", text: t.saved });
 					} catch (e) {
@@ -382,7 +409,7 @@ window.__ModuleLoader__.load({
 					setBusy(true);
 					setNote(null);
 					try {
-						await scope.mutate(Object.keys(DEFAULTS).map((key) => ({ op: "unset", path: [key] })), snap.revision);
+						await mutate(Object.keys(DEFAULTS).map((key) => ({ op: "unset", path: [key] })), snap.revision);
 						setDirty(false);
 						setNote({ kind: "ok", text: t.saved });
 					} catch (e) {
@@ -677,57 +704,92 @@ window.__ModuleLoader__.load({
 
 			function apply(ctx) {
 				diag.applied = true;
+
+				// 旧版（≤0.1.3）回退数据源：settingsScope 服务。用 ctx.get 探测而非
+				// 写进 inject——服务不存在时只是拿不到，绝不因缺依赖而加载失败。
+				// （0.1.7-rc.1 已移除该服务；新版改由宿主经 props.form 注入表单。）
 				try {
-					boundScope = ctx.settingsScope.bind({ namespace: NS });
+					const legacySettings = typeof ctx.get === "function" ? ctx.get("settingsScope") : undefined;
+					if (legacySettings && typeof legacySettings.bind === "function") {
+						boundScope = legacySettings.bind({ namespace: NS });
+					}
 				} catch (e) {
 					diag.lastError = `bind: ${String((e && e.message) || e)}`;
 				}
 
-				// 注册策略：优先直接 register（本插件加载在产品模块之后，槽位
-				// 规范通常已存在）；失败回退 slots.inject 等待 + 延迟重试。
+				// 注册策略：逐个候选槽位尝试；register 成功即记；失败回退
+				// slots.inject 等待槽位声明 + 延迟重试。全部候选都不可用时静默，
+				// 只留 diag 供排查（绝不抛错拖垮插件树）。
+				//
+				// 槽位候选（按优先级）：
+				//   1) plugins.row.config —— 0.1.7+ 插件页「行配置」键控槽位，键 =
+				//      "<包名>#<row id>"。行的详情页把宿主表单经 props.form 传入。
+				//   2) settings.plugin.item —— ≤0.1.3 旧插件设置页键控槽位（已移除，
+				//      仅作老版本兼容；新版该槽位永不出现，注入回调不会触发）。
+				const ROW_KEY = `${PKG_NAME}#${NS}`; // web-search-panel#web-search
+				const CANDIDATES = [
+					{ slot: "plugins.row.config", options: { name: "plugins.row.config", key: ROW_KEY } },
+					{ slot: "settings.plugin.item", options: { name: "settings.plugin.item", key: NS } }
+				];
+
 				let disposeEntry = null;
-				const registerOnce = (via) => {
+				let activeSlot = null;
+				const tryRegister = (candidate, via) => {
 					if (disposeEntry !== null) return true;
 					try {
-						const dispose = ctx.slots.register(
-							{
-								name: "settings.plugin.item",
-								key: NS,
-								inject: () => ({})
-							},
-							(props) => react.createElement(WebSearchCard, props)
+						const dispose = ctx.slots.register(candidate.options, (props) =>
+							react.createElement(WebSearchCard, props)
 						);
 						disposeEntry = typeof dispose === "function" ? dispose : () => {};
+						activeSlot = candidate.slot;
 						diag.registered = true;
+						diag.registeredVia = `${candidate.slot}(${via})`;
 						return true;
 					} catch (e) {
-						diag.lastError = `register(${via}): ${String((e && e.message) || e)}`;
+						diag.lastError = `register(${candidate.slot}/${via}): ${String((e && e.message) || e)}`;
 						return false;
 					}
 				};
 
-				if (registerOnce("direct")) {
+				// 直接 register（槽位已声明时最省事）。
+				for (const candidate of CANDIDATES) {
+					if (tryRegister(candidate, "direct")) break;
+				}
+
+				if (disposeEntry !== null) {
 					ctx.effect(() => () => {
 						try { disposeEntry(); } catch { /* 静默 */ }
 					}, "web-search-panel: slot entry");
-				} else {
+					return;
+				}
+
+				// 槽位尚未声明：注入等待 + 延迟重试逐个候选。
+				for (const candidate of CANDIDATES) {
 					try {
-						ctx.slots.inject("settings.plugin.item", () => {
-							registerOnce("inject");
+						ctx.slots.inject(candidate.slot, () => {
+							tryRegister(candidate, "inject");
 							return () => {
 								try { disposeEntry(); } catch { /* 静默 */ }
+								disposeEntry = null;
 							};
 						});
 					} catch (e) {
-						diag.lastError = `inject: ${String((e && e.message) || e)}`;
+						diag.lastError = `inject(${candidate.slot}): ${String((e && e.message) || e)}`;
 					}
-					setTimeout(() => registerOnce("retry-1.5s"), 1500);
-					setTimeout(() => registerOnce("retry-6s"), 6000);
 				}
+				const retry = (label) => {
+					for (const candidate of CANDIDATES) {
+						if (tryRegister(candidate, label)) break;
+					}
+				};
+				setTimeout(() => retry("retry-1.5s"), 1500);
+				setTimeout(() => retry("retry-6s"), 6000);
 			}
 
 			exports.apply = apply;
-			exports.inject = ["slots", "settingsScope"];
+			// 只声明 slots——绝不写可能不存在的服务（旧版 dsh-pet 的致命教训：
+			// 声明新版已移除的 @deepseek-ai/dsh-settings 导出 → import 即失败）。
+			exports.inject = ["slots"];
 		} catch (e) {
 			diag.lastError = `factory: ${String((e && e.message) || e)}`;
 			throw e;

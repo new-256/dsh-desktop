@@ -22,7 +22,8 @@
 //      想在产品工具里换引擎时在家级 patch 覆写 web 行 config.searchProvider。
 //   4. settings namespace "web-search"（settings.yaml 持久化、热生效）：
 //      总开关 / 各引擎开关 / API key / 默认引擎 / maxResults / timeoutMs / UA。
-//      设置页：设置→插件→网页搜索（client 半边的卡片，见 lib/client.js）。
+//      配置入口：插件页 → 本插件行 → 配置（client 半边，见 lib/client.js）。
+//      客户端槽位自 0.1.7 起为 plugins.row.config（键 web-search-panel#web-search）。
 //   5. systemPrompt 引导段 + 诊断路由（/web-search/health、/web-search/test）。
 //
 // 依赖纪律：本文件位于 dsh-home 下，Node 向上找不到 harness 的包，所以不
@@ -513,7 +514,7 @@ function parseZhidaoHtml(html) {
   return sources
 }
 
-// ── 引擎分类（设置卡片分组 / 工具描述 / 健康端点用）─────────────────────────────
+// ── 引擎分类（配置卡片分组 / 工具描述 / 健康端点用）─────────────────────────────
 const ENGINE_CATEGORY = {
   // 通用网页（auto 链与显式通用）
   'ddg-html': 'general', bing: 'general', baidu: 'general', so360: 'general', brave: 'general',
@@ -640,7 +641,7 @@ function makeEngines(readSettings) {
         return { sources }
       },
     },
-    // ── API-key 型引擎（key 在 设置→插件→网页搜索 配置，存本机 settings.yaml）──
+    // ── API-key 型引擎（key 在 插件页 → 本插件行 → 配置 中填写，存本机 settings.yaml）──
     serper: {
       label: 'Serper.dev（Google 结果 API）',
       needsKey: 'serperApiKey',
@@ -1653,7 +1654,7 @@ function engineEnabled(id, s) {
 async function runSearch(query, engineArg, maxResultsArg, signal, freshness) {
   const s = resolvedSettings()
   if (!s.enabled) {
-    return { sources: [], truncated: false, engine: 'none', attempts: [], error: '网页搜索已在设置中禁用（设置→插件→网页搜索）' }
+    return { sources: [], truncated: false, engine: 'none', attempts: [], error: '网页搜索已在设置中禁用（插件页 → 本插件行 → 配置）' }
   }
   const engines = makeEngines(s)
   const max = clampInt(maxResultsArg ?? s.maxResults, s.maxResults, 1, 50)
@@ -1715,7 +1716,7 @@ async function runSearch(query, engineArg, maxResultsArg, signal, freshness) {
       return { sources: [], truncated: false, engine: engineArg, attempts, error: `未知引擎 "${engineArg}"（可用：${['auto', ...ALL_ENGINES].join(', ')}）` }
     }
     if (!engineEnabled(engineArg, s)) {
-      const hint = engines[engineArg].needsKey ? `（需在 设置→插件→网页搜索 配置 API key）` : '（设置→插件→网页搜索）'
+      const hint = engines[engineArg].needsKey ? `（需在 插件页 → 本插件行 → 配置 中填 API key）` : '（插件页 → 本插件行 → 配置）'
       return { sources: [], truncated: false, engine: engineArg, attempts, error: `引擎 "${engineArg}" 不可用${hint}` }
     }
     const r = (await tryEngine(engineArg)) || { sources: [] }
@@ -1959,7 +1960,7 @@ export function apply(ctx, config) {
         ctx.tools.register({
           name: 'web_search_multi',
           description:
-            '多渠道网页搜索（39 引擎 · 8 大类 · auto 智能路由）。engine 默认 auto：由 DSH 分析查询特性（语言/领域/意图/时效）自动路由——学术论文→arxiv/openalex/crossref 并行融合、生物医学→pubmed+europepmc、报错→stackexchange(+csdn)、包管理→github+npm+dockerhub、新闻→news（自动推断时效）、图片→images、视频→bilibili+youtube、地点→maps、中文问答→zhidao、实体快查→ddg-api+wikidata+wikipedia 并行、对比评测→aggregate；通用查询→语言感知回退链（中文 Bing→百度→360→DDG，英文 DDG→Bing→Brave；key 引擎优先）。也可显式指定：【通用】ddg-html/bing/baidu/so360/brave/ddg-api/wikipedia/marginalia/anysearch（AI 搜索基础设施，匿名可用）/serper·tavily·brave-api·exa（key 型）【聚合】aggregate（RRF 融合；复合语法 aggregate:id1,id2）【学术】arxiv/openalex/crossref/pubmed/europepmc/dblp【开发】github/npm/crates/dockerhub/stackexchange/mdn/csdn【新闻社区】news/hn【媒体】youtube/bilibili/images/itunes【中文】wechat/zhidao【参考】wikidata/books/archive/maps。freshness 可选 day/week/month/year（部分引擎原生支持）。返回 sources（url/title/snippet），engine 字段显示实际路由（如 smart(academic):arxiv+openalex）。配置见 设置→插件→网页搜索。',
+            '多渠道网页搜索（39 引擎 · 8 大类 · auto 智能路由）。engine 默认 auto：由 DSH 分析查询特性（语言/领域/意图/时效）自动路由——学术论文→arxiv/openalex/crossref 并行融合、生物医学→pubmed+europepmc、报错→stackexchange(+csdn)、包管理→github+npm+dockerhub、新闻→news（自动推断时效）、图片→images、视频→bilibili+youtube、地点→maps、中文问答→zhidao、实体快查→ddg-api+wikidata+wikipedia 并行、对比评测→aggregate；通用查询→语言感知回退链（中文 Bing→百度→360→DDG，英文 DDG→Bing→Brave；key 引擎优先）。也可显式指定：【通用】ddg-html/bing/baidu/so360/brave/ddg-api/wikipedia/marginalia/anysearch（AI 搜索基础设施，匿名可用）/serper·tavily·brave-api·exa（key 型）【聚合】aggregate（RRF 融合；复合语法 aggregate:id1,id2）【学术】arxiv/openalex/crossref/pubmed/europepmc/dblp【开发】github/npm/crates/dockerhub/stackexchange/mdn/csdn【新闻社区】news/hn【媒体】youtube/bilibili/images/itunes【中文】wechat/zhidao【参考】wikidata/books/archive/maps。freshness 可选 day/week/month/year（部分引擎原生支持）。返回 sources（url/title/snippet），engine 字段显示实际路由（如 smart(academic):arxiv+openalex）。配置见 插件页 → 本插件行 → 配置。',
           parameters: {
             type: 'object',
             additionalProperties: false,
@@ -2049,7 +2050,7 @@ export function apply(ctx, config) {
     )
   )
 
-  // 6. 诊断路由（health + test，设置卡片「测试」按钮也用 /web-search/test）
+  // 6. 诊断路由（health + test，配置卡片「测试」按钮也用 /web-search/test）
   ctx.inject(['webServer'], (webCtx) => {
     const ws = webCtx.get('webServer')
     if (!ws || typeof ws.register !== 'function') return

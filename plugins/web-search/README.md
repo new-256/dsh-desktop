@@ -1,8 +1,8 @@
 # web-search — DSH 网页搜索增强插件（39 引擎 · 8 大类 · auto 智能路由）
 
-DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会话**注册多引擎网页搜索与 URL 抓取工具，并提供 设置→插件 页配置卡片。零依赖（单文件 ESM，host realm 全 Node 权限）。
+DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会话**注册多引擎网页搜索与 URL 抓取工具，并提供 插件页 行配置卡片。零依赖（单文件 ESM，host realm 全 Node 权限）。
 
-> **开发纪律**：本插件经 npm 制品 `web-search-panel@1.2.0` registry 安装部署——制品态标杆。发版流程遵循[开发-制品闭环](../DEV-DISCIPLINE.md)。
+> **开发纪律**：本插件经 npm 制品 `web-search-panel@1.3.0` registry 安装部署——制品态标杆。发版流程遵循[开发-制品闭环](../DEV-DISCIPLINE.md)。
 
 ## auto 智能路由（默认开启）
 
@@ -130,12 +130,14 @@ DSH（DeepSeek Harness）家级（host 层）插件：为**所有预设的新会
 
 ## 设置页
 
-**设置 → 插件 → 网页搜索**（client 半边，`settings.plugin.item` 键控槽位）：
+**插件页 → 本插件行 → 配置**（client 半边；DSH 0.1.7+ 的 `plugins.row.config` 键控槽位，键 = `<包名>#<row id>` = `web-search-panel#web-search`）：
 
 - 总开关 / 8 个免费通用引擎 + 27 个垂直渠道与聚合（**按 7 类分组**）独立开关 / API key（4 个，密码框）/ `apiInAuto` 开关
 - 默认引擎 / 返回条数 / 单引擎超时 / User-Agent
 - **测试引擎**按钮（调 `/web-search/test` 实测连通性）
-- 字段级「已覆盖默认值」标记；保存 = `scope.mutate`（原子，带 revision 乐观锁）→ 写 `settings.yaml` 热生效
+- 字段级「已覆盖默认值」标记；保存 = 宿主表单 `form.mutate`（原子，带 revision 乐观锁）→ 写 `settings.yaml` 热生效
+
+> **槽位版本兼容**（0.1.7 起）：本卡片优先注册 `plugins.row.config`；`settings.plugin.item`（≤0.1.3 旧槽位，新版已移除）仅作老版本回退。数据源同样双路：新版宿主经 `props.form` 注入 `{state, mutate}`，旧版回退 `settingsScope` 服务（用 `ctx.get()` 探测，**不写进 `inject`**）。`inject` 始终只声明 `["slots"]`——声明一个新版已移除的服务会让插件在 import 期直接失败（0.1.3 时代 `@captain1275/dsh-pet` 正是这样挂掉的）。
 
 ## 安装
 
@@ -148,7 +150,7 @@ dsh plugin --profile web add web-search-panel
 本包自带 `dsh.bundle.patch` 声明（profile bundle），`dsh plugin` 安装后**自动**加入 `dsh.profile.bundles` 层栈并组合行——无需手改任何 YAML。重启 web 档案（或 `patchReload: live` 自动生效）即可使用：
 
 - 模型获得 `web_search_multi`（39 引擎智能路由搜索）与 `web_fetch_url`
-- 设置→插件 出现「网页搜索」配置卡片（引擎开关 / API key / 智能路由开关）
+- 插件页本插件行出现「配置」入口（引擎开关 / API key / 智能路由开关）
 
 前置条件：[pnpm](https://pnpm.io) 在 PATH 上（`dsh plugin` 经 pnpm 安装；`npm i -g pnpm` 或 corepack）。更新：`dsh plugin --profile web update web-search-panel`；卸载：`dsh plugin --profile web remove web-search-panel`。
 
@@ -202,7 +204,7 @@ plugins/web-search/
 DSH 升级流程（applyStaged）会重写 `profiles/web/package.json`，可能抹掉 `dsh.profile.bundles` 登记与 `web-search-panel` 依赖——插件不报错但完全不加载。症状：
 
 - `GET /web-search/health` → 404
-- 设置→插件 清单里只剩官方内置 `web-search-deepseek`，无 `web-search → web-search-panel`
+- 插件页 清单里只剩官方内置 `web-search-deepseek`，无 `web-search → web-search-panel`
 - 插件管理器「用户插件」分类为空
 
 **恢复（一条命令，与首次安装相同；npm 已发布，直接装 registry 版）：**
@@ -216,11 +218,19 @@ dsh plugin --profile web add web-search-panel
 验证 `profiles/web/package.json` 恢复两项后**重启 DSH**：
 
 ```json
-"dependencies": { "web-search-panel": "^1.2.0" },
+"dependencies": { "web-search-panel": "^1.3.0" },
 "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "web-search-panel"] } }
 ```
 
 重启后 `GET /web-search/health` 应返回 `engineCount: 39`。
+
+### 升级 DSH 后工具正常、但配置卡片不见了
+
+DSH 0.1.7 重构了插件页的扩展点，旧的 `settings.plugin.item` 槽位与 `settingsScope` 客户端服务**已被移除**。1.3.0 起已适配新契约（`plugins.row.config` + 宿主 `props.form`）并保留旧版回退。若卡片仍不出现：
+
+1. 浏览器控制台执行 `window.__webSearchPanel`，看 `registered` / `registeredVia` / `lastError`
+2. `registeredVia` 应为 `plugins.row.config(direct)`；`registered:false` 说明槽位候选全败，`lastError` 会给出原因
+3. 卡片的入口在**插件页 → 本插件（web-search-panel）→ 该行 → 配置**，不再是「设置 → 插件」旧路径
 
 ### 插件随其它插件一起“消失”（profile 被隔离重建）
 
