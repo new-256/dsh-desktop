@@ -4,9 +4,11 @@ const { app, BrowserWindow, Menu, shell, dialog, ipcMain, Tray, nativeImage, cli
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const http = require('http');
 const mgr = require('./updater-backend');
 const diagLog = require('./diag-log');
+const crashReport = require('./crash-report');
 const diag = diagLog.write;
 
 // 任何主进程异常都先落到桌面日志，再向用户展示 —— 不再出现"无声崩溃"。
@@ -64,6 +66,7 @@ function detectWebView2() {
 // ---------------------------------------------------------------------------
 let backend = null;
 let backendLogs = [];
+let backendLogsBytes = 0;
 let mainWindow = null;
 let splashWindow = null;
 let pendingShowMainWindow = false;
@@ -79,13 +82,74 @@ let crashNotified = false;
 // which meant a failed start left no recovery entry point at all.
 let bootPhase = 'starting'; // 'starting' | 'running' | 'failed'
 let lastBootError = null;
+// 渲染层 error 级 console 的有界尾部缓冲（0.3.39 · 对齐官方 RendererConsoleTail）：
+// 崩溃报告需要「最近的渲染层错误」，但绝不能为长会话无限累积。
+let rendererConsoleTail = [];
+let rendererConsoleBytes = 0;
+const RENDERER_CONSOLE_MAX_BYTES = 64 * 1024;
+// 后端日志字节上限（对齐官方 MAX_HOST_DIAGNOSTIC_CHARS=64KiB）：行数上限挡不住
+// 超长单行，长期运行下错误信息可能整段塞进一个 push。
+const BACKEND_LOGS_MAX_BYTES = 64 * 1024;
+// 退出前向 Host 查询「会中断什么」的截止时间（对齐官方 2s）——超时按有任务处理。
+const QUIT_INSPECT_DEADLINE_MS = 2000;
 
 function pushLog(line) {
   const text = line == null ? '' : line.toString();
   backendLogs.push(text);
+  backendLogsBytes += Buffer.byteLength(text, 'utf8');
   if (backendLogs.length > 300) backendLogs.shift();
+  // 字节封顶：从最旧开始丢弃，保证长期会话内存有界（官方同纪律）。
+  while (backendLogsBytes > BACKEND_LOGS_MAX_BYTES && backendLogs.length > 1) {
+    backendLogsBytes -= Buffer.byteLength(backendLogs.shift(), 'utf8');
+  }
   process.stdout.write(`[dsh-backend] ${text}`);
   diag('后端输出', text);
+}
+
+/** 记录一条渲染层 error 级 console（进崩溃报告用，有界尾部缓冲）。 */
+function pushRendererConsoleError(text) {
+  const line = String(text || '');
+  if (!line) return;
+  rendererConsoleTail.push(line);
+  rendererConsoleBytes += Buffer.byteLength(line, 'utf8');
+  while (rendererConsoleBytes > RENDERER_CONSOLE_MAX_BYTES && rendererConsoleTail.length > 1) {
+    rendererConsoleBytes -= Buffer.byteLength(rendererConsoleTail.shift(), 'utf8');
+  }
+}
+
+// ── 0.3.39 · 关窗确认标记（对齐官方 background-close-confirmed）─────────────
+// 确认一次写进 Electron userData，更新保留、卸载随目录消失；autoStartHidden
+// 的隐藏启动不算「用户关窗」，不写标记。
+function closeConfirmMarkerPath() {
+  try { return path.join(app.getPath('userData'), 'background-close-confirmed'); } catch { return null; }
+}
+function closeConfirmRecorded() {
+  const p = closeConfirmMarkerPath();
+  if (!p) return false;
+  try { fs.accessSync(p); return true; } catch { return false; }
+}
+function recordCloseConfirm() {
+  const p = closeConfirmMarkerPath();
+  if (!p) return;
+  try { fs.writeFileSync(p, new Date().toISOString() + '\n', 'utf8'); } catch {}
+}
+
+// ── 0.3.39 · 设备信息（对齐官方 dshDesktop.deviceInfo()）────────────────────
+// `name=value` 以 `; ` 分隔：platform / os / app_arch / cpu / memory_gib。
+// 不含主机名、用户名、序列号 —— 与官方同一隐私口径。
+function readDeviceInfo() {
+  const cpus = (() => { try { return os.cpus(); } catch { return []; } })();
+  const parts = [];
+  parts.push(`platform=${process.platform}`);
+  parts.push(`os=${os.release()}`);
+  parts.push(`app_arch=${process.arch}`);
+  const cpuModel = cpus.length && cpus[0] && cpus[0].model ? cpus[0].model.trim() : '';
+  if (cpuModel) parts.push(`cpu=${cpuModel}`);
+  try {
+    const gib = os.totalmem() / (1024 * 1024 * 1024);
+    if (gib > 0) parts.push(`memory_gib=${gib.toFixed(1)}`);
+  } catch {}
+  return parts.join('; ');
 }
 
 function waitForServer(url, timeoutMs, cb) {
@@ -775,6 +839,9 @@ function createChromiumWindow(url) {
   });
   win.webContents.on('console-message', (_e, level, msg, line, src) => {
     diag(`[RENDERER CONSOLE ${level}] ${msg} (${src}:${line})`);
+    // 0.3.39 · error 级 console 进有界尾部缓冲 —— 崩溃报告需要「最近的渲染层
+    // 错误」，官方 RendererConsoleTail 同款纪律（64KiB 封顶，最旧先丢）。
+    if (String(level) === '3') pushRendererConsoleError(`${msg} (${src}:${line})`);
     // Client-module registration failures arrive here while the backend
     // process itself stays healthy — the web UI bricks on its fatal
     // "Failed to load plugins" page and no boot-ladder escalation fires
@@ -785,6 +852,17 @@ function createChromiumWindow(url) {
     const regFail = /loaded without registering\s+["']?([A-Za-z0-9@_.\/-]+)["']?/i.exec(text)
       || /failed to import loader entry\s+\S+\s*\(\s*([^)\s]+)\s*\)/i.exec(text);
     if (regFail) handleClientBundleFailure(regFail[1]).catch(() => {});
+  });
+
+  // 0.3.39 · F12 / Ctrl+Shift+I 切换 DevTools（对齐官方：打包版同样可用，调试
+  // 分发的黑盒问题不再需要 --remote-debugging-port）。在输入事件层拦截，
+  // 不抢占页面自身的键盘处理。
+  win.webContents.on('before-input-event', (_e, input) => {
+    if (input.type !== 'keyDown') return;
+    const key = (input.key || '').toLowerCase();
+    if (key === 'f12' || ((input.control || input.meta) && input.shift && key === 'i')) {
+      try { win.webContents.toggleDevTools(); } catch {}
+    }
   });
 
   win.loadURL(url);
@@ -836,16 +914,26 @@ function createChromiumWindow(url) {
   });
   win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
   // Close button (X) hides to tray instead of quitting — DSH is keep-alive.
+  // 0.3.39 · 对齐官方 background-close-confirmed：首次隐藏前弹一次**确认**（不
+  // 是无声气泡——用户必须知道点 X ≠ 退出），确认一次写 userData 标记，以后
+  // 直接隐藏永不再扰；Esc/关弹窗 = 取消，窗口保持可见。
   win.on('close', (e) => {
     if (isQuitting || !tray) return;
     e.preventDefault();
-    win.hide();
-    if (!trayHintShown) {
+    const doHide = () => {
+      win.hide();
       trayHintShown = true;
-      try {
-        tray.displayBalloon({ iconType: 'info', title: APP_NAME, content: '已最小化到系统托盘，DSH 仍在后台运行。右键托盘图标可退出。' });
-      } catch {}
-    }
+    };
+    if (trayHintShown || closeConfirmRecorded()) { doHide(); return; }
+    dialog.showMessageBox(win, {
+      type: 'info', buttons: ['确认最小化到托盘', '取消'], defaultId: 0, cancelId: 1, noLink: true,
+      title: APP_NAME,
+      message: '关闭窗口将最小化到系统托盘',
+      detail: '正在运行的任务不会中断，会话、草稿与滚动位置都会保留。\n下次可从系统托盘图标重新打开窗口。\n\n确认一次后不再重复询问。'
+    }).then((r) => {
+      if (r.response === 0) { recordCloseConfirm(); doHide(); }
+      // 取消：窗口保持可见，什么都不做
+    }).catch(() => { doHide(); });
   });
   return win;
 }
@@ -866,13 +954,31 @@ function showFatal(err) {
   let logPath = 'DSH-Desktop-日志.txt';
   try { logPath = diagLog.logFile(); } catch {}
 
+  // 0.3.39 · 对齐官方 crash-report：写独立崩溃报告文件（完整错误+日志尾部+
+  // 渲染层错误尾部），启动时清理旧的（只删 crash-*.log，保留 10 份）。
+  let reportPath = null;
+  try {
+    reportPath = crashReport.writeCrashReport({
+      source: 'host', phase: 'startup', error: err,
+      backendReady: false, backendLogTail: tail,
+      rendererConsole: rendererConsoleTail
+    });
+    if (reportPath) diag('崩溃报告已写入:', reportPath);
+    const pruned = crashReport.pruneCrashReports();
+    if (pruned) diag(`已清理 ${pruned} 份旧崩溃报告（保留最新 10 份）`);
+  } catch (e) { diag('崩溃报告写入失败（弹窗照常）:', e && e.message); }
+
+  // 0.3.39 · EADDRINUSE 专属恢复（对齐官方）：端口被占意味着另一个 DSH 实例
+  // 还在跑 —— 修插件/安全模式都没用，只给「退出其他实例后重启」两个动作。
+  const addressInUse = /\blisten EADDRINUSE\b/u.test(String((err && err.message) || err) + tail);
+
   // Without a tray there is no recovery console at all — keep the old terminal
   // behaviour rather than leaving an invisible, unusable process behind.
   if (!tray || tray.isDestroyed()) {
     dialog.showErrorBox(`${APP_NAME} 启动失败`,
-      (err && err.stack ? err.stack : String(err)) +
-      '\n\n--- 后端日志（末尾）---\n' + tail +
-      `\n\n--- 详细诊断日志：${logPath} ---`);
+      (addressInUse ? '端口被占用：请先退出其他正在运行的 DSH 实例，再重启本应用。\n\n' : '') +
+      crashReport.crashDialogDetail(err && err.stack ? err.stack : String(err), reportPath,
+        `完整日志：${logPath}`));
     app.quit();
     return;
   }
@@ -887,18 +993,33 @@ function showFatal(err) {
   } catch {}
   pushLog('启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。\n');
 
+  // 0.3.39 · 弹窗 detail 有 1200 码元预算（尾部 8 行 + 崩溃报告路径 + 建议），
+  // 完整诊断在崩溃报告文件里——不再让长栈撑爆原生弹窗。
+  const detail = addressInUse
+    ? '端口被占用（listen EADDRINUSE）：很可能是另一个 DSH 实例还在运行。\n' +
+      '请先退出它（托盘图标右键 → 退出），再重启本应用。' +
+      (reportPath ? `\n\n崩溃报告已写入：${reportPath}` : '')
+    : crashReport.crashDialogDetail(
+        (err && err.message ? err.message : String(err)) + '\n\n--- 后端日志（末尾）---\n' + tail,
+        reportPath,
+        '你的会话、密钥、设置都在独立数据目录里，不受影响。\n' +
+        `完整滚动日志：${logPath}\n` +
+        '关闭此窗口后，右键系统托盘的 DSH 图标随时可以再进这些操作。');
+
   dialog.showMessageBox(null, {
     type: 'error',
-    buttons: ['查看启动日志', '修复插件配置', '以安全模式重启', '重试启动', '留在托盘稍后处理', '退出'],
-    defaultId: 0, cancelId: 4, noLink: true,
+    buttons: addressInUse
+      ? ['重试启动', '退出']
+      : ['查看启动日志', '修复插件配置', '以安全模式重启', '重试启动', '留在托盘稍后处理', '退出'],
+    defaultId: 0, cancelId: addressInUse ? 1 : 4, noLink: true,
     title: `${APP_NAME} 启动失败`,
-    message: '后端没能启动 —— 自救入口已就绪',
-    detail: (err && err.message ? err.message : String(err)) +
-      '\n\n--- 后端日志（末尾）---\n' + tail +
-      `\n\n完整日志：${logPath}` +
-      '\n\n你的会话、密钥、设置都在独立数据目录里，不受影响。' +
-      '\n关闭此窗口后，右键系统托盘的 DSH 图标随时可以再进这些操作。'
+    message: addressInUse ? '端口被其他 DSH 实例占用' : '后端没能启动 —— 自救入口已就绪',
+    detail
   }).then(async (r) => {
+    if (addressInUse) {
+      if (r.response === 1) quitApp(); else await restartApp();
+      return;
+    }
     switch (r.response) {
       case 0: try { shell.openPath(logPath); } catch {} break;
       case 1: await requestPatchRepair(); break;
@@ -1369,6 +1490,9 @@ async function restartApp(extraArgs = []) {
 }
 
 ipcMain.handle('app:get-version', () => app.getVersion());
+// 0.3.39 · 设备信息（对齐官方 dshDesktop.deviceInfo()）：平台/OS/架构/CPU/内存，
+// 无主机名用户名序列号。
+ipcMain.handle('app:device-info', () => { try { return readDeviceInfo(); } catch { return ''; } });
 ipcMain.handle('backend:versions', () => { try { return mgr.currentVersions(); } catch { return null; } });
 ipcMain.handle('env:isolation', () => { try { return mgr.describeEnvIsolation(); } catch { return null; } });
 ipcMain.handle('backend:check-updates', () => checkBackendUpdates({ includeNode: true }));

@@ -2676,6 +2676,17 @@ function writeUpdateJournal(entries) {
   catch (e) { log('write update-journal failed:', e.message); }
 }
 /**
+ * 更新失败的白名单错误码（0.3.39 · 对齐官方 DesktopUpdateJournal 的
+ * ERROR_CODES）：journal 是要长期留存的证据文件，错误**全文**可能含镜像 URL、
+ * 代理地址等环境细节，落盘只保留固定分类码 + 截断摘要。
+ */
+const JOURNAL_ERROR_CODES = [
+  'ETIMEDOUT', 'ENOSPC', 'ERR_INTERNET_DISCONNECTED', 'ERR_CONNECTION_RESET',
+  'ERR_CONNECTION_CLOSED', 'ERR_NAME_NOT_RESOLVED', 'ERR_UPDATER_INVALID_SIGNATURE',
+  'ERR_UPDATER_CHECKSUM_MISMATCH', 'ETARGET', 'EADDRINUSE', 'ENOENT', 'EACCES', 'EPERM'
+];
+
+/**
  * 追加一条更新记录。
  * @param {string} kind   'dsh' | 'node'
  * @param {string} state  'staged' | 'applied' | 'verified' | 'failed'
@@ -2683,13 +2694,19 @@ function writeUpdateJournal(entries) {
  */
 function journalAdd(kind, state, extra = {}) {
   const { entries } = readUpdateJournal();
+  let reason = null;
+  if (extra.reason) {
+    const text = String(extra.reason);
+    const code = JOURNAL_ERROR_CODES.find((c) => text.includes(c)) || 'UNCLASSIFIED';
+    reason = `${code}: ${text.slice(0, 120)}`;
+  }
   entries.push({
     id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
     kind, state,
     at: new Date().toISOString(),
     from: extra.from || null,
     to: extra.to || null,
-    reason: extra.reason || null
+    reason
   });
   writeUpdateJournal(entries);
 }

@@ -2,6 +2,31 @@
 
 这里记录每个版本改了什么。版本号和 `package.json` 保持一致。
 
+## 0.3.39（2026-10-06）
+
+**对照官方桌面版（`@deepseek-ai/dsh-desktop@0.2.1-alpha.1`，master 分支 46 个 src 模块）逐模块对齐：能抄的六项全部落地，依赖官方服务端/品牌工程的明确标注不做。** 本次浅克隆了官方 apps/desktop 全量源码逐文件审读（README.zh 493 行 + main.ts 67KB + 40 余个模块），以下是核对后的完整结论。
+
+### 抄了（6 项）
+
+1. **崩溃报告独立文件**（对齐 `crash-report.ts`）：每次致命失败写一份 `crash-<UTC时间>-<来源>.log`——头部记录来源（host/renderer/main）/阶段/后端就绪状态/应用版本/平台架构/Electron+Node 版本，正文三段：完整错误（inspect depth 6、单串 64KiB、总量 256KiB 截断）+ 后端日志尾部（64KiB）+ 渲染层 error 级 console 尾部（64KiB 有界缓冲，错误实时进缓冲）。清理只删匹配 `crash-*.log` 命名模式的文件、保留最新 10 份，目录里其他文件（日志存档、用户文件）永不触碰。写入失败/超时不影响弹窗。**修掉实现中的真 bug**：弹窗省略标记的 truncated 判断误比「拼接字符串长度 vs 行数」，导致长错误既不省略也不提示。
+2. **致命弹窗 detail 预算**（对齐 `fatal-recovery.ts` DETAIL_BUDGET=1200 码元 / 尾部 8 行）：错误尾部 + 报告路径 + 建议压进 1200 码元，完整诊断在崩溃报告文件里——长栈不再撑爆原生弹窗。
+3. **EADDRINUSE 专属恢复**（对齐官方）：端口被占意味着另一个 DSH 实例还在跑，修插件/安全模式都没用——弹窗只给「重试启动/退出」两个动作 + 专属文案，不再误导用户走无关自救路径。
+4. **F12 / Ctrl+Shift+I 切换 DevTools**（对齐官方，打包版同样可用）：`before-input-event` 层拦截，不抢占页面键盘处理。分发环境黑盒问题从此可现场调试。
+5. **关窗首次确认 + userData 标记**（对齐 `background-close-confirmed`）：首次点 X 弹原生确认框（不再是易忽略的气泡），确认一次写 `background-close-confirmed` 标记，以后直接隐藏永不再扰；取消则窗口保持可见。
+6. **backendLogs 字节封顶 64KiB + preload deviceInfo + journal 错误码白名单**：后端日志从「300 行数上限」（超长单行仍可无限增长）补上字节上限，长期会话内存有界；`dshDesktop.deviceInfo()` 暴露 platform/os/app_arch/cpu/memory_gib（不含主机名用户名序列号，与官方同隐私口径）；journal 落盘 reason 改为「白名单错误码（ETIMEDOUT/ERR_CONNECTION_RESET/ETARGET/EADDRINUSE…13 种）+ 120 字摘要」，错误全文含镜像 URL 等环境细节不再进长期留存的证据文件。
+
+### 明确不抄的（核对后标注）
+
+- **强制更新策略/账号体系/平台内嵌文档**：依赖官方服务端 API（`check_client_update`）与 client 协议包，独立壳无从对接。
+- **快捷键协议系统**（keybindings.json + 双键组合 + 蒙层作废）：依赖 `@deepseek-ai/dsh-client-shortcuts/protocol` workspace 包，Web 席位需配合，属于官方 monorepo 内聚设计。
+- **titleBarOverlay 40DIP 顶栏/NSIS 品牌安装页/双语 locale（387 行）/macOS 签名公证**：品牌与平台工程，Web UI 席位需适配，单独立项。
+- **官方 update-journal JSONL 每启动一文件 + 随机 UUID**：我版单文件滚动 + 30 条上限已满足「跨重启可追溯」需求且更省心，保留我方设计。
+
+### 验证
+
+- 新增 `test-039.js` **27 项**：报告写入/命名/来源/头部字段/cause 链/截断/清理（14 份删 6 份、干扰文件全幸存）/detail 预算与省略标记；journal 白名单码 + 有界摘要 + UNCLASSIFIED；deviceInfo 契约。
+- `test-038.js` 20 项、`test-manifest-verify.js` 30 项回归全过（038 的一处断言按 0.3.39 新契约更新）。
+
 ## 0.3.38（2026-09-23）
 
 **对照官方桌面版（`@deepseek-ai/dsh-desktop@0.1.7-alpha.2`）取长补短：补上运行时完整性校验、构建可复现性、版本耦合软闸门与更新可追溯性。** 先核实了对比报告，发现两处报告说法与本机实际不符（见末尾），在此基础上完成以下整改。
