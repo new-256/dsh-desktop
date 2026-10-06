@@ -1,0 +1,140 @@
+{
+  "last_node_id": 9,
+  "last_link_id": 9,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "UnetLoaderGGUF",
+      "pos": [50, 300],
+      "size": [340, 60],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [{"name": "MODEL", "type": "MODEL", "links": [1], "slot_index": 0}],
+      "properties": {"Node name for S&R": "UnetLoaderGGUF"},
+      "widgets_values": ["qwen-v23-diffusion-NVFP4.gguf"]
+    },
+    {
+      "id": 2,
+      "type": "CLIPLoaderGGUF",
+      "pos": [50, 400],
+      "size": [340, 82],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "outputs": [{"name": "CLIP", "type": "CLIP", "links": [2, 3], "slot_index": 0}],
+      "properties": {"Node name for S&R": "CLIPLoaderGGUF"},
+      "widgets_values": ["text_encoder-NVFP4.gguf", "qwen_image"]
+    },
+    {
+      "id": 3,
+      "type": "VAELoader",
+      "pos": [50, 530],
+      "size": [340, 60],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "outputs": [{"name": "VAE", "type": "VAE", "links": [4], "slot_index": 0}],
+      "properties": {"Node name for S&R": "VAELoader"},
+      "widgets_values": ["vae.safetensors"]
+    },
+    {
+      "id": 4,
+      "type": "CLIPTextEncode",
+      "pos": [450, 100],
+      "size": [420, 170],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [{"name": "clip", "type": "CLIP", "link": 2}],
+      "outputs": [{"name": "CONDITIONING", "type": "CONDITIONING", "links": [5], "slot_index": 0}],
+      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "widgets_values": ["一只戴着墨镜的橘猫坐在木质冲浪板上乘风破浪，蔚蓝海面，阳光明媚，水花飞溅，高清摄影风格，细节丰富"]
+    },
+    {
+      "id": 5,
+      "type": "CLIPTextEncode",
+      "pos": [450, 320],
+      "size": [420, 130],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [{"name": "clip", "type": "CLIP", "link": 3}],
+      "outputs": [{"name": "CONDITIONING", "type": "CONDITIONING", "links": [6], "slot_index": 0}],
+      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "widgets_values": ["低质量，模糊，变形，多余肢体，水印"]
+    },
+    {
+      "id": 6,
+      "type": "EmptySD3LatentImage",
+      "pos": [450, 490],
+      "size": [340, 130],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "outputs": [{"name": "LATENT", "type": "LATENT", "links": [7], "slot_index": 0}],
+      "properties": {"Node name for S&R": "EmptySD3LatentImage"},
+      "widgets_values": [1328, 1328, 1]
+    },
+    {
+      "id": 7,
+      "type": "KSampler",
+      "pos": [930, 100],
+      "size": [330, 262],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 1},
+        {"name": "positive", "type": "CONDITIONING", "link": 5},
+        {"name": "negative", "type": "CONDITIONING", "link": 6},
+        {"name": "latent_image", "type": "LATENT", "link": 7}
+      ],
+      "outputs": [{"name": "LATENT", "type": "LATENT", "links": [8], "slot_index": 0}],
+      "properties": {"Node name for S&R": "KSampler"},
+      "widgets_values": [888888, "randomize", 8, 1.0, "euler", "simple", 1.0]
+    },
+    {
+      "id": 8,
+      "type": "VAEDecode",
+      "pos": [1310, 100],
+      "size": [220, 50],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 8},
+        {"name": "vae", "type": "VAE", "link": 4}
+      ],
+      "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [9], "slot_index": 0}],
+      "properties": {"Node name for S&R": "VAEDecode"}
+    },
+    {
+      "id": 9,
+      "type": "SaveImage",
+      "pos": [1310, 200],
+      "size": [420, 420],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [{"name": "images", "type": "IMAGE", "link": 9}],
+      "properties": {"Node name for S&R": "SaveImage"},
+      "widgets_values": ["QwenTest"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 7, 0, "MODEL"],
+    [2, 2, 0, 4, 0, "CLIP"],
+    [3, 2, 0, 5, 0, "CLIP"],
+    [4, 3, 0, 8, 1, "VAE"],
+    [5, 4, 0, 7, 1, "CONDITIONING"],
+    [6, 5, 0, 7, 2, "CONDITIONING"],
+    [7, 6, 0, 7, 3, "LATENT"],
+    [8, 7, 0, 8, 0, "LATENT"],
+    [9, 8, 0, 9, 0, "IMAGE"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

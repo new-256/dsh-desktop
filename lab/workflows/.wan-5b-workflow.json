@@ -1,0 +1,14 @@
+{
+  "1": { "class_type": "UNETLoader", "inputs": { "unet_name": "wan2.2_ti2v_5B_fp16.safetensors", "weight_dtype": "default" } },
+  "2": { "class_type": "CLIPLoader", "inputs": { "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors", "type": "wan" } },
+  "3": { "class_type": "VAELoader", "inputs": { "vae_name": "wan2.2_vae.safetensors" } },
+  "4": { "class_type": "ModelSamplingSD3", "inputs": { "shift": 5.0, "model": ["1", 0] } },
+  "5": { "class_type": "CLIPTextEncode", "inputs": { "text": "竖幅实拍电影质感。江南古典园林中，一位年轻的中国女子身着淡青绿色刺绣宽袖汉服、米白内衬，发髻高挽点缀精致发簪，双手轻叠身前，神情温婉恬静，人物完整入画。她缓缓抬起眼帘望向镜头，嘴角漾起浅浅笑意，鬓边碎发与宽袖衣袂随微风轻柔飘动，几片粉色花瓣缓缓飘落。镜头由半身中景缓缓轻微上移推近，背景中园林亭榭、太湖石与盛开的繁花被大光圈浅景深柔化成朦胧光斑，夕照侧逆光为发丝镀上金边，光影随流云缓慢流动，氛围典雅唯美、静谧安然。画面四角完整干净无遮挡，稳定细腻，超高细节。", "clip": ["2", 0] } },
+  "6": { "class_type": "CLIPTextEncode", "inputs": { "text": "色调艳丽，过曝，静态画面，细节模糊不清，字幕，风格迁移痕迹，整体发灰，最差质量，低质量，JPEG压缩残留，变形，扭曲，肢体异常，面部扭曲，水印，文字，卡通，动漫，画面抖动，黑色色块，边角遮挡，画面边缘瑕疵，人物截断，头部出画", "clip": ["2", 0] } },
+  "7": { "class_type": "LoadImage", "inputs": { "image": "Gemini_Generated_Image_l7vl00l7vl00l7vl.png" } },
+  "8": { "class_type": "Wan22ImageToVideoLatent", "inputs": { "vae": ["3", 0], "width": 704, "height": 1280, "length": 121, "batch_size": 1, "start_image": ["7", 0] } },
+  "9": { "class_type": "KSampler", "inputs": { "seed": 777001, "steps": 30, "cfg": 5.0, "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0, "model": ["4", 0], "positive": ["5", 0], "negative": ["6", 0], "latent_image": ["8", 0] } },
+  "10": { "class_type": "VAEDecode", "inputs": { "samples": ["9", 0], "vae": ["3", 0] } },
+  "11": { "class_type": "CreateVideo", "inputs": { "fps": 24.0, "images": ["10", 0] } },
+  "12": { "class_type": "SaveVideo", "inputs": { "filename_prefix": "hanfu_garden_5s", "format": "auto", "codec": "auto", "video": ["11", 0] } }
+}
