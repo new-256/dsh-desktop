@@ -1,0 +1,28 @@
+{
+  "name": "dsh-mobile-relay",
+  "version": "0.1.0",
+  "description": "DSH 手机伴侣自建中继服务器：WSS 隧道接入 + HTTP/WS 多路复用路由",
+  "type": "module",
+  "main": "./lib/relay.mjs",
+  "bin": {
+    "dsh-mobile-relay": "./bin/dsh-mobile-relay.mjs"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node bin/dsh-mobile-relay.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "dsh",
+    "mobile",
+    "relay",
+    "tunnel"
+  ],
+  "license": "MIT"
+}

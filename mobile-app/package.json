@@ -1,0 +1,25 @@
+{
+  "name": "@dsh/mobile-app",
+  "version": "0.2.2",
+  "private": true,
+  "description": "DSH (桌面 AI 工作台) 移动端 Capacitor 壳应用",
+  "type": "module",
+  "scripts": {
+    "cap:sync": "cap sync",
+    "cap:android": "cap run android",
+    "cap:ios": "cap run ios",
+    "open:android": "cap open android",
+    "open:ios": "cap open ios"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/ios": "^6.0.0",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@capacitor-mlkit/barcode-scanning": "^6.2.0",
+    "jsqr": "1.4.0"
+  }
+}

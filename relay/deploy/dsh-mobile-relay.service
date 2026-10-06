@@ -1,0 +1,30 @@
+# dsh-mobile-relay systemd 服务（不带 TLS 时配合 Nginx/Caddy 反代）
+# 安装：
+#   1) 把本文件放到 /etc/systemd/system/dsh-mobile-relay.service
+#   2) 把密钥写进 /etc/dsh-mobile-relay.key（chmod 600，属主 root）
+#   3) systemctl daemon-reload && systemctl enable --now dsh-mobile-relay
+#   4) systemctl status dsh-mobile-relay  # 看在线实例与错误
+
+[Unit]
+Description=DSH Mobile Companion Relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=relay
+Group=relay
+WorkingDirectory=/opt/dsh-mobile-relay
+EnvironmentFile=-/etc/dsh-mobile-relay.env
+ExecStart=/usr/bin/node /opt/dsh-mobile-relay/bin/dsh-mobile-relay.mjs --port 8443 --host 0.0.0.0 --key "$(cat /etc/dsh-mobile-relay.key)"
+Restart=on-failure
+RestartSec=3
+# 加固
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/dsh-mobile-relay
+
+[Install]
+WantedBy=multi-user.target
