@@ -1013,14 +1013,24 @@ function migrateProjectionCache() {
   const p = P();
   const dir = path.join(p.dshHome, 'storages', 'session_projcache');
   if (!fs.existsSync(dir)) return { changed: 0, skipped: 0 };
-  const backupDir = path.join(dir, `migration-backup-${formatDateTimestamp()}`);
+  // 0.3.40 · 备份目录外置到 dir 的同级 migration-backups/：旧版把 backupDir 建
+  // 在 dir 里面，collect() 无差别收集所有 .json——每轮迁移都把上一轮的备份当
+  // 待检文件再复制一份，备份套备份滚到 170 层嵌套、10078 个文件、124MB，每次
+  // 启动白付 95 秒（启动卡顿的直接根因）。
+  const backupRoot = path.join(path.dirname(dir), 'migration-backups');
+  const backupDir = path.join(backupRoot, `session_projcache-${formatDateTimestamp()}`);
   let changed = 0; let skipped = 0;
   const files = [];
   function collect(root) {
     let entries = []; try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return; }
     for (const entry of entries) {
       const full = path.join(root, entry.name);
-      if (entry.isDirectory()) collect(full);
+      if (entry.isDirectory()) {
+        // 跳过任何形式的备份目录（本目录内的旧版遗留 + 外置根）——备份文件保存的
+        // 就是"迁移前"状态，缺字段是常态，绝不是待迁移对象。
+        if (/^migration-backup/i.test(entry.name)) continue;
+        collect(full);
+      }
       else if (entry.isFile() && entry.name.toLowerCase().endsWith('.json')) files.push(full);
     }
   }
@@ -1047,8 +1057,28 @@ function migrateProjectionCache() {
       changed++;
     } catch (e) { try { fs.unlinkSync(`${file}.migration-${process.pid}.tmp`); } catch {} log('projection cache migration skipped:', e.message); skipped++; }
   }
-  if (changed) log(`migrated ${changed} projection cache file(s); backups: ${backupDir}`);
+  if (changed) {
+    log(`migrated ${changed} projection cache file(s); backups: ${backupDir}`);
+    pruneMigrationBackups(backupRoot);
+  } else {
+    // 无事可做时清掉刚建的空备份目录。
+    try { fs.rmdirSync(backupDir); } catch {}
+  }
   return { changed, skipped, backup: changed ? backupDir : null };
+}
+
+/** 备份保留上限：migration-backups/ 里最多留 3 份，按名字排序删最旧。 */
+const MIGRATION_BACKUPS_RETAINED = 3;
+function pruneMigrationBackups(backupRoot) {
+  try {
+    let names; try { names = fs.readdirSync(backupRoot); } catch { return 0; }
+    const dirs = names.filter((n) => /^session_projcache-/.test(n) && (() => { try { return fs.statSync(path.join(backupRoot, n)).isDirectory(); } catch { return false; } })()).sort();
+    const excess = dirs.slice(0, Math.max(0, dirs.length - MIGRATION_BACKUPS_RETAINED));
+    for (const name of excess) {
+      try { fs.rmSync(path.join(backupRoot, name), { recursive: true, force: true }); } catch {}
+    }
+    return excess.length;
+  } catch { return 0; }
 }
 
 function ensureSeeded() {
@@ -1057,7 +1087,20 @@ function ensureSeeded() {
   mkdirp(p.root); mkdirp(path.join(p.root, 'node_modules'));
   // Isolated harness home (created eagerly so junction repair / first boot work even on a fresh install).
   mkdirp(p.dshHome);
-  migrateProjectionCache();
+  // 0.3.40 · 版本门控：projection 结构迁移只应在 backend dsh 版本变化（或首次
+  // 记录）时跑一次。旧版每次启动无条件全量扫描+解析 1 万个文件——迁移早已
+  // 幂等完成后依然白付 95 秒，这是"启动卡顿"的第二根因。版本没变 = 结构
+  // 没变 = 无需迁移。
+  try {
+    const lastMigrated = readJson(p.versionsJson, {}).projectionMigratedForDsh || null;
+    const curDsh = currentVersions().dsh || null;
+    if (!curDsh || lastMigrated !== curDsh) {
+      const t0 = Date.now();
+      migrateProjectionCache();
+      log(`projection migration for dsh ${curDsh} took ${Date.now() - t0}ms`);
+      writeJson(p.versionsJson, { ...readJson(p.versionsJson, {}), projectionMigratedForDsh: curDsh });
+    }
+  } catch (e) { log('projection migration gate failed (running unconditionally):', e && e.message); migrateProjectionCache(); }
 
   // Dedicated Node prefix: copy node.exe + shims (npm.cmd/npx.cmd/corepack.cmd)
   // + node_modules/{npm,corepack} from the factory runtime into the active root,
