@@ -156,7 +156,27 @@ function copyDir(src, dst) {
 }
 function copyFile(src, dst) { mkdirp(path.dirname(dst)); fs.copyFileSync(src, dst); }
 function readJson(file, fallback) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; } }
-function writeJson(file, obj) { mkdirp(path.dirname(file)); fs.writeFileSync(file, JSON.stringify(obj, null, 2)); }
+/**
+ * 原子写 JSON（0.3.42 · 对齐官方 owned-directory 的"不留半截文件"纪律）。
+ *
+ * 旧实现是裸 fs.writeFileSync：进程在写入中途被杀（更新重启、断电、杀软锁文件），
+ * 目标文件会留下**被截断的 JSON**。这不是理论风险 —— 被截断的 cordis.patch.yml
+ * 恰好会触发我们自己的 Escalation 0a（补丁层校验失败），也就是**我们在给自己
+ * 制造需要自愈的故障**。改为 temp + rename：同一卷上 rename 是原子的，读者要么
+ * 看到完整旧文件、要么看到完整新文件。
+ */
+function writeJson(file, obj) {
+  mkdirp(path.dirname(file));
+  const body = JSON.stringify(obj, null, 2);
+  const temp = `${file}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(temp, body);
+    fs.renameSync(temp, file);
+  } catch (e) {
+    try { fs.unlinkSync(temp); } catch {}
+    throw e;
+  }
+}
 function parts(v) { return String(v || '0.0.0').replace(/^v/, '').split('-')[0].split('.').map((n) => parseInt(n, 10) || 0); }
 function compareSemver(a, b) {
   const pa = parts(a), pb = parts(b);
@@ -306,6 +326,24 @@ function analyzeEnvIsolation(baseEnv = process.env) {
   delete env.DSH_HOME;
   env.DSH_HOME = p.dshHome;
 
+  // 启动器命名空间保护（0.3.42 · 对齐官方 login-shell-environment.ts:17,99 的
+  // LAUNCHER_OWNED_PREFIXES）。官方把 `DSH_` / `ELECTRON_` 明确定义为「启动器
+  // 自己的领地」，外部环境不许覆盖。我们此前只单点保护 DSH_HOME：用户 shell 里
+  // 若残留 DSH_CLIENT_VERSION 之类的变量，会**静默改变桌面版行为**，产生无法
+  // 复现、也无法归因的故障。
+  //
+  // 做法：剥离所有来自环境的 DSH_* / ELECTRON_*，再由启动器显式重建自己需要的那几个。
+  // 这样"启动器的键只有启动器能决定"，语义单一。
+  const LAUNCHER_OWNED_PREFIXES = ['DSH_', 'ELECTRON_'];
+  for (const key of Object.keys(env)) {
+    const upper = key.toUpperCase();
+    if (!LAUNCHER_OWNED_PREFIXES.some((pre) => upper.startsWith(pre))) continue;
+    strippedVarsSet.add(key);
+    delete env[key];
+  }
+  // 剥离后由启动器统一重建：DSH_HOME 必须指向本应用的隔离 home。
+  env.DSH_HOME = p.dshHome;
+
   // PATH hygiene: build PATH as [our node prefix, our npm prefix, ...filtered ambient PATH].
   const rawPath = baseEnv.PATH || baseEnv.Path || baseEnv.path || '';
   const pathSep = process.platform === 'win32' ? ';' : ':';
@@ -394,6 +432,17 @@ function enableCorepack(env) {
 // --------------------------------------------------------------------------
 // network
 // --------------------------------------------------------------------------
+/** 连接/首字节超时：服务器必须在此时限内开始回应。 */
+const HTTP_CONNECT_TIMEOUT_MS = 30000;
+/**
+ * 空闲超时（0.3.42 · 对齐官方 update-http-executor.ts 的 "not a total download
+ * deadline"）：只要**还有数据在流动**就永不超时，只有连续这么久没有任何字节
+ * 到达才判定卡死。旧的 30s 总超时会在慢速/镜像限速下把 80+MB 的 node.exe
+ * 下载中途 kill 掉（updater-backend.js 自己的注释就写着 node.exe 有 80+ MB），
+ * 而且没有断点续传，用户只能反复重来。
+ */
+const HTTP_IDLE_TIMEOUT_MS = 60000;
+
 function httpsGet(url, redirects = 0) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, { headers: { 'User-Agent': 'dsh-desktop' } }, (res) => {
@@ -404,13 +453,45 @@ function httpsGet(url, redirects = 0) {
       resolve(res);
     });
     req.on('error', reject);
-    req.setTimeout(30000, () => req.destroy(new Error('timeout ' + url)));
+    // 仅覆盖"连上并开始回应"这一段；响应体的空闲由调用方用 idle 计时器管。
+    req.setTimeout(HTTP_CONNECT_TIMEOUT_MS, () => {
+      const err = new Error('连接超时 ' + url);
+      err.code = 'ETIMEDOUT';
+      req.destroy(err);
+    });
   });
 }
+
+/**
+ * 给响应流挂一个"空闲超时"看门狗：每收到一块数据就重置计时，连续
+ * HTTP_IDLE_TIMEOUT_MS 无数据才销毁。返回清除函数。
+ */
+function armIdleTimeout(res, url) {
+  let timer = null;
+  const clear = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  const bump = () => {
+    clear();
+    timer = setTimeout(() => {
+      const err = new Error('下载空闲超时（' + Math.round(HTTP_IDLE_TIMEOUT_MS / 1000) + 's 无数据）' + url);
+      err.code = 'ETIMEDOUT';
+      try { res.destroy(err); } catch {}
+    }, HTTP_IDLE_TIMEOUT_MS);
+    if (timer.unref) timer.unref();
+  };
+  res.on('data', bump);
+  res.on('end', clear);
+  res.on('close', clear);
+  bump();
+  return clear;
+}
+
 async function fetchJson(url) {
   const res = await httpsGet(url);
+  const clearIdle = armIdleTimeout(res, url);
   let body = ''; res.setEncoding('utf8');
-  for await (const c of res) body += c;
+  try {
+    for await (const c of res) body += c;
+  } finally { clearIdle(); }
   return JSON.parse(body);
 }
 async function downloadFile(url, dest, onProgress) {
@@ -420,8 +501,17 @@ async function downloadFile(url, dest, onProgress) {
   const tmp = dest + '.part';
   const out = fs.createWriteStream(tmp);
   let got = 0, last = 0;
+  const clearIdle = armIdleTimeout(res, url);
   res.on('data', (c) => { got += c.length; if (onProgress && total && Date.now() - last > 250) { onProgress(got / total); last = Date.now(); } });
-  await new Promise((resolve, reject) => { res.pipe(out); out.on('finish', resolve); out.on('error', reject); res.on('error', reject); });
+  try {
+    await new Promise((resolve, reject) => { res.pipe(out); out.on('finish', resolve); out.on('error', reject); res.on('error', reject); });
+  } finally { clearIdle(); }
+  // 完整性检查：有 content-length 时，短读意味着连接在传输中被截断 —— 必须报错，
+  // 否则会把半截文件 rename 成"下载完成"，后续解压/校验才失败，归因更难。
+  if (total && got !== total) {
+    try { fs.unlinkSync(tmp); } catch {}
+    throw new Error(`下载不完整：期望 ${total} 字节，实际 ${got} 字节（${url}）`);
+  }
   fs.renameSync(tmp, dest); if (onProgress && total) onProgress(1);
 }
 function extractZip(zipPath, destDir) {
@@ -2938,7 +3028,11 @@ function journalAdd(kind, state, extra = {}) {
   if (extra.reason) {
     const text = String(extra.reason);
     const code = JOURNAL_ERROR_CODES.find((c) => text.includes(c)) || 'UNCLASSIFIED';
-    reason = `${code}: ${text.slice(0, 120)}`;
+    // 0.3.42 · 只落分类码，不再追加 120 字符原文（对齐官方 update-journal.ts:17,27
+    // 的"错误全文绝不落盘"纪律）。journal 是长期留存、可能被用户分享给他人排查的
+    // 证据文件；原始错误串里常带镜像 URL、代理主机名、内网路径 —— 而这些恰恰是
+    // 本文件设计要避免暴露的。分类码已足够回答"卡在哪一类失败"。
+    reason = code;
   }
   entries.push({
     id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
@@ -3474,6 +3568,67 @@ function readProfileRegistry(home, profile = 'web') {
 const BASE_BUNDLES = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']);
 
 /**
+ * 关键依赖包（0.3.42 · 借鉴官方 core-package-set.ts 的"显式必需集"抽象）。
+ *
+ * ## 为什么需要这个
+ *
+ * 10-11 事故的本质不是"凭据文件格式错了"，而是**没有任何一处代码知道
+ * `credentials` 是其它 9 个插件的必需依赖**。因此当它加载失败时：
+ *   - 后端只报一句无名的 `1 required plugin did not activate`
+ *   - 我们的归因式自愈（1b 插件条目 / 1c bundle）想按日志点名禁用插件，点不到名字
+ *   - 阶梯只能一路下坠到最重的"隔离整个 profiles"，连烧 3 份备份且完全无效
+ *     （根因在 home 层，profiles 之外）
+ *
+ * 官方用 RELEASE_PACKAGES 显式声明"哪些包是必需的"，并进行版本绑定校验。
+ * 我们这里做同一件事的最小可用版：显式声明**服务型关键包**及其依赖方数量，
+ * 让失败归因从"猜日志"变成"查表"。
+ *
+ * 注意：这里的包名对应 dsh 内部的 bundle 包名，不是用户插件。名单只用于
+ * **归因与提示**，绝不用来自动改写用户配置（所有权规约：shell 不越权重建立）。
+ */
+const CRITICAL_SERVICE_PACKAGES = {
+  '@deepseek-ai/dsh-credentials': {
+    role: '凭据服务',
+    // 该包加载失败时，这些能力会一起失效（依据 10-11 事故实测的等待链）。
+    dependents: [
+      'model provider（模型调用）', 'account-platform（账号平台）',
+      'browser-session（浏览器会话）', 'repo-push-access（仓库推送）',
+      'plugin 安装与更新', 'CLI 登录态', '网络代理配置',
+      '会话持久化', '遥测/诊断上报'
+    ],
+    hint: 'home 级 .credentials.yaml 存在结构问题（键必须形如 <scope>/<id>，用斜杠分隔）'
+  }
+};
+
+/**
+ * 从启动日志归因到"关键服务包失败"，返回可操作结论。
+ * 与 analyzeCredentialFailure 互补：后者看的是凭据键的形态，这里看的是
+ * "哪个必需服务倒了、会连带倒掉什么"。
+ *
+ * @returns {{ package: string|null, role: string, dependents: string[], hint: string, affectedCount: number }}
+ */
+function attributeCriticalFailure(logText) {
+  const text = String(logText || '');
+  for (const [pkg, meta] of Object.entries(CRITICAL_SERVICE_PACKAGES)) {
+    const escaped = pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const named = new RegExp(escaped).test(text);
+    // 无名失败：日志只说 N 个必需插件未激活，但恰好伴随凭据键格式错误 —— 结合判定。
+    const keyShapeError = /credential key "[^"]+" must be "<scope>\/<id>"/.test(text);
+    const genericRequired = /startup failed:\s*\d+\s+required plugin/.test(text);
+    if (named || (keyShapeError && genericRequired)) {
+      return {
+        package: pkg,
+        role: meta.role,
+        dependents: meta.dependents,
+        hint: meta.hint,
+        affectedCount: meta.dependents.length
+      };
+    }
+  }
+  return { package: null, role: '', dependents: [], hint: '', affectedCount: 0 };
+}
+
+/**
  * 扫描旧 home（默认 ~/.dsh）里桌面版看不到的插件。
  * 返回 { exists, home, profile, orphans: [{ name, version, spec, kind, installed }], total }
  * kind: 'npm'（可正常重装）| 'link'（link:/file: 本地依赖，需用户自行处理）
@@ -3708,20 +3863,52 @@ function userPathStatus() {
 /**
  * 把包装器目录加入/移出用户 PATH。追加在**末尾** —— 绝不抢占用户可能已有的
  * 全局 dsh（他们的 dsh 依然优先，dsh-desktop 是无歧义的新命令）。
+ *
+ * ⚠️ 0.3.42 · 数据安全（对齐官方 command-installation.ts 的"拒绝基于陈旧快照写入"
+ * 纪律）：旧实现把 `regQueryUserEnv('Path')` 读失败（返回 null）当成"PATH 为空"，
+ * 于是 entries=[]、without=[]、next=[]，走到 `regDeleteUserEnv('Path')` ——
+ * **一次读取失败就抹掉用户整个用户级 PATH**。改用户 PATH 属于不可逆破坏，
+ * 因此现在：读不到就中止（绝不写），写后必须回读校验，校验不符则回滚。
  */
 function setUserPathEntry(enabled) {
   const p = P();
   if (enabled) writeWrapperScripts();
   const cur = regQueryUserEnv('Path');
-  const type = (cur && cur.type) || 'REG_EXPAND_SZ';
-  const entries = cur ? String(cur.value).split(';').map((s) => s.trim()).filter(Boolean) : [];
+  // 读失败 ≠ 空。宁可这次不生效，也不能拿"空快照"去覆盖真实 PATH。
+  if (cur === null || typeof cur.value !== 'string') {
+    log('setUserPathEntry aborted: could not read current user PATH (refusing to write from a stale snapshot)');
+    return { ...userPathStatus(), ok: false, reason: 'unreadable' };
+  }
+  const type = cur.type || 'REG_EXPAND_SZ';
+  const original = String(cur.value);
+  const entries = original.split(';').map((s) => s.trim()).filter(Boolean);
   const target = path.resolve(p.binDir).toLowerCase();
   const without = entries.filter((e) => { try { return path.resolve(e).toLowerCase() !== target; } catch { return true; } });
   const next = enabled ? [...without, p.binDir] : without;
+
+  // 安全阀：只有确定"变化仅涉及我们自己的目录"时才允许写。
+  if (entries.length > 0 && without.length === 0 && next.length <= 1) {
+    log(`setUserPathEntry aborted: refusing to reduce ${entries.length} PATH entries to ${next.length}`);
+    return { ...userPathStatus(), ok: false, reason: 'unsafe-reduction' };
+  }
+
   if (!next.length) { regDeleteUserEnv('Path'); }
   else { regSetUserEnv('Path', next.join(';'), type); }
+
+  // 写后回读校验：注册表写入可能被策略/权限静默丢弃，回读能立刻发现。
+  const check = regQueryUserEnv('Path');
+  const expected = next.join(';');
+  const actual = check && typeof check.value === 'string' ? check.value : '';
+  const norm = (s) => s.split(';').map((x) => x.trim()).filter(Boolean).join(';');
+  if (norm(actual) !== norm(expected)) {
+    log('setUserPathEntry verification failed; restoring previous value');
+    if (!entries.length) regDeleteUserEnv('Path');
+    else regSetUserEnv('Path', original, type);
+    return { ...userPathStatus(), ok: false, reason: 'verify-failed' };
+  }
+
   log(enabled ? 'added wrapper dir to user PATH' : 'removed wrapper dir from user PATH');
-  return userPathStatus();
+  return { ...userPathStatus(), ok: true };
 }
 
 // ---- 应用内插件安装 -------------------------------------------------------
@@ -3860,6 +4047,8 @@ module.exports = {
   analyzeBackendFailure, disableBrokenPatchPlugins, analyzeConfigEntryConflicts,
   // 0.3.41 · home 级凭据预校验（启动前纠错 + 自愈升级护栏）
   validateCredentialsDocument, repairCredentialKeys, analyzeCredentialFailure,
+  // 0.3.42 · 关键服务包归因（从哪里失败 → 会连带影响什么）
+  attributeCriticalFailure, CRITICAL_SERVICE_PACKAGES,
   analyzeFailingBundles, disableFailingBundles, BASE_BUNDLES,
   findLoaderIdConflicts, applyLoaderConflictFixes, disablePatchEntriesInFile,
   validatePatchFile, repairPatchFile, validateAndRepairPatchLayers, ensurePatchArrayText,
@@ -3888,5 +4077,7 @@ module.exports = {
   // 0.3.38 Python 检测引导 / 版本耦合软闸门 / 更新 journal
   detectPythonRuntime, pythonBootCheck, dismissPythonPrompt,
   comboGateCheck, dismissComboPrompt,
-  journalAdd, readUpdateJournal, journalMarkVerified, journalUnverified
+  journalAdd, readUpdateJournal, journalMarkVerified, journalUnverified,
+  // 0.3.42 原子写（供测试与诊断调用）
+  writeJson, readJson
 };

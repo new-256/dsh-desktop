@@ -9,6 +9,7 @@ const http = require('http');
 const mgr = require('./updater-backend');
 const diagLog = require('./diag-log');
 const crashReport = require('./crash-report');
+const { createQuitGuard } = require('./quit-guard');
 const diag = diagLog.write;
 
 // 任何主进程异常都先落到桌面日志，再向用户展示 —— 不再出现"无声崩溃"。
@@ -92,6 +93,92 @@ const RENDERER_CONSOLE_MAX_BYTES = 64 * 1024;
 const BACKEND_LOGS_MAX_BYTES = 64 * 1024;
 // 退出前向 Host 查询「会中断什么」的截止时间（对齐官方 2s）——超时按有任务处理。
 const QUIT_INSPECT_DEADLINE_MS = 2000;
+
+// ---------------------------------------------------------------------------
+// IPC 来源校验（0.3.42 · 对齐官方 ipc.ts:97-104 的 assertDesktopSender）
+//
+// 官方规约：任何 IPC 处理器都必须先确认调用方是「自己拥有的文档」。我们此前
+// 28 个 ipcMain.handle **零校验** —— 主窗口加载的是后端 Web UI（127.0.0.1 随机
+// 端口），理论上页面里任何脚本（含被注入/供应链污染的插件前端代码）都能直接
+// 调用 backend:rollback-to、plugins:install、app:restart、plugins:set-path-entry
+// 这类高权限通道，绕过 UI 确认。
+//
+// 与官方的差异（不能照抄）：官方文档走 `dsh-app://` 固定 scheme + 固定 hostname；
+// 我们是 http://127.0.0.1:<随机端口>（端口每次启动都变），另有 settings.html 走
+// file://。所以这里按「实际拥有的窗口」判定：sender 必须来自 mainWindow 或
+// settingsWindow 的 webContents；其次才做 origin 兜底校验。
+// ---------------------------------------------------------------------------
+
+/** 当前允许发起 IPC 的 webContents id 集合（窗口创建/销毁时维护）。 */
+function ownedWebContentsIds() {
+  const ids = new Set();
+  for (const w of [mainWindow, settingsWindow]) {
+    try { if (w && !w.isDestroyed()) ids.add(w.webContents.id); } catch {}
+  }
+  return ids;
+}
+
+/**
+ * 校验一次 IPC 调用是否来自我们拥有的文档，不是则抛错。
+ * @param {Electron.IpcMainInvokeEvent|Electron.IpcMainEvent} event
+ * @param {string} channel 仅用于错误信息
+ */
+function assertOwnedSender(event, channel) {
+  const frame = event && event.senderFrame;
+  if (!frame) throw new Error(`已拒绝来自未知来源的 IPC（${channel}：无 sender frame）`);
+  const ids = ownedWebContentsIds();
+  const senderId = event.sender ? event.sender.id : -1;
+  if (!ids.has(senderId)) {
+    throw new Error(`已拒绝来自非本应用窗口的 IPC（${channel}）`);
+  }
+  // origin 兜底：主窗口只允许后端地址，设置窗口只允许本地文件。
+  let url;
+  try { url = new URL(frame.url); } catch { throw new Error(`已拒绝来源不可解析的 IPC（${channel}）`); }
+  const isSettingsDoc = url.protocol === 'file:';
+  const isBackendDoc = (url.protocol === 'http:' || url.protocol === 'https:')
+    && (url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]');
+  if (!isSettingsDoc && !isBackendDoc) {
+    throw new Error(`已拒绝来源不属于本应用的 IPC（${channel}：${url.protocol}//${url.hostname}）`);
+  }
+}
+
+/** 包装 ipcMain.handle：先校验来源，再执行处理器。 */
+function handleIpc(channel, listener) {
+  ipcMain.handle(channel, (event, ...args) => {
+    assertOwnedSender(event, channel);
+    return listener(event, ...args);
+  });
+}
+
+// 退出前确认（0.3.42 · 对齐官方 quit-confirmation.ts）。
+// 我们的后端（标准 dsh web CLI）没有任务状态接口，因此采用保守语义：
+// 后端活着且曾就绪 ⇒ 视为「可能有任务」，问一次再退。
+const quitGuard = createQuitGuard({
+  hasInterruptibleWork: () => !!(backend && backend.exitCode === null && activeUrl),
+  confirm: async () => {
+    const { response } = await dialog.showMessageBox(
+      mainWindow && !mainWindow.isDestroyed() ? mainWindow : null,
+      {
+        type: 'question',
+        buttons: ['仍然退出', '取消'],
+        defaultId: 1, cancelId: 1, noLink: true,
+        title: `${APP_NAME} 退出`,
+        message: '退出将中断后端正在运行的任务',
+        detail: '如果有 agent 正在执行或消息正在排队，它们会被中断。\n\n' +
+          '选择「取消」可让它继续跑完；关闭窗口不会退出应用，' +
+          'DSH 会留在系统托盘里继续工作。'
+      }
+    );
+    return response === 0;
+  },
+  now: () => {
+    isQuitting = true;
+    if (tray) { try { tray.destroy(); } catch {} tray = null; }
+    killProcessTree(backend);
+    app.quit();
+  },
+  log: (msg) => diag(msg)
+});
 
 function pushLog(line) {
   const text = line == null ? '' : line.toString();
@@ -490,12 +577,26 @@ async function startBackendWithHealing(opts = {}) {
   // one night while the real defect sat outside `profiles/` the whole time.
   // Once the log names a credential key, the failure is provably NOT profile-local:
   // repair the key (backup + atomic write) and retry the backend. Never quarantine.
+  //
+  // 0.3.42 · 护栏原因集合：任何"已证明根因不在 profiles"的归因都登记在此。
+  // 只要集合非空，就绝不允许继续下坠到不可逆的 profile 隔离。
+  const guardReasons = new Set();
   let credentialHandled = false;
   try {
     const credDiag = mgr.analyzeCredentialFailure(backendLogs.join(''));
     if (credDiag.credentials) {
       credentialHandled = true;
+      // 0.3.42 · 把"守卫原因"从单一布尔升级为集合。护栏的意义是：一旦能证明
+      // 根因不在 profiles，就绝不允许阶梯继续下坠到不可逆的 profile 隔离。
+      // 集合形态让未来每一种可归因的 home 级故障都能登记自己的理由，而不是
+      // 各自发明一个布尔量、彼此覆盖。
+      guardReasons.add(`凭据文档故障（键：${credDiag.keys.join('、') || '见日志'}）`);
+      // 关键服务包归因：告诉用户"倒下的不只是这一个包，而是它承载的 N 项能力"。
+      const attrib = mgr.attributeCriticalFailure(backendLogs.join(''));
       pushLog(`后端启动失败根因：home 级 .credentials.yaml 的凭证键非法（${credDiag.keys.join('、') || '见日志'}）。这不是 profiles 的问题——跳过 profile 隔离，直接修复凭据键。\n`);
+      if (attrib.package) {
+        pushLog(`受影响面：${attrib.role}（${attrib.package}）加载失败，连带 ${attrib.affectedCount} 项依赖它的能力一起不可用：${attrib.dependents.join('、')}。\n`);
+      }
       diag('凭据文档故障归因（护栏触发，阻止 profile 隔离）:', credDiag);
       const pre = mgr.validateCredentialsDocument(p.dshHome);
       const repair = mgr.repairCredentialKeys(p.dshHome, pre.problems);
@@ -503,12 +604,14 @@ async function startBackendWithHealing(opts = {}) {
         const list = repair.changed.map((c) => `${c.from} → ${c.to}`).join('；');
         pushLog(`已规范化 ${repair.changed.length} 条凭证键：${list}（原文件已备份：${repair.backup}）。\n`);
         try {
-          await dialog.showMessageBox(null, {
+          await dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : null, {
             type: 'warning',
             buttons: ['继续启动'], defaultId: 0, noLink: true,
             title: APP_NAME,
             message: '发现并修复了损坏的凭据配置',
-            detail: `凭证文件 .credentials.yaml 里 ${repair.changed.length} 条记录的键不符合 dsh 要求的“<scope>/<id>”格式，正是它导致后端启动失败（与插件、profiles 无关）。\n\n已规范化：\n${list}\n\n原文件已备份为：\n${repair.backup}\n\n若你的密钥值本身无误，修复后即可正常启动；无需重装任何插件。`
+            detail: `凭证文件 .credentials.yaml 里 ${repair.changed.length} 条记录的键不符合 dsh 要求的“<scope>/<id>”格式，正是它导致后端启动失败（与插件、profiles 无关）。\n\n` +
+              (attrib.package ? `${attrib.role}是 ${attrib.affectedCount} 项能力的共用依赖，所以它一倒，这些功能会同时不可用；修好键之后它们会一起恢复。\n\n` : '') +
+              `已规范化：\n${list}\n\n原文件已备份为：\n${repair.backup}\n\n若你的密钥值本身无误，修复后即可正常启动；无需重装任何插件。`
           });
         } catch {}
         stopBackend();
@@ -537,7 +640,13 @@ async function startBackendWithHealing(opts = {}) {
   // failure falls through to Node repair.
   // 0.3.41: a credential failure is never profile-local — 1d above already
   // proved it, so quarantine is skipped entirely rather than burning profiles.
-  const qRes = credentialHandled ? null : mgr.quarantineProfiles(p.dshHome);
+  // 0.3.42: 判定改为"护栏原因集合非空"。profile 隔离是**不可逆**操作（会重建
+  // 整棵配置树），因此只要有任何一项归因证明根因在 profiles 之外，就必须跳过。
+  if (guardReasons.size) {
+    pushLog(`已跳过 profile 隔离：${Array.from(guardReasons).join('；')} —— 根因不在 profiles 内，隔离只会白白重建配置。\n`);
+    diag('profile 隔离被护栏阻止，原因:', Array.from(guardReasons));
+  }
+  const qRes = (credentialHandled || guardReasons.size) ? null : mgr.quarantineProfiles(p.dshHome);
   let booted = false;
   if (qRes && qRes.quarantined) {
     if (!qRes.fallback) {
@@ -997,7 +1106,7 @@ async function createMainWindow(url) {
   mainWindow = createChromiumWindow(url);
 }
 
-function showFatal(err) {
+async function showFatal(err) {
   diag('启动失败（fatal）:', err);
   setBootPhase('failed', err);
   closeSplash();
@@ -1007,14 +1116,18 @@ function showFatal(err) {
 
   // 0.3.39 · 对齐官方 crash-report：写独立崩溃报告文件（完整错误+日志尾部+
   // 渲染层错误尾部），启动时清理旧的（只删 crash-*.log，保留 10 份）。
+  // 0.3.42 · 落盘加上限（对齐官方 fatal-recovery.ts 的 CRASH_REPORT_WAIT_MS）：
+  // 旧实现同步写在弹窗之前，磁盘慢时主进程卡在写入里，恢复弹窗被无限期推迟。
+  // 现在超时（1s）就按"没有报告路径"照常弹窗 —— 报告可以缺席，自救入口不行。
   let reportPath = null;
   try {
-    reportPath = crashReport.writeCrashReport({
+    reportPath = await crashReport.writeCrashReportBounded({
       source: 'host', phase: 'startup', error: err,
       backendReady: false, backendLogTail: tail,
       rendererConsole: rendererConsoleTail
     });
     if (reportPath) diag('崩溃报告已写入:', reportPath);
+    else diag('崩溃报告未在时限内写入（弹窗照常）');
     const pruned = crashReport.pruneCrashReports();
     if (pruned) diag(`已清理 ${pruned} 份旧崩溃报告（保留最新 10 份）`);
   } catch (e) { diag('崩溃报告写入失败（弹窗照常）:', e && e.message); }
@@ -1057,30 +1170,55 @@ function showFatal(err) {
         `完整滚动日志：${logPath}\n` +
         '关闭此窗口后，右键系统托盘的 DSH 图标随时可以再进这些操作。');
 
-  dialog.showMessageBox(null, {
-    type: 'error',
-    buttons: addressInUse
-      ? ['重试启动', '退出']
-      : ['查看启动日志', '修复插件配置', '以安全模式重启', '重试启动', '留在托盘稍后处理', '退出'],
-    defaultId: 0, cancelId: addressInUse ? 1 : 4, noLink: true,
-    title: `${APP_NAME} 启动失败`,
-    message: addressInUse ? '端口被其他 DSH 实例占用' : '后端没能启动 —— 自救入口已就绪',
-    detail
-  }).then(async (r) => {
-    if (addressInUse) {
-      if (r.response === 1) quitApp(); else await restartApp();
+  // 0.3.42 · 恢复动作失败必须被看见（对齐官方 fatal-recovery.ts:93-102 的 for(;;) 重弹）。
+  // 旧实现在此处吞掉了所有异常：用户点了"修复插件配置"/"安全模式重启"/"重试"，
+  // 若对应动作抛错，弹窗消失、屏幕没有任何变化、也没有新弹窗 —— 用户完全不知道
+  // 发生了什么（这是我们自愈体系里最伤信任的一处）。现在把失败原因回灌到
+  // message/detail 并重新弹窗，让"失败"本身成为一个可操作的状态。
+  let fatalMessage = addressInUse ? '端口被其他 DSH 实例占用' : '后端没能启动 —— 自救入口已就绪';
+  let fatalDetail = detail;
+  for (;;) {
+    let r;
+    try {
+      r = await dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : null, {
+        type: 'error',
+        buttons: addressInUse
+          ? ['重试启动', '退出']
+          : ['查看启动日志', '修复插件配置', '以安全模式重启', '重试启动', '留在托盘稍后处理', '退出'],
+        defaultId: 0, cancelId: addressInUse ? 1 : 4, noLink: true,
+        title: `${APP_NAME} 启动失败`,
+        message: fatalMessage,
+        detail: fatalDetail
+      });
+    } catch (dialogErr) {
+      // 连弹窗都开不了（无显示环境等）：记日志后按"留在托盘"处理，不静默退出。
+      diag('恢复弹窗无法显示:', dialogErr && dialogErr.message);
       return;
     }
-    switch (r.response) {
-      case 0: try { shell.openPath(logPath); } catch {} break;
-      case 1: await requestPatchRepair(); break;
-      case 2: await requestEnterSafeMode(); break;
-      case 3: await restartApp(); break;
-      case 4: break; // stay resident; tray remains the recovery console
-      case 5: quitApp(); break;
-      default: break;
+    try {
+      if (addressInUse) {
+        if (r.response === 1) quitApp(); else await restartApp();
+        return;
+      }
+      switch (r.response) {
+        case 0: try { await shell.openPath(logPath); } catch (e) { diag('打开日志失败:', e && e.message); } break;
+        case 1: await requestPatchRepair(); break;
+        case 2: await requestEnterSafeMode(); break;
+        case 3: await restartApp(); break;
+        case 4: return; // stay resident; tray remains the recovery console
+        case 5: quitApp(); return;
+        default: return;
+      }
+      return;
+    } catch (actionErr) {
+      // 动作失败：把原因显示给用户并重弹，而不是让弹窗无声消失。
+      diag('恢复动作失败:', actionErr);
+      fatalMessage = '恢复操作失败';
+      fatalDetail = `${(actionErr && actionErr.message) ? actionErr.message : String(actionErr)}\n\n` +
+        '你可以重试，或先「查看启动日志」了解细节。你的会话、密钥、设置都在独立数据目录里，不受影响。\n' +
+        `完整滚动日志：${logPath}`;
     }
-  }).catch(() => {});
+  }
 }
 
 function isRealFeedUrl(urlStr) {
@@ -1290,8 +1428,8 @@ function settingsSnapshot() {
   return { settings, versions, updateStatus, shellUpdateVersion, shellVersion, registry, nodeDist, autoStart, safeMode };
 }
 
-ipcMain.handle('settings:get', () => settingsSnapshot());
-ipcMain.handle('settings:set-route', (_e, route) => {
+handleIpc('settings:get', () => settingsSnapshot());
+handleIpc('settings:set-route', (_e, route) => {
   if (route !== 'official' && route !== 'mirror') return null;
   mgr.writeSettings({ npmRegistry: route });
   const info = mgr.registryInfo();
@@ -1299,7 +1437,7 @@ ipcMain.handle('settings:set-route', (_e, route) => {
   diag('更新路线设置变更:', info);
   return info;
 });
-ipcMain.handle('settings:check-updates', async () => {
+handleIpc('settings:check-updates', async () => {
   if (silentBusy) return { busy: true };
   const info = await checkBackendUpdates({ includeNode: true });
   let registry = null; try { registry = mgr.registryInfo(); } catch {}
@@ -1310,7 +1448,7 @@ ipcMain.handle('settings:check-updates', async () => {
   } catch {}
   return { busy: false, info, status: updateStatus, registry, nodeGate };
 });
-ipcMain.handle('settings:download-updates', async () => {
+handleIpc('settings:download-updates', async () => {
   if (silentBusy) return { busy: true };
   const parent = settingsWindow || mainWindow;
   if (updateStatus.state === 'ready') {
@@ -1348,21 +1486,21 @@ ipcMain.handle('settings:download-updates', async () => {
   if (r.response === 0) await stageConfirmedUpdates(info.updates, info);
   return { ok: true };
 });
-ipcMain.handle('settings:set-autostart', (_e, on) => {
+handleIpc('settings:set-autostart', (_e, on) => {
   try { app.setLoginItemSettings({ openAtLogin: !!on, args: ['--hidden'] }); pushLog(`auto-start ${on ? 'enabled' : 'disabled'}（设置窗）\n`); return true; } catch { return false; }
 });
-ipcMain.handle('settings:open-log', () => {
+handleIpc('settings:open-log', () => {
   try { return shell.openPath(require('./diag-log').logFile()); } catch { return 'failed'; }
 });
-ipcMain.handle('settings:restart-app', () => restartApp());
-ipcMain.handle('settings:set-node-dist', (_e, dist) => {
+handleIpc('settings:restart-app', () => restartApp());
+handleIpc('settings:set-node-dist', (_e, dist) => {
   if (dist !== 'official' && dist !== 'mirror') return null;
   mgr.writeSettings({ nodeDist: dist });
   const info = mgr.nodeDistInfo();
   pushLog(`Node 下载源已切换：${info.label}（${info.url}）\n`);
   return info;
 });
-ipcMain.handle('settings:check-node', async () => {
+handleIpc('settings:check-node', async () => {
   let latest = null, err = null;
   try { latest = await mgr.latestNodeVersion(); } catch (e) { err = (e && e.message) || '网络错误'; }
   const cur = mgr.currentVersions()?.node || null;
@@ -1374,7 +1512,7 @@ ipcMain.handle('settings:check-node', async () => {
   let pinnedMajor = null; try { pinnedMajor = parseInt(process.env.DSH_NODE_MAJOR || '24', 10); } catch {}
   return { latest, current: cur, staged, required: req.required, reqOk: req.ok, available, pinnedMajor, err, dist };
 });
-ipcMain.handle('settings:download-node', async (_e, version) => {
+handleIpc('settings:download-node', async (_e, version) => {
   if (silentBusy) return { busy: true };
   try {
     const res = await mgr.stageNode({ onLog: (m) => pushLog('[node-stage] ' + m + '\n') }, version || null);
@@ -1394,7 +1532,7 @@ ipcMain.handle('settings:download-node', async (_e, version) => {
 // ---------------------------------------------------------------------------
 // 通用剪贴板（供设置窗「插件安装与终端」区复制命令用）
 // ---------------------------------------------------------------------------
-ipcMain.handle('shell:copy-text', (_e, text) => {
+handleIpc('shell:copy-text', (_e, text) => {
   try {
     clipboard.writeText(String(text || ''));
     return true;
@@ -1402,7 +1540,7 @@ ipcMain.handle('shell:copy-text', (_e, text) => {
     return false;
   }
 });
-ipcMain.handle('settings:open', () => {
+handleIpc('settings:open', () => {
   createSettingsWindow();
   return true;
 });
@@ -1540,15 +1678,15 @@ async function restartApp(extraArgs = []) {
   app.exit(0);
 }
 
-ipcMain.handle('app:get-version', () => app.getVersion());
+handleIpc('app:get-version', () => app.getVersion());
 // 0.3.39 · 设备信息（对齐官方 dshDesktop.deviceInfo()）：平台/OS/架构/CPU/内存，
 // 无主机名用户名序列号。
-ipcMain.handle('app:device-info', () => { try { return readDeviceInfo(); } catch { return ''; } });
-ipcMain.handle('backend:versions', () => { try { return mgr.currentVersions(); } catch { return null; } });
-ipcMain.handle('env:isolation', () => { try { return mgr.describeEnvIsolation(); } catch { return null; } });
-ipcMain.handle('backend:check-updates', () => checkBackendUpdates({ includeNode: true }));
+handleIpc('app:device-info', () => { try { return readDeviceInfo(); } catch { return ''; } });
+handleIpc('backend:versions', () => { try { return mgr.currentVersions(); } catch { return null; } });
+handleIpc('env:isolation', () => { try { return mgr.describeEnvIsolation(); } catch { return null; } });
+handleIpc('backend:check-updates', () => checkBackendUpdates({ includeNode: true }));
 // 后端全版本列表（npm 已发布全部版本，倒序）+ 当前/暂存/最新。
-ipcMain.handle('backend:list-versions', async () => {
+handleIpc('backend:list-versions', async () => {
   try {
     const info = await mgr.npmDshVersionsAll();
     const cur = mgr.currentVersions()?.dsh || null;
@@ -1557,7 +1695,7 @@ ipcMain.handle('backend:list-versions', async () => {
   } catch (e) { return { err: (e && e.message) || '获取版本列表失败' }; }
 });
 // 回退兼容性分析：对目标版本给出各插件可用性判定 + 导出桌面报告。
-ipcMain.handle('backend:compat-plan', async (_e, version) => {
+handleIpc('backend:compat-plan', async (_e, version) => {
   if (!version) return { err: '缺少目标版本' };
   try {
     const plan = await mgr.analyzeBackendRollback(String(version));
@@ -1568,7 +1706,7 @@ ipcMain.handle('backend:compat-plan', async (_e, version) => {
   } catch (e) { return { err: (e && e.message) || '分析失败' }; }
 });
 // 回退到指定后端版本（暂存 + 重启生效）。
-ipcMain.handle('backend:rollback-to', async (_e, version) => {
+handleIpc('backend:rollback-to', async (_e, version) => {
   if (silentBusy) return { busy: true };
   if (!version) return { ok: false, msg: '缺少目标版本' };
   try {
@@ -1601,7 +1739,7 @@ function pushPluginLog(line) {
 }
 
 // 终端接线总览：DSH_HOME 环境变量 + 包装器 + PATH + 可复制命令。
-ipcMain.handle('plugins:terminal-status', () => {
+handleIpc('plugins:terminal-status', () => {
   try {
     const env = mgr.dshHomeEnvStatus();
     const pathSt = mgr.userPathStatus();
@@ -1615,7 +1753,7 @@ ipcMain.handle('plugins:terminal-status', () => {
 });
 
 // 写入/移除用户级 DSH_HOME（让 README 原文命令也落到桌面 home）。
-ipcMain.handle('plugins:set-dsh-home-env', (_e, enabled) => {
+handleIpc('plugins:set-dsh-home-env', (_e, enabled) => {
   try {
     const st = mgr.setDshHomeEnv(!!enabled);
     diag('DSH_HOME 用户环境变量:', enabled ? '写入' : '移除', st.current);
@@ -1624,7 +1762,7 @@ ipcMain.handle('plugins:set-dsh-home-env', (_e, enabled) => {
 });
 
 // 生成包装器脚本 + 加入/移出用户 PATH（追加在末尾，不抢占已有全局 dsh）。
-ipcMain.handle('plugins:set-path-entry', (_e, enabled) => {
+handleIpc('plugins:set-path-entry', (_e, enabled) => {
   try {
     const st = mgr.setUserPathEntry(!!enabled);
     diag('包装器 PATH:', enabled ? '加入' : '移出', st.dir);
@@ -1632,13 +1770,13 @@ ipcMain.handle('plugins:set-path-entry', (_e, enabled) => {
   } catch (e) { return { ok: false, msg: (e && e.message) || '修改 PATH 失败' }; }
 });
 
-ipcMain.handle('plugins:write-wrappers', () => {
+handleIpc('plugins:write-wrappers', () => {
   try { return { ok: true, ...mgr.writeWrapperScripts() }; }
   catch (e) { return { ok: false, msg: (e && e.message) || '生成包装器失败' }; }
 });
 
 // 应用内安装插件 —— 唯一保证 DSH_HOME 正确的通道（分发用户无需碰终端）。
-ipcMain.handle('plugins:install', async (_e, payload) => {
+handleIpc('plugins:install', async (_e, payload) => {
   const spec = payload && payload.spec;
   const profile = (payload && payload.profile) || 'web';
   if (!spec) return { ok: false, msg: '请填写插件名' };
@@ -1664,7 +1802,7 @@ ipcMain.handle('plugins:install', async (_e, payload) => {
 });
 
 // 扫描旧 CLI home（~/.dsh）里桌面版看不见的插件。
-ipcMain.handle('plugins:scan-legacy', () => {
+handleIpc('plugins:scan-legacy', () => {
   try {
     const scan = mgr.scanLegacyHome();
     diag('旧 Home 扫描:', { home: scan.home, exists: scan.exists, orphans: scan.total });
@@ -1673,7 +1811,7 @@ ipcMain.handle('plugins:scan-legacy', () => {
 });
 
 // 勾选导入：逐个走应用内安装流程装进桌面 home，并把报告导出到桌面。
-ipcMain.handle('plugins:import-legacy', async (_e, payload) => {
+handleIpc('plugins:import-legacy', async (_e, payload) => {
   const items = (payload && payload.items) || [];
   const profile = (payload && payload.profile) || 'web';
   if (!items.length) return { ok: false, msg: '未选择要导入的插件' };
@@ -1700,7 +1838,7 @@ ipcMain.handle('plugins:import-legacy', async (_e, payload) => {
   } finally { pluginBusy = false; }
 });
 
-ipcMain.handle('app:restart', () => restartApp());
+handleIpc('app:restart', () => restartApp());
 
 // ---------------------------------------------------------------------------
 // Boot
@@ -2057,10 +2195,22 @@ if (!gotLock) {
       // 更新 journal：后端已启动且主窗口加载成功，把 applied 记录推进到
       // verified。一条 applied 却从未 verified 的记录意味着上次更新在验证前
       // 崩溃 —— 这里闭环。
+      //
+      // 0.3.42 · 补上读取端。此前只写不读：journalUnverified() 全仓唯一引用是
+      // 单元测试，0.3.38 建的"崩溃归因证据链"断在最后一步 —— 我们记录了
+      // "上次更新没验证通过"，却从来没有人在启动时看过它。现在在推进前先读：
+      // 若存在上一轮的 applied 记录，说明**本次启动之前**的更新曾中途失败，
+      // 这是导致"版本看起来更新了但行为没变"的一类隐蔽故障，必须留下痕迹。
       try {
+        const stale = mgr.journalUnverified();
+        if (stale.length) {
+          const brief = stale.slice(-3).map((e) => `${e.kind}→${e.to || '?'}(${e.at})`).join('; ');
+          diag(`journal：检测到 ${stale.length} 条上次更新未验证的记录（更新可能未真正生效）：${brief}`);
+          pushLog(`[journal] ${stale.length} 条 applied 记录在验证前中断：${brief}\n`);
+        }
         const nV = mgr.journalMarkVerified();
         if (nV) diag(`journal：${nV} 条 applied 记录已标记 verified`);
-      } catch {}
+      } catch (e) { diag('journal 检查失败:', e && e.message); }
       // 7) Background: shell updater + silent backend updates.
       setupShellUpdater();
       scheduleSilentUpdates();
@@ -2075,6 +2225,30 @@ if (!gotLock) {
     // not quit. Only quit for a real exit or when the tray could not be created.
     if (isQuitting || !tray) { isQuitting = true; killProcessTree(backend); app.quit(); }
   });
-  app.on('before-quit', () => { isQuitting = true; killProcessTree(backend); });
+
+  // 0.3.42 · 退出前确认（对齐官方 quit-confirmation.ts）。
+  //
+  // before-quit 是所有退出路径的唯一汇聚点（托盘「退出」、启动失败弹窗的
+  // 「退出」、窗口全关、系统关机）。此前这里无条件杀后端：用户跑着长任务点
+  // 退出，任务无声消失、连一句提示都没有（main.js:94 那个
+  // QUIT_INSPECT_DEADLINE_MS 常量从未被任何代码读取，就是这段缺失的化石）。
+  //
+  // 这里拦截第一次 before-quit，问一次；用户确认或选择不再询问后放行。
+  // 防重入由 quitGuard 内部处理（合并重复请求，不叠弹窗）。
+  app.on('before-quit', (e) => {
+    if (isQuitting) { killProcessTree(backend); return; }
+    if (quitGuard.settled) { isQuitting = true; killProcessTree(backend); return; }
+    // 后端没起来过 / 已不在 ⇒ 没有任何会被中断的东西，不打扰用户。
+    if (!backend || backend.exitCode !== null || !activeUrl) {
+      isQuitting = true; killProcessTree(backend); return;
+    }
+    e.preventDefault();
+    quitGuard.requestQuit('before-quit').then(() => {
+      if (isQuitting) killProcessTree(backend);
+    }).catch((err) => {
+      diag('退出确认异常，直接退出:', err && err.message);
+      isQuitting = true; killProcessTree(backend); app.quit();
+    });
+  });
   process.on('exit', () => { isQuitting = true; killProcessTree(backend); });
 }

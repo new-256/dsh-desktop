@@ -2,6 +2,63 @@
 
 这里记录每个版本改了什么。版本号和 `package.json` 保持一致。
 
+## 0.3.42（2026-10-11）
+
+**把官方桌面版拆开逐模块比对后，修复了 7 个已确认的真实缺陷（含 1 个会导致用户 PATH 被清空的数据安全问题）。** 本轮不再只比"功能有无"，而是逐行读官方 65 个 TS 模块（7000+ 行）与我们两个大文件对照，每条结论都要求能指出官方文件:行号 + 我们的对应位置。
+
+比对方法：官方源码稀疏克隆到本地逐模块精读（`apps/desktop/src`），产出四份报告存于 `lab/official-compare/`（启动/更新/交互/所有权安全）。**明确排除**了若干"看起来该抄但实测不该抄"的项（见文末）。
+
+### 数据安全（P0，最严重）
+
+**`setUserPathEntry` 可能清空用户整个用户级 PATH。** 旧实现把 `regQueryUserEnv('Path')` 读失败（返回 null）当成"PATH 为空"：`entries=[]` → `without=[]` → `next=[]` → 走到 `regDeleteUserEnv('Path')`。**一次读取失败就抹掉用户所有 PATH 条目。** 改用户 PATH 是不可逆破坏，现在三重防护：
+
+- 读不到就**中止**（绝不基于陈旧快照写入）——对齐官方 `command-installation.ts:189` 的指纹 + ESTALE 纪律
+- 安全阀：拒绝把 N 条 PATH 缩减到 ≤1 条
+- 写后**回读校验**，不符则回滚原值
+
+### 自愈体系（P0）
+
+**护栏载荷从布尔升级为原因集合。** `credentialHandled` 单布尔 → `guardReasons: Set`。意义：profile 隔离是不可逆操作（重建整棵配置树），只要**任一**归因证明根因在 profiles 之外就必须跳过；集合形态让每一种可归因的 home 级故障登记自己的理由，而不是各自发明布尔量互相覆盖。短路时会明确告诉用户跳过了什么。
+
+**补上 journal 的读取端——0.3.38 建的崩溃归因证据链此前断在最后一步。** `journalUnverified()` 写好了、导出了、单测覆盖了，但**全仓没有任何生产代码调用它**（唯一引用是 `scripts/test-038.js`）。也就是说：我们记录了"上次更新没验证通过"，却从来没有人在启动时看过它。现在步骤 6 推进 `applied → verified` 之前先读，若存在上一轮的 applied 记录就说明**本次启动之前**的更新曾中途失败（"版本看起来更新了但行为没变"的一类隐蔽故障），记入诊断日志与后端日志。
+
+**关键服务包归因（借鉴官方 `core-package-set.ts` 的"显式必需集"抽象）。** 10-11 事故的本质不是"凭据文件格式错了"，而是**没有任何一处代码知道 `credentials` 是其它 9 个插件的必需依赖**——所以后端只说一句无名的 `1 required plugin did not activate`，归因式自愈点不到名字，阶梯只能下坠到最重的隔离。现在 `CRITICAL_SERVICE_PACKAGES` 显式声明服务型关键包及其依赖方，`attributeCriticalFailure()` 从日志归因到"哪个必需服务倒了、会连带倒掉什么"，并在修复弹窗里告诉用户"这是 9 项能力的共用依赖，修好会一起恢复"。实测对无关失败（插件语法错）**不误报**。
+
+### 稳定性与隐私（P0/P1）
+
+**下载超时从"总时长"改为"空闲"。** 旧代码 `req.setTimeout(30000)` 是**整请求总超时**，而同一文件的注释自己写着 "node.exe 有 80+ MB"——慢速/镜像限速下必然中途被 kill 且无断点续传，用户只能反复重来。改为对齐官方 `update-http-executor.ts` 的 idle 语义（注释原文 "not a total download deadline"）：连接 30s、**数据流动期间永不超时**、连续 60s 无字节才判卡死。另补 content-length 短读检查（截断的下载不再被 rename 成"下载完成"）。
+
+**`writeJson` 改为原子写。** 旧实现是裸 `fs.writeFileSync`，进程中途被杀会留下**截断的 JSON**。这不是理论风险：被截断的 `cordis.patch.yml` 恰好触发我们自己的 Escalation 0a——**我们在给自己制造需要自愈的故障**。改为 temp + rename（同卷 rename 原子），失败清理临时文件。
+
+**28 个 IPC 处理器全部加上来源校验。** 此前 `ipcMain.handle` **零 sender 校验**：主窗口加载的是后端 Web UI（127.0.0.1 随机端口），页面里任何脚本（含被投毒/供应链污染的插件前端）都能直接调用 `backend:rollback-to`、`plugins:install`、`app:restart`、`plugins:set-path-entry` 这类高权限通道，绕过 UI 确认。新增 `assertOwnedSender()`（对齐官方 `ipc.ts:97-104`）并用 `handleIpc()` 包住全部 28 个通道。**与官方的差异**：官方文档走固定 `dsh-app://` scheme，我们是随机端口 + `file://` 设置页，因此按"实际拥有的窗口 webContents + 回环/file origin"判定，不能照抄。
+
+**崩溃报告落盘加上限（1s）。** 旧代码在弹窗**之前**同步写报告，磁盘慢/被杀软扫描时主进程卡在写入里，恢复弹窗被无限期推迟——用户看到"点了图标没反应"，而真正该出现的自救入口迟迟不来。现在对齐官方 `CRASH_REPORT_WAIT_MS`：超时即按"没有报告路径"照常弹窗。**报告可以缺席，自救入口不行。** 另补 `flag:'wx'`（绝不覆盖已有报告）、头部 pid、写入失败留诊断（此前全吞，"没有报告"与"写失败"无法区分）。
+
+**恢复动作失败必须被看见。** `showFatal` 的恢复按钮此前是 `.catch(() => {})`：用户点「修复插件配置」/「安全模式重启」/「重试」，动作抛错则弹窗消失、屏幕无变化、也没有新弹窗——用户完全不知道发生了什么，这是自愈体系里最伤信任的一处。改为对齐官方 `fatal-recovery.ts:93-102` 的 `for(;;)`：把失败原因回灌 message/detail 并重弹，让"失败"本身成为可操作状态。
+
+**退出前确认（此前完全缺失）。** `main.js:94` 声明了 `QUIT_INSPECT_DEADLINE_MS = 2000` 并注释"对齐官方 2s"，但**全项目再无任何读取点**——官方 `quit-confirmation.ts` 那套退出前任务检查我们根本没实现，只留了个常量和注释当化石。6 个退出口全部无条件杀后端：用户跑着长任务点退出，任务无声消失。新增 `quit-guard.js` 挂在 `before-quit`（所有退出路径的唯一汇聚点）。**与官方的差异（保守版）**：我们的后端是标准 `dsh web` CLI，没有任务状态接口，因此采用"后端活着且曾就绪 ⇒ 视为可能有任务，问一次"；并实现防重入（确认框期间重复退出合并为一次询问）、取消后可再问、弹窗失败仍放行退出（绝不卡死）。
+
+### 隐私与隔离（P1）
+
+**journal 错误不再落盘原文。** 旧实现存 `"CODE: " + 原文前 120 字符`，而 journal 是长期留存、可能被分享给他人排查的证据文件——原始错误串常带镜像 URL、代理主机名、内网路径，恰是本文件设计要避免暴露的。改为**只落分类码**（对齐官方 `update-journal.ts:17,27` "错误全文绝不落盘"）。这与我们自己在同文件刻意做的脱敏自相矛盾，一并消除。
+
+**启动器命名空间保护。** 对齐官方 `login-shell-environment.ts:17,99` 的 `LAUNCHER_OWNED_PREFIXES`：剥离所有来自环境的 `DSH_*` / `ELECTRON_*`，再由启动器显式重建自己需要的（`DSH_HOME` 等）。此前只单点保护 `DSH_HOME`，用户 shell 里残留的 `DSH_CLIENT_VERSION` 之类会**静默改变桌面版行为**，产生无法复现也无法归因的故障。
+
+### 验证
+
+- **209 项断言全部通过**（新增 `scripts/test-042.js` 66 项；`test-041` 44、`test-040` 20、`test-039` 28、`test-038` 21、`test-manifest-verify` 30）
+- 端到端实测：env 隔离正确剥离 `DSH_CLIENT_VERSION`/`DSH_SNEAKY`/`ELECTRON_RUN_AS_NODE` 并保留 `NPM_CONFIG_CACHE`；journal 读取端正确识别"上次更新未验证"；关键服务包归因命中真实事故日志（9 项连带能力）且对无关失败不误报
+- 完整启动冒烟：以 electron 桩加载 `main.js`，启动链路走到步骤 5（后端 spawn）无异常
+- `test-038`/`test-039` 的旧断言显式编码了"落盘原文"的旧行为（fixture 里就带着 `https://registry.example/proxy-detail`），已改为断言新的隐私行为
+
+### 明确"不抄"（同样重要）
+
+- **`ELECTRON_RUN_AS_NODE` 后端架构**：官方用它让 Electron 自己当 Node 跑后端（实测无独立 `node.exe`），内存占用更低。但实测 **ABI 不兼容**：Electron Node 模式 `modules=149`，我们的独立 node `modules=137`，而后端有 **12 个 native 模块**（`node-pty` 终端、`sharp`、`koffi`、`sherpa-onnx`），prebuild 按 137 编译，迁移会全部加载失败。官方自己也摆脱不了"需要一个叫 node 的可执行文件"——它的 `node.cmd` 只是个 3 行 shim。**结论：不迁移**，`main.js` 里 `delete env.ELECTRON_RUN_AS_NODE` 是正确防御而非落后。
+- **官方 11 个 preload 拆分**：收益是职责隔离，但需配套固定协议与专用文档来源，我们架构（单 preload + 随机端口 Web UI）拆分成本远超收益。
+- **官方 keyboard.ts 260 行状态机**：我们没有产品快捷键表，`setApplicationMenu(null)` 已禁用应用菜单，移植即死代码。
+- **`core-package-set.ts` 直接照搬**：它是**发布期签名包校验器**（`RELEASE_PACKAGES` 仅 `dsh` 与 `dsh-desktop-host`），**不涉及任何插件**且失败路径全是 throw（fail-closed、无降级）。只借鉴其"显式必需集"抽象，不照搬机制。
+- **官方 update-overlay 透明遮罩**：本质是"可查询、可嵌套、带 revision 的输入阻塞状态"，需配套 `dsh-app://` 协议路由 + 专用 preload，成本远超收益。
+
 ## 0.3.41（2026-10-11）
 
 **修复「home 级文件故障被误判为 profiles 损坏」这一自愈设计缺陷——10-11 凌晨它连烧三份 profile 且完全无效。** 同时按官方最新桌面版（`@deepseek-ai/dsh-desktop@0.2.1-alpha.2`，commit d743267，2026-10-09）做了新一轮比对。
