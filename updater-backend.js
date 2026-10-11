@@ -141,12 +141,117 @@ function mkdirp(d) { fs.mkdirSync(d, { recursive: true }); }
 function execSync(cmd) {
   try { require('child_process').execSync(cmd, { stdio: 'ignore', shell: true }); } catch {}
 }
-function rimraf(d) {
+
+/**
+ * 删除"我们拥有的目录"，但**绝不进入链接目标**（0.3.43 · 对齐官方
+ * owned-directory.ts 的 removeOwnedDirectory）。
+ *
+ * ## 为什么必须自己走一遍
+ *
+ * 官方的注释一句话点破（owned-directory.ts:19）：
+ *   "Electron's recursive rm follows nested Windows junctions into installed resources."
+ *
+ * 这对我们不是理论风险 —— 实测用户机器 `dsh-home\profiles\web\node_modules` 里
+ * 有两个 junction 指向**真实插件开发目录**（含 .git、123 个文件）：
+ *
+ *     @local\repo-push-access        → C:\Users\lcl\Desktop\DSH插件开发\...\repo-push-access
+ *     dsh-repo-push-access           → （同上）
+ *
+ * 而我们旧的 rimraf 有三条会跟随链接的路径：
+ *   ① fs.rmSync(d, {recursive:true})  —— Node 在 Windows 上会进入 junction 删目标内容
+ *   ② rmdir /s /q                     —— cmd 同样跟随链接（最危险）
+ *   ③ 删除 profiles 树时，任何嵌套 junction 都会被连带处理
+ *
+ * 一旦隔离/清理逻辑作用在 profiles 树上，用户的**插件源码和未提交改动**就会被删掉。
+ *
+ * ## 做法
+ *
+ * 自底向上手工遍历：遇到链接（isSymbolicLink，Windows 的 junction 也被它覆盖）
+ * 就只 unlink 链接本身、**绝不递归进去**；普通目录递归；普通文件 unlink。
+ * 缺根直接返回；根存在但不是目录也不是链接则报错（宁可不删，也不猜）。
+ *
+ * @param {string} target 我们拥有的目录或链接
+ * @param {{throwOnUnexpected?: boolean}} [opts]
+ * @returns {{removed: boolean, linksUnlinked: number, reason?: string}}
+ */
+function removeOwnedDirectory(target, opts = {}) {
+  const result = { removed: false, linksUnlinked: 0 };
+  let st;
+  try { st = fs.lstatSync(target); } catch { return { ...result, reason: 'missing' }; }
+
+  // 根自身是链接：只摘链接，目标内容保持原样。
+  if (st.isSymbolicLink()) {
+    try { fs.unlinkSync(target); return { removed: true, linksUnlinked: 1, reason: 'root-was-link' }; }
+    catch (e) { return { ...result, reason: 'unlink-failed: ' + e.message }; }
+  }
+  if (!st.isDirectory()) {
+    // 普通文件：删除它是明确的（调用方说这是"我们的目录"，却是文件 → 保守处理）
+    if (opts.throwOnUnexpected) throw new Error(`removeOwnedDirectory: 路径不是目录 ${target}`);
+    return { ...result, reason: 'not-a-directory' };
+  }
+
+  // 自底向上：每个子目录在自身遍历结束后立即 rmdir（对齐官方
+  // owned-directory.ts:22-26 的递归结构——目录必须在递归返回后就地删除，
+  // 否则上层 rmdir 会因 ENOTEMPTY 失败，留下删不干净的残树）。
+  const walk = (dir) => {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+    catch (e) { throw new Error(`读取失败 ${dir}: ${e.message}`); }
+    for (const entry of entries) {
+      const child = path.join(dir, entry.name);
+      let cst;
+      try { cst = fs.lstatSync(child); } catch { continue; }
+      if (cst.isSymbolicLink()) {
+        // ★ 核心保证：只摘链接本身，绝不进入目标。
+        try { fs.unlinkSync(child); result.linksUnlinked++; } catch {}
+        continue;
+      }
+      if (cst.isDirectory()) walk(child);
+      else { try { fs.unlinkSync(child); } catch {} }
+    }
+    fs.rmdirSync(dir);
+  };
+
+  try {
+    walk(target);
+    result.removed = true;
+  } catch (e) {
+    result.reason = 'walk-failed: ' + e.message;
+    // 手工遍历失败（长路径/权限/占用）时**不回退到跟随链接的删除方式**——
+    // 宁可这次不删干净，也不能冒删掉用户源码的风险。交由调用方从容重试。
+  }
+  return result;
+}
+
+/**
+ * 删除目录。默认走"不跟随链接"的安全实现。
+ *
+ * 旧行为（跟随链接）只在明确无害的场景保留：删除我们自己刚下载解压的
+ * staging 目录（其中不可能有用户 junction）。此时传 followLinks: true 可
+ * 使用更快的原生 rmSync。
+ *
+ * @param {string} d
+ * @param {{followLinks?: boolean}} [opts]
+ */
+function rimraf(d, opts = {}) {
   if (!d) return;
+  // 1) 空目录 / 单个文件：最简单的两条路径，天然安全。
   try { fs.rmdirSync(d); return; } catch {}
   try { fs.unlinkSync(d); return; } catch {}
-  try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 3, retryDelay: 250 }); }
-  catch { execSync(`rmdir /s /q "${d}"`); }
+  // 2) junction / symlink：只摘链接本身（rmdirSync 对目录型 junction 有效，
+  //    但为明确语义这里再判一次）。
+  try {
+    const st = fs.lstatSync(d);
+    if (st.isSymbolicLink()) { fs.unlinkSync(d); return; }
+  } catch {}
+  // 3) 显式声明"这里没有用户链接"时才用原生递归删除。
+  if (opts.followLinks) {
+    try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 3, retryDelay: 250 }); return; }
+    catch { execSync(`rmdir /s /q "${d}"`); return; }
+  }
+  // 4) 默认：安全遍历，绝不进入链接目标。
+  const r = removeOwnedDirectory(d);
+  if (!r.removed) log(`rimraf(safe) 未完成 ${d}: ${r.reason || 'unknown'}（已保留现场，不会跟随链接删除）`);
 }
 function copyDir(src, dst) {
   mkdirp(path.dirname(dst));
@@ -4079,5 +4184,7 @@ module.exports = {
   comboGateCheck, dismissComboPrompt,
   journalAdd, readUpdateJournal, journalMarkVerified, journalUnverified,
   // 0.3.42 原子写（供测试与诊断调用）
-  writeJson, readJson
+  writeJson, readJson,
+  // 0.3.43 不跟随链接的目录删除（防 junction 删进用户源码）
+  removeOwnedDirectory, rimraf,
 };

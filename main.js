@@ -10,6 +10,7 @@ const mgr = require('./updater-backend');
 const diagLog = require('./diag-log');
 const crashReport = require('./crash-report');
 const { createQuitGuard } = require('./quit-guard');
+const ladderPolicy = require('./ladder-policy');
 const diag = diagLog.write;
 
 // 任何主进程异常都先落到桌面日志，再向用户展示 —— 不再出现"无声崩溃"。
@@ -336,10 +337,22 @@ function spawnBackend() {
   });
 }
 
+/** 把本轮阶梯裁决写入诊断日志（事故复盘用：能回答"为什么烧了 profile"）。 */
+function logLadderTrail(trail) {
+  if (!Array.isArray(trail) || !trail.length) return;
+  const lines = trail.map((t) => `  ${t.allowed ? '执行' : '跳过'} ${t.stage} [${t.damage}] ${t.reason}`);
+  diag('自愈阶梯裁决轨迹:\n' + lines.join('\n'));
+}
+
 /** Attempt to start the backend, self-healing common failure modes with escalations. */
 async function startBackendWithHealing(opts = {}) {
   const isolationRound = !!(opts && opts.isolationRound);
   const p = activePaths();
+  // 0.3.43 阶梯纪律：记录本轮每一步的裁决结果，事后可回答"那一夜它为什么烧了三次"。
+  const ladderTrail = [];
+  // 供 Escalation 2 的证据判定复用（1c 在这里赋值，隔离决策在后面读取）。
+  // 日志点名过"失败的第三方 bundle"是"根因在 profiles 内"的正面证据之一。
+  let failingBundles = [];
   let firstErr;
   try {
     return await spawnBackend();
@@ -471,6 +484,9 @@ async function startBackendWithHealing(opts = {}) {
   // Escalation 1a: repair/rebuild custom plugin junctions (a bare-name plugin
   // whose junction or real-dir was lost/misnamed). Cheap and non-destructive —
   // try it before any attribution or quarantine.
+  // 0.3.43: 通过阶梯纪律登记（可逆级，无条件允许，但仍留审计轨迹）。
+  const v1a = ladderPolicy.attemptStage('1a-junction-repair', { log: (m) => diag(m) });
+  ladderPolicy.recordAttempt(ladderTrail, '1a-junction-repair', v1a);
   const fixed = mgr.repairProfileJunctions(p.dshHome);
   if (fixed > 0) {
     pushLog(`自定义插件 junction 修复/重建：${fixed} 项。\n`);
@@ -497,6 +513,11 @@ async function startBackendWithHealing(opts = {}) {
     if (analysis) {
       failingSpecs = analysis.failing || [];
       if (analysis.broken && analysis.broken.length) {
+        // 0.3.43: 需点名级 —— 证据就是"日志把这个条目点了出来"。
+        const v1b = ladderPolicy.attemptStage('1b-disable-patch-entries', {
+          evidence: true, log: (m) => diag(m)
+        });
+        ladderPolicy.recordAttempt(ladderTrail, '1b-disable-patch-entries', v1b);
         const res = mgr.disableBrokenPatchPlugins(p.dshHome, analysis.broken);
         disabled = (res && res.disabled) || [];
         if (disabled.length) {
@@ -537,8 +558,13 @@ async function startBackendWithHealing(opts = {}) {
   // Remove just the named bundle(s) from dsh.profile.bundles (dependencies
   // stay installed), then retry — never the whole-tree safe mode.
   try {
-    const failingBundles = mgr.analyzeFailingBundles(p.dshHome, backendLogs.join(''));
+    failingBundles = mgr.analyzeFailingBundles(p.dshHome, backendLogs.join(''));
     if (failingBundles.length) {
+      // 0.3.43: 需点名级 —— 证据是"日志点名了具体 bundle 包"。
+      const v1c = ladderPolicy.attemptStage('1c-disable-bundles', {
+        evidence: true, log: (m) => diag(m)
+      });
+      ladderPolicy.recordAttempt(ladderTrail, '1c-disable-bundles', v1c);
       const res1c = mgr.disableFailingBundles(p.dshHome, failingBundles.map((b) => b.name));
       if (res1c.disabled.length) {
         pushLog(`临时禁用加载失败的插件包（仅从加载清单移除，依赖保留）：${res1c.disabled.join(', ')}（备份：${res1c.backup}）。\n`);
@@ -642,11 +668,55 @@ async function startBackendWithHealing(opts = {}) {
   // proved it, so quarantine is skipped entirely rather than burning profiles.
   // 0.3.42: 判定改为"护栏原因集合非空"。profile 隔离是**不可逆**操作（会重建
   // 整棵配置树），因此只要有任何一项归因证明根因在 profiles 之外，就必须跳过。
+  // 0.3.43: 交给阶梯纪律统一裁决（ladder-policy.js）。不可逆级必须拿到
+  // "根因确在此处"的**正面证据**；只有"没找到别的原因"这种消极证据时禁止执行
+  // —— 这正是 2026-10-11 直坠并连烧 3 份 profile 的成因。
+  //
+  // 什么算"根因确在 profiles 内"的正面证据（任一即可）：
+  //   a) 日志点名了 profile 内部的包/路径（profiles/ 出现在错误里）
+  //   b) profiles 树自身结构性损坏（存在但我们读不了 / 必需的 profile 目录缺失）
+  //   c) 日志点名了已知属于第三方 bundle 的失败
+  // 反例（**不**构成证据）：只知道"某个必需插件没激活"这类无名失败 —— 10-11 就是
+  // 这种情形，根因在 home 层的凭据文档，隔离 profiles 纯属白烧。
+  let profileLooksBroken = false;
+  let profileEvidenceWhy = '';
+  try {
+    const joined = backendLogs.join('');
+    if (/profiles[\\/]/i.test(joined)) {
+      profileLooksBroken = true;
+      profileEvidenceWhy = '日志点名了 profiles 内部路径';
+    }
+    const profilesDir = path.join(p.dshHome, 'profiles');
+    if (!profileLooksBroken && fs.existsSync(profilesDir)) {
+      try { fs.readdirSync(profilesDir); }
+      catch (e) { profileLooksBroken = true; profileEvidenceWhy = 'profiles 目录存在但无法读取（' + e.code + '）'; }
+    }
+    if (!profileLooksBroken && failingBundles && failingBundles.length) {
+      profileLooksBroken = true;
+      profileEvidenceWhy = '日志点名了失败的第三方 bundle';
+    }
+  } catch (e) {
+    diag('profile 证据判定异常（按无证据处理）:', e && e.message);
+  }
+  if (profileLooksBroken) {
+    pushLog(`profile 隔离证据：${profileEvidenceWhy}。\n`);
+  } else {
+    pushLog('profile 隔离证据：无正面证据表明根因在 profiles 内（本轮不会隔离 profile）。\n');
+  }
   if (guardReasons.size) {
     pushLog(`已跳过 profile 隔离：${Array.from(guardReasons).join('；')} —— 根因不在 profiles 内，隔离只会白白重建配置。\n`);
     diag('profile 隔离被护栏阻止，原因:', Array.from(guardReasons));
   }
-  const qRes = (credentialHandled || guardReasons.size) ? null : mgr.quarantineProfiles(p.dshHome);
+  const quarantineVerdict = ladderPolicy.attemptStage('2-quarantine-profiles', {
+    evidence: profileLooksBroken,
+    guardReasons: Array.from(guardReasons),
+    log: (m) => diag(m)
+  });
+  ladderPolicy.recordAttempt(ladderTrail, '2-quarantine-profiles', quarantineVerdict);
+  if (!quarantineVerdict.allowed) {
+    pushLog(`跳过 profile 隔离（${quarantineVerdict.reason}）。\n`);
+  }
+  const qRes = quarantineVerdict.allowed ? mgr.quarantineProfiles(p.dshHome) : null;
   let booted = false;
   if (qRes && qRes.quarantined) {
     if (!qRes.fallback) {
@@ -697,6 +767,21 @@ async function startBackendWithHealing(opts = {}) {
     pushLog('跳过 Node 运行时修复：失败源于插件配置加载，与 Node 运行时无关。\n');
     throw firstErr;
   }
+  // 0.3.43: 同为不可逆级，交给阶梯纪律裁决。正面证据 = node.exe 缺失/不可执行。
+  const nodeEvidence = (() => {
+    try { return !fs.existsSync(p.nodeExe); } catch { return false; }
+  })();
+  const nodeVerdict = ladderPolicy.attemptStage('3-node-repair', {
+    evidence: nodeEvidence,
+    guardReasons: Array.from(guardReasons),
+    log: (m) => diag(m)
+  });
+  ladderPolicy.recordAttempt(ladderTrail, '3-node-repair', nodeVerdict);
+  if (!nodeVerdict.allowed) {
+    pushLog(`跳过 Node 运行时修复（${nodeVerdict.reason}）。\n`);
+    logLadderTrail(ladderTrail);
+    throw firstErr;
+  }
   pushLog('attempting Node runtime repair escalation…\n');
   const nodeChanged = await mgr.repairNodeForBackendFailure({
     onLog: (m) => pushLog('[node-repair] ' + m + '\n')
@@ -713,6 +798,7 @@ async function startBackendWithHealing(opts = {}) {
     }
   }
 
+  logLadderTrail(ladderTrail);
   throw firstErr;
 }
 
