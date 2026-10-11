@@ -72,6 +72,8 @@ let backendLogsBytes = 0;
 let mainWindow = null;
 let splashWindow = null;
 let pendingShowMainWindow = false;
+// 0.3.44 · 关闭确认框的并发闸门（同一时刻只允许一个确认框存在）。
+let closeConfirmPending = false;
 let activeUrl = null;
 let safeMode = false;
 let isQuitting = false;
@@ -258,6 +260,83 @@ function killProcessTree(proc) {
   try { proc.kill(); } catch {}
 }
 
+/**
+ * 有界、可验证地停止后端（0.3.44）。
+ *
+ * ## 为什么不是官方的三段式
+ *
+ * 官方 host-process.ts:288-308 的 stop() 是：
+ *   shutdown IPC → 等 10s → SIGTERM → 等 5s → SIGKILL → 等 5s
+ *
+ * 我们**实测**（Windows 11 / node 24 / Electron 44）确认这套阶梯在本平台
+ * 结构上不适用，三段里有两点无法成立：
+ *
+ *   1. **没有 shutdown IPC**：官方拥有子进程的 stdio（`stdio: [...,'ipc']`），
+ *      能发自定义消息；我们启动的是标准 `dsh web` CLI，协议里没有关闭通道。
+ *   2. **Windows 没有可捕获的信号**：Node 的 `child.kill('SIGTERM')` 在该平台
+ *      走 TerminateProcess，**子进程的 SIGTERM handler 不会执行**。实测四种
+ *      投递方式（child.kill SIGTERM / 进程组 SIGBREAK / 进程组 SIGINT /
+ *      taskkill /T 不带 /F）**全部未能触发**子进程里注册的 handler。
+ *      ⇒ 官方的 SIGTERM→SIGKILL 两段在 Windows 上**是同一个动作**。
+ *
+ * 我们也验证了替代路径同样不存在：`dsh web` 无 --graceful 类开关、无 HTTP
+ * 关闭端点（实测 /api/shutdown、/shutdown、/api/quit、/api/exit、/quit 全 404）。
+ *
+ * 所以这里不做"假装优雅"的阶梯，而是做**真正能在本平台兑现的保证**：
+ *
+ *   a) **先请求后等待、且验证真的停了**——旧实现 fire-and-forget 调用 taskkill
+ *      就立刻返回，紧接着的重启/更新动作会与被杀进程竞争（端口、文件锁）。
+ *   b) **有界**——绝不无限等待，超时升级为强制，升级本身也有界。
+ *   c) **如实记录**——把"本平台无法优雅收尾"写进诊断日志，而不是让日志看起来
+ *      像做过优雅收尾。
+ *
+ * @param {import('child_process').ChildProcess} proc
+ * @param {{timeoutMs?: number, forceTimeoutMs?: number}} [opts]
+ * @returns {Promise<{stopped: boolean, forced: boolean, ms: number, how: string}>}
+ */
+async function stopBackendBounded(proc, opts = {}) {
+  const timeoutMs = opts.timeoutMs != null ? opts.timeoutMs : 6000;
+  const forceTimeoutMs = opts.forceTimeoutMs != null ? opts.forceTimeoutMs : 5000;
+  const started = Date.now();
+  if (!proc || proc.exitCode !== null) {
+    return { stopped: true, forced: false, ms: 0, how: 'already-exited' };
+  }
+
+  const pid = proc.pid;
+  const waitExit = (ms) => new Promise((resolve) => {
+    if (proc.exitCode !== null) return resolve(true);
+    let done = false;
+    const onExit = () => { if (!done) { done = true; clearTimeout(t); resolve(true); } };
+    const t = setTimeout(() => { if (!done) { done = true; try { proc.removeListener('exit', onExit); } catch {} resolve(false); } }, ms);
+    try { proc.once('exit', onExit); } catch { clearTimeout(t); resolve(false); }
+  });
+
+  // 阶段一：温和请求（不带 /F，给 GUI 型子进程响应 WM_CLOSE 的机会）。
+  try {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/pid', String(pid), '/T'], { windowsHide: true, stdio: 'ignore' });
+    } else {
+      try { proc.kill('SIGTERM'); } catch {}
+    }
+  } catch (e) { diag('温和停止请求失败（继续等待）:', e && e.message); }
+
+  if (await waitExit(timeoutMs)) {
+    return { stopped: true, forced: false, ms: Date.now() - started, how: process.platform === 'win32' ? 'taskkill-gentle' : 'SIGTERM' };
+  }
+
+  // 阶段二：强制。这是 Windows 上唯一真正生效的手段。
+  diag(`后端未在 ${timeoutMs}ms 内退出，升级为强制终止（pid=${pid}）`);
+  try { killProcessTree(proc); } catch (e) { diag('强制终止失败:', e && e.message); }
+
+  if (await waitExit(forceTimeoutMs)) {
+    return { stopped: true, forced: true, ms: Date.now() - started, how: 'forced' };
+  }
+
+  const ms = Date.now() - started;
+  diag(`后端在强制终止后仍未退出（pid=${pid}，已等待 ${ms}ms）；继续后续流程，但可能出现端口/文件锁竞争`);
+  return { stopped: false, forced: true, ms, how: 'still-running' };
+}
+
 /** Controlled stop: detach listeners first so a deliberate kill is never misread as a crash. */
 function stopBackend() {
   if (!backend) return;
@@ -266,6 +345,20 @@ function stopBackend() {
   activeUrl = null;
   try { proc.removeAllListeners('exit'); } catch {}
   killProcessTree(proc);
+}
+
+/**
+ * 停止后端并**等待它真的退出**（0.3.44）。
+ * 用于重启/更新/自愈重试等"停完马上还要用它"的场景 —— 旧实现在这些地方
+ * fire-and-forget 杀完就继续，会与被杀进程竞争端口与文件锁。
+ */
+async function stopBackendAndWait(opts = {}) {
+  const proc = backend;
+  if (!proc) return { stopped: true, forced: false, ms: 0, how: 'no-backend' };
+  backend = null;
+  activeUrl = null;
+  try { proc.removeAllListeners('exit'); } catch {}
+  return stopBackendBounded(proc, opts);
 }
 
 function activePaths() { return mgr.P(); }
@@ -371,8 +464,7 @@ async function startBackendWithHealing(opts = {}) {
     pushLog('隔离轮测中：跳过补丁编辑类自愈，仅做 junction 修复后重试。\n');
     const fixedRound = mgr.repairProfileJunctions(p.dshHome);
     if (fixedRound > 0) {
-      stopBackend();
-      await new Promise((r) => setTimeout(r, 800));
+      await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 800ms sleep
       try {
         return await spawnBackend();
       } catch (retryErrRound) {
@@ -385,8 +477,7 @@ async function startBackendWithHealing(opts = {}) {
   // R0: transient-failure check — right after an update apply, freshly written
   // files may not be fully settled yet; one raw retry self-heals those races
   // (the 0.1.5 first-boot case) without any escalation or dialogs.
-  stopBackend();
-  await new Promise((r) => setTimeout(r, 1200));
+  await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 1200ms sleep
   try {
     pushLog('retrying backend once (transient check)…\n');
     return await spawnBackend();
@@ -413,8 +504,7 @@ async function startBackendWithHealing(opts = {}) {
       });
       pushLog(`自愈：插件配置文件结构损坏，已修复 ${repairs.length} 处。\n${lines.join('\n')}\n`);
       diag('自愈 Escalation 0a 补丁结构修复:', repairs);
-      stopBackend();
-      await new Promise((r) => setTimeout(r, 600));
+      await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 600ms sleep
       try {
         const urlFixed = await spawnBackend();
         if (!autoStartHidden) {
@@ -432,8 +522,7 @@ async function startBackendWithHealing(opts = {}) {
       // The loader complained about structure but every layer validates now —
       // someone/something already repaired it; a plain retry is the right move.
       pushLog('自愈：日志报告补丁结构错误，但当前各补丁层校验均通过，直接重试。\n');
-      stopBackend();
-      await new Promise((r) => setTimeout(r, 600));
+      await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 600ms sleep
       try {
         return await spawnBackend();
       } catch (afterRecheck) {
@@ -467,8 +556,7 @@ async function startBackendWithHealing(opts = {}) {
           });
           if (r0.response === 1) { isQuitting = true; app.exit(0); return; }
         } catch {}
-        stopBackend();
-        await new Promise((r) => setTimeout(r, 800));
+        await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 800ms sleep
         try {
           pushLog('retrying backend after disabling conflicting patch entries…\n');
           return await spawnBackend();
@@ -490,8 +578,7 @@ async function startBackendWithHealing(opts = {}) {
   const fixed = mgr.repairProfileJunctions(p.dshHome);
   if (fixed > 0) {
     pushLog(`自定义插件 junction 修复/重建：${fixed} 项。\n`);
-    stopBackend();
-    await new Promise((r) => setTimeout(r, 800));
+    await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 800ms sleep
     try {
       pushLog('retrying backend after junction repair…\n');
       return await spawnBackend();
@@ -539,8 +626,7 @@ async function startBackendWithHealing(opts = {}) {
   } catch (e) {
     pushLog('plugin disable analysis failed: ' + (e && e.message) + '\n');
   }
-  stopBackend();
-  await new Promise((r) => setTimeout(r, 800));
+  await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 800ms sleep
 
   if (disabled.length) {
     try {
@@ -579,8 +665,7 @@ async function startBackendWithHealing(opts = {}) {
           });
           if (r1c.response === 1) { isQuitting = true; app.exit(0); return; }
         } catch {}
-        stopBackend();
-        await new Promise((r) => setTimeout(r, 800));
+        await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 800ms sleep
         try {
           pushLog('retrying backend after disabling failing bundles…\n');
           return await spawnBackend();
@@ -640,8 +725,7 @@ async function startBackendWithHealing(opts = {}) {
               `已规范化：\n${list}\n\n原文件已备份为：\n${repair.backup}\n\n若你的密钥值本身无误，修复后即可正常启动；无需重装任何插件。`
           });
         } catch {}
-        stopBackend();
-        await new Promise((r) => setTimeout(r, 800));
+        await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 800ms sleep
         try {
           pushLog('凭据键修复后重试后端…\n');
           const credUrl = await spawnBackend();
@@ -724,8 +808,7 @@ async function startBackendWithHealing(opts = {}) {
     } else {
       pushLog('旧 profiles 清理完成，dsh 将重建配置。\n');
     }
-    stopBackend();
-    await new Promise((r) => setTimeout(r, 800));
+    await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 800ms sleep
     try {
       pushLog('retrying backend after profile quarantine…\n');
       booted = await spawnBackend();
@@ -739,15 +822,13 @@ async function startBackendWithHealing(opts = {}) {
       const restored = mgr.restoreProfileRegistrations(p.dshHome, qRes.registryFile, failingSpecs);
       if (restored.restored.length) {
         pushLog(`自动还原第三方注册：${restored.restored.join(', ')}${restored.skipped.length ? `；跳过失败日志点名的条目（${restored.skipped.join(', ')}）` : ''}，重启验证…\n`);
-        stopBackend();
-        await new Promise((r) => setTimeout(r, 800));
+        await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 800ms sleep
         try {
           return await spawnBackend();
         } catch (restoreBootErr) {
           pushLog('还原第三方注册后启动失败，回滚还原。第三方注册仍保存在备份中，可稍后手动恢复。\n');
           mgr.rollbackProfileRestore(p.dshHome, qRes.registryFile);
-          stopBackend();
-          await new Promise((r) => setTimeout(r, 800));
+          await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 800ms sleep
           try {
             pushLog('retrying backend after restore rollback…\n');
             return await spawnBackend();
@@ -786,7 +867,7 @@ async function startBackendWithHealing(opts = {}) {
   const nodeChanged = await mgr.repairNodeForBackendFailure({
     onLog: (m) => pushLog('[node-repair] ' + m + '\n')
   });
-  stopBackend();
+  await stopBackendAndWait(); // 0.3.44: 停稳后再重启（原来 fire-and-forget + 800ms sleep）
 
   if (nodeChanged) {
     await new Promise((r) => setTimeout(r, 800));
@@ -817,7 +898,7 @@ async function startBackendWithPluginIsolation(shouldIsolate = false) {
     mgr.finishPluginIsolation((isolation.entries || []).map((e) => ({ index: e.index, status: 'not-tested' })));
     throw error;
   }
-  stopBackend();
+  await stopBackendAndWait(); // 0.3.44: 隔离轮马上要逐个启动后端，必须先停稳
   const statuses = [];
   const entries = isolation.entries || [];
   const total = entries.length;
@@ -838,8 +919,7 @@ async function startBackendWithPluginIsolation(shouldIsolate = false) {
       statuses.push({ index: entry.index, status: 'failed', error: error.message });
       pushLog(`插件 ${entry.id} 启动失败，将保持禁用（仅此条目）：${error.message}\n`);
     }
-    stopBackend();
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await stopBackendAndWait(); // 0.3.44: 原来是 fire-and-forget + 固定 500ms sleep
   }
   const report = mgr.finishPluginIsolation(statuses);
   backendLogs = [];
@@ -1065,6 +1145,111 @@ function applyWindowHandlers(win) {
   });
 }
 
+/**
+ * 主窗口的权限闸门（0.3.44 · 借鉴官方 browser-guests.ts:142-145 的思路，
+ * 但**判定依据不同**）。
+ *
+ * ## 为什么不能照抄官方
+ *
+ * 官方的写法是全盘拒绝：
+ *   setPermissionRequestHandler((_c, _p, cb) => cb(false))
+ *   setPermissionCheckHandler(() => false)
+ *   setDevicePermissionHandler(() => false)
+ *   setDisplayMediaRequestHandler((_r, cb) => cb({}))
+ *
+ * 但那三段作用在 **browser-guests**（用户打开的任意第三方网页的 webview）上。
+ * 我们的主窗口加载的是**自己的后端 Web UI**（127.0.0.1 随机端口）——把全盘
+ * 拒绝照搬到主窗口，会**永久废掉所有需要浏览器权限的功能**（麦克风听写、
+ * 摄像头、屏幕共享），而且症状是"静默失败、无任何提示"，极难排查。
+ *
+ * ## 所以按"权限敏感度"分级
+ *
+ *   · **危险级**（屏幕共享 / display-capture / 剪贴板读取 / 地理位置 / 传感器 /
+ *     串口 / USB / HID / MIDI / 空闲检测）：**一律拒绝**并记日志。这些权限要么
+ *     等于把用户屏幕内容交给页面，要么在桌面壳里毫无正当用途。
+ *   · **可询问级**（麦克风 / 摄像头）：**弹原生确认框**，由用户决定。这类权限
+ *     有正当用例（听写、拍照），但**绝不静默授予**——默认拒绝会在用户毫不知情
+ *     的情况下被页面反复请求。
+ *   · 其余一律拒绝并记日志（默认拒绝，而非默认允许）。
+ *
+ * @param {Electron.Session} session
+ */
+function applyPermissionGates(session) {
+  // 屏幕共享：直接拒绝（回调空对象 = 不提供任何源）。
+  // 注意这与"拒绝权限"是两条独立通道，Electron 里必须都设。
+  try {
+    session.setDisplayMediaRequestHandler((_request, callback) => {
+      diag('[权限] 拒绝屏幕共享请求（桌面壳不提供屏幕捕获）');
+      callback({});
+    });
+  } catch (e) { diag('setDisplayMediaRequestHandler 注册失败:', e && e.message); }
+
+  // 设备级权限（USB/串口/HID 等）：一律拒绝。
+  try {
+    session.setDevicePermissionHandler(() => false);
+  } catch (e) { diag('setDevicePermissionHandler 注册失败:', e && e.message); }
+
+  const DANGEROUS = new Set([
+    'media', 'display-capture', 'geolocation', 'midi', 'midiSysex',
+    'clipboard-read', 'idle-detection', 'hid', 'serial', 'usb',
+    'window-management', 'speaker-selection', 'top-level-storage-access'
+  ]);
+  const ASKABLE = new Set(['audioCapture', 'videoCapture', 'media']);
+
+  // 同步检查通道：这里无法弹框（必须同步返回），所以只放行"可询问级"，
+  // 真正的授权发生在 request 通道的弹框里。危险级同步拒绝。
+  try {
+    session.setPermissionCheckHandler((_wc, permission) => {
+      const p = String(permission || '');
+      if (p === 'media') return true; // 交由 request 通道弹框裁决
+      if (ASKABLE.has(p)) return true;
+      if (DANGEROUS.has(p)) { diag(`[权限] 同步拒绝 ${p}`); return false; }
+      diag(`[权限] 同步拒绝未列入白名单的权限 ${p}`);
+      return false;
+    });
+  } catch (e) { diag('setPermissionCheckHandler 注册失败:', e && e.message); }
+
+  try {
+    session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+      const p = String(permission || '');
+      const isOurs = webContents === win.webContents;
+      const requestingUrl = (details && details.requestingUrl) || (webContents && webContents.getURL && webContents.getURL()) || '';
+      const isLoopback = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\//i.test(requestingUrl);
+
+      if (!isOurs || !isLoopback) {
+        diag(`[权限] 拒绝非本应用来源的 ${p}（${String(requestingUrl).slice(0, 80)}）`);
+        return callback(false);
+      }
+
+      // 麦克风/摄像头：弹原生确认框，绝不静默授予。
+      const isMic = p === 'media' || p === 'audioCapture' || p === 'videoCapture';
+      if (isMic) {
+        const mediaTypes = (details && details.mediaTypes) || [];
+        const label = mediaTypes.includes('video') ? '摄像头' : '麦克风';
+        dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : null, {
+          type: 'question',
+          buttons: ['允许', '拒绝'],
+          defaultId: 1,
+          cancelId: 1,
+          title: APP_NAME,
+          message: `网页请求使用你的${label}`,
+          detail: `来源：${requestingUrl.slice(0, 120)}\n\n` +
+            '这是 DSH 的本地后端页面。仅当你要使用语音输入/听写等需要该设备的功能时才允许。\n' +
+            '拒绝不会影响其它功能。'
+        }).then((r) => {
+          const granted = r.response === 0;
+          diag(`[权限] 用户${granted ? '允许' : '拒绝'}了${label}请求`);
+          callback(granted);
+        }).catch(() => callback(false));
+        return;
+      }
+
+      diag(`[权限] 拒绝 ${p}（不在允许列表内）`);
+      callback(false);
+    });
+  } catch (e) { diag('setPermissionRequestHandler 注册失败:', e && e.message); }
+}
+
 function createChromiumWindow(url) {
   const win = new BrowserWindow({
     width: 1440, height: 920, minWidth: 900, minHeight: 600, show: false,
@@ -1074,6 +1259,7 @@ function createChromiumWindow(url) {
   });
   Menu.setApplicationMenu(null);
   applyWindowHandlers(win);
+  applyPermissionGates(win.webContents.session);
 
   win.webContents.session.webRequest.onErrorOccurred((details) => {
     diag(`[NET ERROR] ${details.url.slice(0, 120)} -> ${details.error}`);
@@ -1103,11 +1289,32 @@ function createChromiumWindow(url) {
   // 0.3.39 · F12 / Ctrl+Shift+I 切换 DevTools（对齐官方：打包版同样可用，调试
   // 分发的黑盒问题不再需要 --remote-debugging-port）。在输入事件层拦截，
   // 不抢占页面自身的键盘处理。
+  //
+  // 0.3.44 · 输入法守卫：中文输入法用 **Ctrl+Shift** 切换中英/切换输入法，而这
+  // 恰好是 Ctrl+Shift+I 的前缀。用户按 Ctrl+Shift 切输入法时若顺手碰到 I 键，
+  // 就会弹出 DevTools —— 表现为"打字打着打着冒出一个开发者窗口"，而且因为
+  // 我们拦截在 before-input-event 层，页面拿不到这个键，用户无法从页面侧察觉
+  // 原因。官方有专门的 IME 处理路径；我们这里做三件事：
+  //   1) 只在**无输入法组合态**时响应（isComposing）
+  //   2) 忽略自动重复（长按不该连续开合）
+  //   3) 要求事件确实落在页面上（主窗口且未销毁）
   win.webContents.on('before-input-event', (_e, input) => {
     if (input.type !== 'keyDown') return;
+    if (input.isAutoRepeat) return;
+    if (input.isComposing) return; // 输入法组合中，绝不当作快捷键
+    if (win.isDestroyed()) return;
     const key = (input.key || '').toLowerCase();
-    if (key === 'f12' || ((input.control || input.meta) && input.shift && key === 'i')) {
-      try { win.webContents.toggleDevTools(); } catch {}
+    const devToolsChord = key === 'f12' || ((input.control || input.meta) && input.shift && key === 'i');
+    if (devToolsChord) {
+      // 中文输入法下 Ctrl+Shift 是切换键：若此刻正处于中文输入状态，用户按
+      // Ctrl+Shift+I 的更可能是"切输入法 + 打了个 i"，而不是要开 DevTools。
+      // 用渲染进程报告的组合态再确认一次，避免误触。
+      win.webContents.executeJavaScript('!!(window.__dshImeActive || (document.activeElement && document.activeElement.isComposing))')
+        .then((composing) => {
+          if (composing) { diag('忽略 DevTools 快捷键：输入法组合进行中（防中文输入法误触）'); return; }
+          try { win.webContents.toggleDevTools(); } catch {}
+        })
+        .catch(() => { try { win.webContents.toggleDevTools(); } catch {} });
     }
   });
 
@@ -1171,15 +1378,28 @@ function createChromiumWindow(url) {
       trayHintShown = true;
     };
     if (trayHintShown || closeConfirmRecorded()) { doHide(); return; }
+    // 0.3.44 · C1：并发合并。用户连着点两次关闭（或系统连发 close）会弹两个
+    // 一模一样的确认框；先弹的那个被回答后，后弹的仍在屏幕上，用户不知道
+    // 该点哪个，且两次回答可能互相矛盾（一次确认 + 一次取消）。
+    // 与 quit-guard 同样的纪律：确认框同一时刻只允许存在一个。
+    if (closeConfirmPending) return;
+    closeConfirmPending = true;
     dialog.showMessageBox(win, {
       type: 'info', buttons: ['确认最小化到托盘', '取消'], defaultId: 0, cancelId: 1, noLink: true,
       title: APP_NAME,
       message: '关闭窗口将最小化到系统托盘',
       detail: '正在运行的任务不会中断，会话、草稿与滚动位置都会保留。\n下次可从系统托盘图标重新打开窗口。\n\n确认一次后不再重复询问。'
     }).then((r) => {
+      closeConfirmPending = false;
       if (r.response === 0) { recordCloseConfirm(); doHide(); }
       // 取消：窗口保持可见，什么都不做
-    }).catch(() => { doHide(); });
+    }).catch((err) => {
+      closeConfirmPending = false;
+      // 0.3.44 · C3：弹窗失败时**不再偷偷隐藏窗口**。旧实现在这里 doHide()，
+      // 结果是：用户点了关闭 → 确认框因异常没出现 → 窗口却消失了 → 用户
+      // 以为程序崩了。窗口消失必须始终是"用户明确确认"的结果。
+      diag('关闭确认框显示失败；保留窗口可见（不代替用户做决定）:', err && err.message);
+    });
   });
   return win;
 }
@@ -1743,19 +1963,16 @@ async function restartApp(extraArgs = []) {
   isQuitting = true;
   const proc = backend;
   backend = null;
+  activeUrl = null;
   if (proc) {
     try { proc.removeAllListeners('exit'); } catch {}
-    killProcessTree(proc);
-    // Wait (bounded) for the backend tree to actually die, so the relaunched
-    // instance can swap dsh.new → dsh without colliding with file locks still
-    // held by this dying process. Without this the staged update is skipped.
-    await new Promise((resolve) => {
-      if (proc.exitCode !== null) return resolve();
-      const timer = setTimeout(resolve, 6000);
-      proc.once('exit', (code) => { clearTimeout(timer); resolve(); diag('restartApp：后端进程已退出 code=', code); });
-    });
+    // 0.3.44: 用统一的"有界停止"取代这里原有的手写等待。语义相同（必须等后端
+    // 真的死掉，否则重启后的实例无法把 dsh.new 换名成 dsh —— 文件锁还在），
+    // 但收敛到一处实现：温和请求 → 验证退出 → 超时强制 → 再验证。
+    const res = await stopBackendBounded(proc, { timeoutMs: 6000, forceTimeoutMs: 5000 });
+    diag(`restartApp：后端已停止（${res.how}，${res.ms}ms，forced=${res.forced}）`);
+    // Windows 上进程退出与文件句柄真正释放之间有极短间隙，留一点余量。
     await new Promise((r) => setTimeout(r, 400));
-    diag('restartApp：后端已停止，等待句柄释放后拉起新实例');
   }
   diag('restartApp：app.relaunch + exit');
   // Strip any stale --safe-mode so a normal restart exits safe mode by default.

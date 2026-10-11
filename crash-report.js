@@ -45,9 +45,30 @@ function crashDir() {
   return path.join(process.cwd(), 'logs');
 }
 
-/** 2026-09-23T12-34-56-789Z-host.log（按时间排序，来源在尾） */
+/**
+ * 2026-09-23T12-34-56-789Z-host.log（按时间排序，来源在尾）
+ *
+ * 0.3.44：`source` 此前是被**未校验地拼进文件名**的。目前唯一的调用点传的是
+ * 字面量 'host'，所以没有活的漏洞；但 `source` 的文档类型是
+ * `'host'|'renderer'|'main'`，将来接入 renderer 崩溃（其值可能来自渲染进程
+ * 上报）时，一个含 `..` 或路径分隔符的值就能把报告写到 logs 目录之外 ——
+ * 崩溃报告路径会进诊断日志，也可能被"复制路径"按钮暴露给用户。
+ *
+ * 按"永不信任会被拼进路径的字段"处理：只保留白名单字符，并兜底为 'unknown'。
+ * 时间是 Date，由我们构造，保持不变但同样收敛字符集。
+ */
+function sanitizeToken(value, fallback) {
+  const cleaned = String(value == null ? '' : value)
+    .replace(/[^A-Za-z0-9._-]/gu, '-')  // 去掉路径分隔符、冒号、通配符等
+    .replace(/\.{2,}/gu, '-')            // 杜绝 ".." 穿越
+    .replace(/^[.-]+/u, '')              // 不以 . 或 - 开头（隐藏文件/命令行参数歧义）
+    .slice(0, 64);
+  return cleaned || fallback;
+}
+
 function crashFileName(time, source) {
-  return `${CRASH_REPORT_PREFIX}${time.toISOString().replace(/[:.]/gu, '-')}-${source}.log`;
+  const stamp = time.toISOString().replace(/[:.]/gu, '-');
+  return `${CRASH_REPORT_PREFIX}${sanitizeToken(stamp, 'unknown-time')}-${sanitizeToken(source, 'unknown')}.log`;
 }
 
 /**
