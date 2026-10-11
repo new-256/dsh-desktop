@@ -480,13 +480,64 @@ async function startBackendWithHealing(opts = {}) {
     pushLog('bundle disable analysis failed: ' + (e && e.message) + '\n');
   }
 
+  // Escalation 1d (0.3.41): HOME-LEVEL credential document check — the guard that
+  // stops the profile-quarantine nuke from firing on a failure it cannot fix.
+  // 2026-10-11 incident: `.credentials.yaml` carried `repo-push-access:github.com`
+  // where dsh demands `<scope>/<id>`; the credentials plugin threw a TypeError at
+  // load, taking 9 dependent plugins with it. The log said only "1 required plugin
+  // did not activate" — no package NAME — so 1b/1c attributed nothing and the
+  // ladder fell straight through to quarantineProfiles: three profiles burned in
+  // one night while the real defect sat outside `profiles/` the whole time.
+  // Once the log names a credential key, the failure is provably NOT profile-local:
+  // repair the key (backup + atomic write) and retry the backend. Never quarantine.
+  let credentialHandled = false;
+  try {
+    const credDiag = mgr.analyzeCredentialFailure(backendLogs.join(''));
+    if (credDiag.credentials) {
+      credentialHandled = true;
+      pushLog(`后端启动失败根因：home 级 .credentials.yaml 的凭证键非法（${credDiag.keys.join('、') || '见日志'}）。这不是 profiles 的问题——跳过 profile 隔离，直接修复凭据键。\n`);
+      diag('凭据文档故障归因（护栏触发，阻止 profile 隔离）:', credDiag);
+      const pre = mgr.validateCredentialsDocument(p.dshHome);
+      const repair = mgr.repairCredentialKeys(p.dshHome, pre.problems);
+      if (repair.changed.length) {
+        const list = repair.changed.map((c) => `${c.from} → ${c.to}`).join('；');
+        pushLog(`已规范化 ${repair.changed.length} 条凭证键：${list}（原文件已备份：${repair.backup}）。\n`);
+        try {
+          await dialog.showMessageBox(null, {
+            type: 'warning',
+            buttons: ['继续启动'], defaultId: 0, noLink: true,
+            title: APP_NAME,
+            message: '发现并修复了损坏的凭据配置',
+            detail: `凭证文件 .credentials.yaml 里 ${repair.changed.length} 条记录的键不符合 dsh 要求的“<scope>/<id>”格式，正是它导致后端启动失败（与插件、profiles 无关）。\n\n已规范化：\n${list}\n\n原文件已备份为：\n${repair.backup}\n\n若你的密钥值本身无误，修复后即可正常启动；无需重装任何插件。`
+          });
+        } catch {}
+        stopBackend();
+        await new Promise((r) => setTimeout(r, 800));
+        try {
+          pushLog('凭据键修复后重试后端…\n');
+          const credUrl = await spawnBackend();
+          if (credUrl) return credUrl;
+        } catch (credErr) {
+          pushLog('凭据键修复后仍启动失败（继续安全的自愈路径，但仍不做 profile 隔离）：' + (credErr && credErr.message) + '\n');
+        }
+      } else {
+        // 日志点名了非法键，但文件里已看不到（可能被 dsh 自己修过）——不要隔离。
+        pushLog('日志显示凭据键非法，但当前文件中未发现同类问题（可能已被上游修复）；跳过 profile 隔离以免误伤。\n');
+      }
+    }
+  } catch (e) {
+    pushLog('凭据预校验失败（跳过，不影响启动）: ' + (e && e.message) + '\n');
+  }
+
   // Escalation 2 (LAST resort): quarantine the broken profiles dir — dsh
   // rebuilds a fresh tree — but FIRST preserve third-party registrations
   // (bundles / dependencies / profile patches) so a successful rebuild can
   // AUTO-RESTORE them instead of leaving the user to reinstall everything by
   // hand. If the re-merged boot fails, the restore is rolled back and the
   // failure falls through to Node repair.
-  const qRes = mgr.quarantineProfiles(p.dshHome);
+  // 0.3.41: a credential failure is never profile-local — 1d above already
+  // proved it, so quarantine is skipped entirely rather than burning profiles.
+  const qRes = credentialHandled ? null : mgr.quarantineProfiles(p.dshHome);
   let booted = false;
   if (qRes && qRes.quarantined) {
     if (!qRes.fallback) {
@@ -1931,6 +1982,67 @@ if (!gotLock) {
         if (py.info.available) pushLog(`python gate: ${py.info.version} ${py.info.reason}\n`);
       } catch (e) {
         pushLog('Python 检测失败（跳过，不影响启动）: ' + (e && e.message) + '\n');
+      }
+
+      // 4.8) 凭据文档预校验（0.3.41）：home 级 .credentials.yaml 的键格式错误会
+      // 让 credentials 插件加载即抛 TypeError，拖垮 9 个依赖插件、整个后端起不来；
+      // 而报错文案只有 "N required plugin did not activate"，归因式自愈找不到名字，
+      // 会一路升级到 profile 隔离——完全无效且会烧掉用户的插件注册（10-11 事故连烧
+      // 三份）。所以在后端启动之前就把这类结构错误摁掉：只做结构扫描，绝不读取或
+      // 回显密钥值。
+      try {
+        const credHome = activePaths().dshHome;
+        const credCheck = mgr.validateCredentialsDocument(credHome);
+        if (credCheck.present && !credCheck.ok) {
+          const items = credCheck.problems.map((p) => `第 ${p.line} 行：${p.key}`).join('\n');
+          diag('步骤4.8 凭据预校验发现问题:', credCheck.problems);
+          let proceed = true;
+          if (!autoStartHidden) {
+            const rCred = await dialog.showMessageBox(null, {
+              type: 'warning',
+              buttons: ['自动修复并继续', '暂时跳过（后端可能无法启动）'],
+              defaultId: 0, cancelId: 1, noLink: true,
+              title: APP_NAME,
+              message: '凭据配置存在格式问题，会导致后端无法启动',
+              detail: `文件：${credCheck.file}\n\n不符合 dsh 要求的“<scope>/<id>”格式：\n${items}\n\n` +
+                '为什么值得现在处理：这类错误会让 credentials 插件加载失败，连带 9 个依赖插件，' +
+                '后端会反复启动失败——而自愈流程看不到插件名，最终会误判为 profiles 损坏并隔离整个 ' +
+                'profiles 目录（你的插件注册会一起被搬走）。\n\n' +
+                '选择「自动修复」会把这些键的冒号改为斜杠、非法字符改为短横线，并在改动前备份原文件。' +
+                '你的密钥值不会被读取、修改或上传。'
+            });
+            proceed = rCred.response === 0;
+          }
+          if (proceed) {
+            const fix = mgr.repairCredentialKeys(credHome, credCheck.problems);
+            if (fix.changed.length) {
+              pushLog(`凭据预校验：已规范化 ${fix.changed.length} 条键（${fix.changed.map((c) => `${c.from} → ${c.to}`).join('；')}），备份：${fix.backup}\n`);
+              diag('步骤4.8 凭据键已修复:', { count: fix.changed.length, backup: fix.backup });
+            } else if (fix.failed.length) {
+              // 自动修复失败时给出可执行的手动指引——不要只留一句"后端可能启动失败"。
+              const manual = credCheck.problems.map((p) => `  第 ${p.line} 行  ${p.key}  →  ${p.key.split(':').join('/').replace(/\./g, '-')}`).join('\n');
+              pushLog('凭据预校验：自动修复失败（' + fix.failed.join('；') + '）。\n');
+              if (!autoStartHidden) {
+                try {
+                  await dialog.showMessageBox(null, {
+                    type: 'warning', buttons: ['知道了'], defaultId: 0, noLink: true,
+                    title: APP_NAME,
+                    message: '凭据配置需要手动修正',
+                    detail: `自动修复未能写入文件（${fix.failed.join('；')}）。\n\n` +
+                      `请用编辑器打开：\n${credCheck.file}\n\n把下面这些键改成 "斜杠分隔、只含字母数字和短横线" 的写法：\n\n${manual}\n\n` +
+                      '改完保存并重启即可。密钥值不需要改动。'
+                  });
+                } catch {}
+              }
+            }
+          } else {
+            pushLog('凭据预校验：用户选择跳过修复，后端可能无法启动。\n');
+          }
+        } else if (credCheck.present) {
+          pushLog('凭据预校验：.credentials.yaml 结构正常。\n');
+        }
+      } catch (e) {
+        pushLog('凭据预校验失败（跳过，不影响启动）: ' + (e && e.message) + '\n');
       }
 
       // 5) Start backend (self-heals and retries on profile/symlink errors).

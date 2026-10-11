@@ -1449,6 +1449,22 @@ function collectProfileRegistrations(home) {
   return out;
 }
 
+/**
+ * 隔离整个 profiles 目录（核弹级动作，最后手段）。
+ *
+ * ⚠️ 副作用纪律（0.3.41 · 对齐官方 shell/Host 配置所有权规约）：本函数只能修
+ * **profile 层**的问题。home 层文件（`.credentials.yaml`、`settings.yaml`）不在
+ * profiles 里，重建 profiles 对它们 100% 无效——2026-10-11 事故中，坏键
+ * `repo-push-access:github.com` 让 credentials 插件加载即抛 TypeError，报错文案
+ * 只有 "1 required plugin did not activate"（无插件名），归因式升级全部落空，
+ * 于是本函数被连调三次：隔离→重建→仍失败→再隔离，一夜烧掉三份 profile，还顺手
+ * prune 掉三份历史隔离。
+ *
+ * 因此调用方必须先跑凭据归因护栏（main.js Escalation 1d + analyzeCredentialFailure）：
+ * 一旦日志点名 home 级文件，就跳过本函数。官方规约原文：
+ * "Ownership follows runtime dependencies" —— shell 只负责 Host 启动前/不可用时的
+ * 自身配置，Host 层配置（含凭据）归 Host 所有，shell 不越权重建立。
+ */
 function quarantineProfiles(home) {
   const prof = path.join(home, 'profiles');
   if (!fs.existsSync(prof)) return { quarantined: false, name: null, fallback: false };
@@ -2206,6 +2222,187 @@ function analyzeBackendFailure(home, logText) {
     }
   }
   return result;
+}
+
+/**
+ * 0.3.41 · 启动前凭据文档结构预校验。
+ *
+ * 背景（2026-10-11 事故）：home 级 `.credentials.yaml` 里一条记录的键写成
+ * `repo-push-access:github.com`（冒号分隔），而 dsh 的 parseCredentialKey 要求
+ * 恰好两段 `<scope>/<id>`。credentials 插件加载即抛 TypeError，它是 9 个插件的
+ * 依赖 → 整个后端启动失败，报 `1 required plugin did not activate`。
+ *
+ * 该失败与 profiles 毫无关系，但自愈阶梯的归因式升级（1b 插件条目 / 1c bundle）
+ * 在日志里找不到任何**具名插件包**线索（消息只给通用"1 required plugin"），
+ * 于是直接跳到核弹级 quarantineProfiles：隔离 → 重建 → 仍读坏凭据 → 再失败，
+ * 一夜连烧三份 profile（并顺手 prune 掉三份历史隔离备份）。
+ *
+ * 本函数只做**结构扫描**：定位非法键、给出精确行号与原因，绝不读取/回显任何
+ * 密钥值（隐私纪律）。返回 { ok, file, present, problems: [{ line, key, reason }] }。
+ */
+function validateCredentialsDocument(home) {
+  const file = path.join(home, '.credentials.yaml');
+  const out = { ok: true, file, present: false, problems: [] };
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return out; }
+  out.present = true;
+
+  const lines = text.split(/\r?\n/);
+  // 凭证记录的键出现在两种形态：
+  //   1) 顶层映射键（旧版扁平写法）   `repo-push-access:github.com: { ... }`
+  //   2) records 列表项内 / refs 之外的键行
+  // 判定只依赖 dsh 自己的规则：key.split('/') 必须恰好 2 段且都非空。
+  // 已知的结构性键（version/refs/records/kind/payload/...）一律跳过。
+  const STRUCTURAL = new Set([
+    'version', 'refs', 'records', 'kind', 'payload', 'secret', 'id', 'v', 'sourceId',
+    'account', 'scopes', 'method', 'token', 'validatedAt', 'extra', 'issuer', 'avatarUrl',
+    'fineGrained', 'admin', 'delete', 'write', 'read', 'url', 'label', 'note', 'expiresAt'
+  ]);
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    if (!raw || /^\s*#/.test(raw)) continue;
+    // YAML 键行 = 缩进 + 键 + 冒号（后面可为空、空格、或 {、|、> 等块标记）。
+    // 关键：非法键**自身含冒号**（`repo-push-access:github.com`），所以按 dsh 自己的
+    // 规则反推——先取「最后一个 : 之后不是空白也不是行尾」以外的位置。实用做法：
+    // 剥掉行尾「: 值」部分后剩下的就是键；对 `a: b: c` 这种值含冒号的写法，用 dsh 的
+    // 判定式去验证，能通过的就是合法键，通不过的再考虑"是不是键本身写错了"。
+    const trimmed = raw.replace(/\s+$/, '');
+    if (!trimmed.includes(':')) continue;
+
+    // 候选键：优先「行尾即冒号」的写法（`key:` 或 `key: {`）——把冒号前的整段当键。
+    let key = null;
+    const trailingColon = /^(\s*)(.*?)\s*:\s*(?:[|>][-+]?|[[{].*|\{\}|)$/.exec(trimmed);
+    if (trailingColon) {
+      key = trailingColon[2];
+    } else {
+      // 有内联值：取第一个「: 」分隔；若前缀本身仍含冒号且不是合法键，则取最右冒号。
+      const first = /^(\s*)(.*?)\s*:\s+(\S.*)$/.exec(trimmed);
+      if (first) {
+        key = first[2];
+        if (key.includes(':') && !isCredentialKeyShape(key)) {
+          const head = trimmed.replace(/^\s*/, '');
+          const lc = head.lastIndexOf(':');
+          const cand = head.slice(0, lc);
+          if (cand && !/\s/.test(cand)) key = cand;
+        }
+      }
+    }
+    if (key === null) continue;
+    key = key.trim().replace(/^["']|["']$/g, '');
+    if (!key || /\s/.test(key) || STRUCTURAL.has(key)) continue;
+    // 已经是合法形态 → 跳过
+    if (isCredentialKeyShape(key)) continue;
+    // 非法候选：必须"像一条凭证键"（冒号分隔两段，或斜杠段数不对）
+    const colonForm = /^[A-Za-z0-9_.-]+:[A-Za-z0-9_.:-]+$/.test(key);
+    const slashForm = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_./-]+$/.test(key) && key.split('/').length > 2;
+    if (!colonForm && !slashForm) continue;
+    const reason = colonForm
+      ? `凭证键用了冒号分隔（"${key}"），dsh 要求 "<scope>/<id>"`
+      : `凭证键段数不为 2（"${key}"），dsh 要求 "<scope>/<id>"`;
+    out.problems.push({ line: i + 1, key, reason });
+  }
+  out.ok = out.problems.length === 0;
+  return out;
+}
+
+/** dsh 的判定式：split('/') 恰好 2 段且都非空。 */
+function isCredentialKeyShape(key) {
+  const segs = String(key).split('/');
+  return segs.length === 2 && segs[0] !== '' && segs[1] !== '';
+}
+
+/**
+ * 0.3.41 · 把非法凭证键规范化成 dsh 要求的 `<scope>/<id>`。
+ *   - 首个冒号 → 斜杠（`repo-push-access:github.com` → `repo-push-access/github.com`）
+ *   - 斜杠后的 id 段里 `.`/`:` → `-`（dsh 自己的修复产物是 `github-com`）
+ *   - 斜杠超过 2 段 → 从第 2 段起合并成一个 id（多余斜杠 → `-`）
+ * 只改键，绝不触碰值；写前备份、原子替换。返回 { changed: [...], backup }。
+ */
+function repairCredentialKeys(home, problems) {
+  const file = path.join(home, '.credentials.yaml');
+  const out = { changed: [], backup: null, failed: [] };
+  if (!Array.isArray(problems) || !problems.length) return out;
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch (e) { out.failed.push(String(e && e.message)); return out; }
+
+  const normalize = (key) => {
+    let scope; let id;
+    if (key.includes(':')) {
+      const at = key.indexOf(':');
+      scope = key.slice(0, at);
+      id = key.slice(at + 1);
+    } else {
+      const segs = key.split('/');
+      scope = segs[0];
+      id = segs.slice(1).join('-');
+    }
+    // scope 保留点号（与 dsh 的 scope 命名习惯一致）；id 段收敛到 [A-Za-z0-9_-]，
+    // 使产物与 dsh 上游自己的修复形态一致（`github.com` → `github-com`）——
+    // 避免同一逻辑键在文件里出现两种写法导致凭证被当成两条。
+    scope = scope.replace(/[^A-Za-z0-9_.-]/g, '-');
+    id = id.replace(/[^A-Za-z0-9_-]/g, '-');
+    return `${scope}/${id}`;
+  };
+
+  const lines = text.split(/\r?\n/);
+  const backups = [];
+  for (const p of problems) {
+    const idx = p.line - 1;
+    if (idx < 0 || idx >= lines.length) continue;
+    const raw = lines[idx];
+    // 键含冒号，不能用「第一个冒号」切分。改为：把已知的原键字面量视为「缩进 + 键 + 冒号」
+    // 的前缀，直接按字面替换（防并发改写：字面不匹配就跳过，绝不做错误替换）。
+    const indent = (raw.match(/^\s*/) || [''])[0];
+    const afterIndent = raw.slice(indent.length);
+    if (!afterIndent.startsWith(`${p.key}:`)) continue;
+    const rest = afterIndent.slice(p.key.length); // 以 ':' 开头
+    const fixed = normalize(p.key);
+    backups.push({ line: p.line, from: p.key, to: fixed });
+    lines[idx] = `${indent}${fixed}${rest}`;
+  }
+  if (!backups.length) return out;
+
+  const stamp = formatDateTimestamp();
+  const backup = `${file}.bak-before-keyscope-${stamp}`;
+  try {
+    fs.copyFileSync(file, backup);
+    out.backup = backup;
+  } catch (e) { out.failed.push(`备份失败：${e && e.message}`); return out; }
+
+  try {
+    const temp = `${file}.keyscope-${process.pid}.tmp`;
+    fs.writeFileSync(temp, lines.join('\n'), 'utf8');
+    fs.renameSync(temp, file);
+    out.changed = backups;
+  } catch (e) {
+    out.failed.push(`写入失败：${e && e.message}`);
+    try { fs.unlinkSync(`${file}.keyscope-${process.pid}.tmp`); } catch {}
+  }
+  return out;
+}
+
+/**
+ * 0.3.41 · 从后端日志判定"凭据文档导致启动失败"。
+ *
+ * 这是自愈阶梯的**升级护栏**：命中时绝不能隔离 profiles（根因在 home 级、
+ * profile 之外，隔离 100% 无效且会白烧用户的插件注册）。返回
+ * { credentials: boolean, pluginCount, keys: [...] }。
+ */
+function analyzeCredentialFailure(logText) {
+  const text = String(logText || '');
+  const out = { credentials: false, pluginCount: 0, keys: [] };
+  if (!text) return out;
+  const keyErr = /credential key "([^"]+)" must be "<scope>\/<id>"/g;
+  let m;
+  while ((m = keyErr.exec(text)) !== null) {
+    if (out.keys.indexOf(m[1]) === -1) out.keys.push(m[1]);
+  }
+  const failedCreds = /Failed plugins \(\d+\):[\s\S]{0,400}?\bcredentials\b/.test(text)
+    || /Package:\s*@deepseek-ai\/dsh-credentials(?:-local)?\b/.test(text);
+  const startup = /startup failed:\s*(\d+)\s+required plugin/.exec(text);
+  if (startup) out.pluginCount = Number(startup[1]) || 0;
+  out.credentials = (out.keys.length > 0) || (failedCreds && !!startup && out.pluginCount > 0);
+  return out;
 }
 
 /**
@@ -3661,6 +3858,8 @@ module.exports = {
   ensureSeeded, migrateProjectionCache, applyStaged, ensureNodeMeetsRequirement,
   repairProfileJunctions, quarantineProfiles, repairNodeForBackendFailure, nodeRequirement,
   analyzeBackendFailure, disableBrokenPatchPlugins, analyzeConfigEntryConflicts,
+  // 0.3.41 · home 级凭据预校验（启动前纠错 + 自愈升级护栏）
+  validateCredentialsDocument, repairCredentialKeys, analyzeCredentialFailure,
   analyzeFailingBundles, disableFailingBundles, BASE_BUNDLES,
   findLoaderIdConflicts, applyLoaderConflictFixes, disablePatchEntriesInFile,
   validatePatchFile, repairPatchFile, validateAndRepairPatchLayers, ensurePatchArrayText,

@@ -2,6 +2,68 @@
 
 这里记录每个版本改了什么。版本号和 `package.json` 保持一致。
 
+## 0.3.41（2026-10-11）
+
+**修复「home 级文件故障被误判为 profiles 损坏」这一自愈设计缺陷——10-11 凌晨它连烧三份 profile 且完全无效。** 同时按官方最新桌面版（`@deepseek-ai/dsh-desktop@0.2.1-alpha.2`，commit d743267，2026-10-09）做了新一轮比对。
+
+### 事故复盘（从真实日志与文件时间戳还原，用户判断准确）
+
+后端反复报：
+
+```
+dsh: startup failed: 1 required plugin did not activate
+Failed plugins (1):
+  credentials
+    Package: @deepseek-ai/dsh-credentials-local
+    TypeError: credential key "repo-push-access:github.com" must be "<scope>/<id>"
+```
+
+`.credentials.yaml` 里一条记录的键写成了冒号分隔，而 dsh 的 `parseCredentialKey` 要求恰好两段 `<scope>/<id>`。credentials 插件加载即抛 `TypeError`，它是 9 个插件的依赖，整个后端起不来。
+
+**自愈阶梯为什么没救回来**：1b（禁用失败插件条目）/ 1c（禁用失败 bundle）都是**归因式**——要靠日志里的具名插件包定位，而这条报错只说"1 required plugin"，没有任何包名，两条路径全部落空。于是直接跳到核弹级 `quarantineProfiles`：
+
+```
+17:35:23  quarantined broken profiles to profiles.broken-20261011-013523
+17:35:23  pruned old quarantine directory: profiles.broken-20261011-013033
+17:35:23  pruned old quarantine directory: profiles.broken-20260910-050723
+17:35:27  backend start failed after profile quarantine   ← 隔离无效，仍失败
+```
+
+根因在 home 层、`profiles/` 之外，重建 profiles 100% 无效。结果：一夜生成 4 份 `profiles.broken-*`（含连默认 profile 一起被隔离的 `broken-current-default-*`），并把三份历史隔离备份顺手 prune 掉——用户的插件注册就这么丢了。
+
+### 修复（两层防御）
+
+**第一层 · 启动前预校验（步骤 4.8，新）**
+- `validateCredentialsDocument()`：纯**结构**扫描 `.credentials.yaml`，按 dsh 自己的判定式（`split('/')` 恰好 2 段且非空）找出非法键，给出精确行号与原因；**不读取、不解密、不回显任何密钥值**。
+- 交互式启动发现问题时弹窗说明（改什么、为什么、已备份），可选择自动修复或跳过；隐藏启动只记日志不弹窗。
+- `repairCredentialKeys()`：规范化键（`repo-push-access:github.com` → `repo-push-access/github-com`，id 段收敛到 `[A-Za-z0-9_-]` 以与 dsh 上游修复形态一致），**改动前备份 + 原子写**，只动键行、绝不触碰值；行号漂移或字面不匹配时跳过，绝不误替换。
+- 修复失败时给出可照抄的手动修正清单（逐行给出"原键 → 改成什么"）。
+
+**第二层 · 自愈升级护栏（Escalation 1d，新）**
+- `analyzeCredentialFailure()` 从后端日志识别凭据故障（提取 `credential key "..." must be ...` 原文、失败插件数、credentials 包名）。
+- 命中即置 `credentialHandled`，**短路 `quarantineProfiles`**（`credentialHandled ? null : mgr.quarantineProfiles(...)`）：根因既已证明在 home 层，就绝不隔离 profiles。改为当场修复键 + 重启后端。
+- 护栏是机械不变量，测试用源码断言钉住（见下），防止将来重构时被改坏而让事故重演。
+
+### 官方比对结论（0.2.1-alpha.2）
+
+| 官方 alpha.2 做法 | 本项目处理 |
+|---|---|
+| **新增架构规约《Desktop shell configuration independent of the Host》**（2026-10-08，恰在同期）：Electron 只拥有「Host 启动前 / 不可用时」必须读到的自身配置（`userData/desktop/settings.json`）；Host 插件配置（含凭据）归 Cordis | **本项目缺的正是这条分层纪律**，0.3.41 的两层防御即为它的务实落地：shell 可在启动前**校验** Host 层文件，但不越权**重建** Host 层结构 |
+| 新增 `readDesktopSettings()`：缺文件时 `wx`+`0600` 原子创建；损坏时回落默认值，绝不阻塞启动；未知字段保留 | 与 0.3.40「宁慢勿错」同哲学；本项目 shell 配置损坏同样只日志不阻塞（已遵守并对齐） |
+| WebSocket 头处理扩展 `wss://` + 协议严格匹配 | **不适用**：那是官方 `dsh-app://` 协议自管 cookie 注入架构的产物；本项目窗口直接 `loadURL(后端URL)`，ws/wss 与 cookie 由 Chromium 原生处理 |
+| 更新包管理器路径改为 `runtime/primary-runtime/dependencies/pnpm` | 不适用（内置运行时布局不同） |
+| 强制更新策略 / 测试鉴权弹窗本地开关 | 不适用（依赖官方策略服务端与账号体系） |
+
+### 验证
+
+- 新增 `test-041.js` **41 项**全过：预校验精确定位（含行号、结构键与合法键零误判）、修复规范化、**隐私纪律**（密钥值、无关字段、行数全部原样，除非法键行外零改动）、幂等、备份可回滚、日志归因（真实事故日志命中 / 普通插件错误与空日志不误报）、边界（3 段斜杠、缺文件、空文件），以及**护栏接线源码断言**（`credentialHandled` 短路 `quarantineProfiles` 等 6 条不变量）。
+- 真实环境只读验证：当前 `.credentials.yaml` 结构正常；对事故日志归因命中 → 结论「会跳过 profile 隔离，不会烧 profile」。
+- 全量回归 138 项：test-041 41 + test-040 20 + test-039 27 + test-038 20 + manifest 30，全过。
+
+### 附：0.3.40 启动优化已确认生效
+
+用户机器日志显示 0.3.40 已安装运行，步骤1 `ensureSeeded` 从 **94.4 秒降至 0.2 秒**（版本门控跳过投影迁移）。
+
 ## 0.3.40（2026-10-08）
 
 **启动卡顿根因修复：每次启动白付 95 秒的 projection 迁移失控（备份套备份滚到 170 层嵌套、1 万个文件、124MB），实测从 95 秒降到 39 毫秒。** 用户报告"启动时卡顿严重"，从真实日志还原时间轴定位：步骤1 ensureSeeded 内的 `migrateProjectionCache()` 每次启动吞掉 94.4 秒（总启动 112 秒的 84%）。
