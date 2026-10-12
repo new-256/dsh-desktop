@@ -1173,8 +1173,16 @@ function applyWindowHandlers(win) {
  *   · 其余一律拒绝并记日志（默认拒绝，而非默认允许）。
  *
  * @param {Electron.Session} session
+ * @param {Electron.WebContents} owner 拥有该 session 的窗口 webContents。
+ *   必须由调用方传入 —— 0.3.44 初版在这里直接引用 `win`，而 `win` 只是
+ *   createChromiumWindow 的**局部参数**，函数作用域里根本不存在。结果是：
+ *   注册阶段一切正常（try/catch 包得住），但页面一旦真的申请任意权限，
+ *   Electron 从回调栈上调用它 → ReferenceError: win is not defined →
+ *   这是**注册之后**才发生的异常，外层 try/catch 包不住 → 未捕获异常 → 崩溃。
+ *   用户表现为「点复制就崩」。教训：**回调里引用的变量必须来自参数或闭包捕获，
+ *   不能依赖调用点的局部名**；且"注册成功"不等于"回调可用"。
  */
-function applyPermissionGates(session) {
+function applyPermissionGates(session, owner) {
   // 屏幕共享：直接拒绝（回调空对象 = 不提供任何源）。
   // 注意这与"拒绝权限"是两条独立通道，Electron 里必须都设。
   try {
@@ -1191,61 +1199,98 @@ function applyPermissionGates(session) {
 
   const DANGEROUS = new Set([
     'media', 'display-capture', 'geolocation', 'midi', 'midiSysex',
-    'clipboard-read', 'idle-detection', 'hid', 'serial', 'usb',
+    'idle-detection', 'hid', 'serial', 'usb',
     'window-management', 'speaker-selection', 'top-level-storage-access'
   ]);
-  const ASKABLE = new Set(['audioCapture', 'videoCapture', 'media']);
 
-  // 同步检查通道：这里无法弹框（必须同步返回），所以只放行"可询问级"，
-  // 真正的授权发生在 request 通道的弹框里。危险级同步拒绝。
+  // 剪贴板权限：**实测**确认 Electron 在 `navigator.clipboard.writeText()` 时
+  // 投递的权限名是 `clipboard-read`（不是文档里那个 clipboard-sanitized-write，
+  // 实测 readText 与 writeText 都走 clipboard-read，靠权限名无法区分读/写）。
+  // 因此把它放进"危险级拒绝"会连**复制按钮**一起废掉——这正是 0.3.44 初版的
+  // 第二个缺陷（第一个是 win 未定义导致崩溃）。
+  // 正确策略：剪贴板按**来源**判定。本应用自己的回环页面有正当的复制/粘贴需求，
+  // 放行；其它来源一律拒绝（非本应用来源在 request 通道已被整体拒绝）。
+  const CLIPBOARD = new Set(['clipboard-read', 'clipboard-sanitized-write', 'clipboard-write']);
+
+  function isLoopbackOrigin(u) {
+    return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?(\/|$)/i.test(String(u || ''));
+  }
+
+  // 同步检查通道。**必须同步返回**，所以这里只做"是否可能被允许"的粗筛，
+  // 真正的授权一律发生在 request 通道（那里才能弹框）。
   try {
-    session.setPermissionCheckHandler((_wc, permission) => {
+    session.setPermissionCheckHandler((wc, permission, requestingOrigin) => {
       const p = String(permission || '');
-      if (p === 'media') return true; // 交由 request 通道弹框裁决
-      if (ASKABLE.has(p)) return true;
+      if (p === 'media' || p === 'audioCapture' || p === 'videoCapture') return true; // 交给 request 通道弹框
+      if (CLIPBOARD.has(p)) {
+        const origin = requestingOrigin || (wc && wc.getURL && wc.getURL()) || '';
+        if (isLoopbackOrigin(origin)) return true;
+        diag(`[权限] 同步拒绝非本应用来源的剪贴板访问（${String(origin).slice(0, 80)}）`);
+        return false;
+      }
       if (DANGEROUS.has(p)) { diag(`[权限] 同步拒绝 ${p}`); return false; }
       diag(`[权限] 同步拒绝未列入白名单的权限 ${p}`);
       return false;
     });
   } catch (e) { diag('setPermissionCheckHandler 注册失败:', e && e.message); }
 
+  // 整个回调体包在 try/catch 内：任何意外都只影响这一次权限判定（拒绝），
+  // 绝不允许它把异常抛回 Electron 的回调栈上去 —— 那会直接崩掉主进程。
   try {
     session.setPermissionRequestHandler((webContents, permission, callback, details) => {
-      const p = String(permission || '');
-      const isOurs = webContents === win.webContents;
-      const requestingUrl = (details && details.requestingUrl) || (webContents && webContents.getURL && webContents.getURL()) || '';
-      const isLoopback = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\//i.test(requestingUrl);
+      try {
+        const p = String(permission || '');
+        const isOurs = !owner || webContents === owner;
+        const requestingUrl = (details && details.requestingUrl) ||
+          (webContents && webContents.getURL && webContents.getURL()) || '';
+        const isLoopback = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\//i.test(requestingUrl);
 
-      if (!isOurs || !isLoopback) {
-        diag(`[权限] 拒绝非本应用来源的 ${p}（${String(requestingUrl).slice(0, 80)}）`);
-        return callback(false);
-      }
+        if (!isOurs || !isLoopback) {
+          diag(`[权限] 拒绝非本应用来源的 ${p}（${String(requestingUrl).slice(0, 80)}）`);
+          return callback(false);
+        }
 
-      // 麦克风/摄像头：弹原生确认框，绝不静默授予。
-      const isMic = p === 'media' || p === 'audioCapture' || p === 'videoCapture';
-      if (isMic) {
-        const mediaTypes = (details && details.mediaTypes) || [];
-        const label = mediaTypes.includes('video') ? '摄像头' : '麦克风';
-        dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : null, {
-          type: 'question',
-          buttons: ['允许', '拒绝'],
-          defaultId: 1,
-          cancelId: 1,
-          title: APP_NAME,
-          message: `网页请求使用你的${label}`,
-          detail: `来源：${requestingUrl.slice(0, 120)}\n\n` +
+        // 剪贴板：仅本应用回环来源放行（含 writeText 实际投递的 clipboard-read）。
+        if (CLIPBOARD.has(p)) {
+          if (isLoopbackOrigin(requestingUrl)) return callback(true);
+          diag(`[权限] 拒绝非本应用来源的剪贴板访问（${String(requestingUrl).slice(0, 80)}）`);
+          return callback(false);
+        }
+
+        // 麦克风/摄像头：弹原生确认框，绝不静默授予。
+        const isMic = p === 'media' || p === 'audioCapture' || p === 'videoCapture';
+        if (isMic) {
+          const mediaTypes = (details && details.mediaTypes) || [];
+          const label = mediaTypes.includes('video') ? '摄像头' : '麦克风';
+          dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : null, {
+            type: 'question',
+            buttons: ['允许', '拒绝'],
+            defaultId: 1,
+            cancelId: 1,
+            title: APP_NAME,
+            message: `网页请求使用你的${label}`,
+            detail: `来源：${requestingUrl.slice(0, 120)}\n\n` +
             '这是 DSH 的本地后端页面。仅当你要使用语音输入/听写等需要该设备的功能时才允许。\n' +
             '拒绝不会影响其它功能。'
         }).then((r) => {
           const granted = r.response === 0;
           diag(`[权限] 用户${granted ? '允许' : '拒绝'}了${label}请求`);
           callback(granted);
-        }).catch(() => callback(false));
+        }).catch((err) => {
+          diag('权限确认框失败，按拒绝处理:', err && err.message);
+          callback(false);
+        });
         return;
       }
 
       diag(`[权限] 拒绝 ${p}（不在允许列表内）`);
       callback(false);
+      } catch (err) {
+        // 回调体内部任何异常都只降级为"拒绝本次权限"，绝不抛回 Electron 回调栈
+        //（抛回去 = 未捕获异常 = 主进程崩溃，正是 0.3.44 初版「点复制就崩」的原因）。
+        diag('权限请求处理异常，按拒绝处理:', err && err.message);
+        try { callback(false); } catch {}
+      }
     });
   } catch (e) { diag('setPermissionRequestHandler 注册失败:', e && e.message); }
 }
@@ -1259,7 +1304,8 @@ function createChromiumWindow(url) {
   });
   Menu.setApplicationMenu(null);
   applyWindowHandlers(win);
-  applyPermissionGates(win.webContents.session);
+  // 显式传入 webContents —— 见 applyPermissionGates 的注释（回调不能依赖调用点局部名）。
+  applyPermissionGates(win.webContents.session, win.webContents);
 
   win.webContents.session.webRequest.onErrorOccurred((details) => {
     diag(`[NET ERROR] ${details.url.slice(0, 120)} -> ${details.error}`);

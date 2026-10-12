@@ -2,6 +2,58 @@
 
 这里记录每个版本改了什么。版本号和 `package.json` 保持一致。
 
+## 0.3.45（2026-10-12）
+
+**紧急修复 0.3.44 引入的崩溃：点击「复制」按钮会导致主进程崩溃。这是我自己上一版引入的缺陷，不是既有问题。**
+
+### 根因：回调里引用了一个不存在的变量
+
+0.3.44 新增的权限闸门写了这样一行：
+
+```js
+session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+  const isOurs = webContents === win.webContents;   // ← `win` 在这里不存在
+```
+
+`win` 只是 `createChromiumWindow` 的**局部参数**，而 `applyPermissionGates(session)` 的签名里根本没有它，模块作用域里也只有 `mainWindow`。所以：
+
+- **注册阶段完全正常** —— 外面那层 `try/catch` 只包住"注册"这个动作，包不住"回调"
+- 页面一旦真的申请任意权限，Electron 从**回调栈**上调用它 → `ReferenceError: win is not defined`
+- 这个异常发生在注册**之后**，外层 catch 捕不到 → **未捕获异常 → 主进程崩溃**
+
+`navigator.clipboard.writeText()` 恰恰会投递权限请求，所以表现就是**一点复制就崩**。
+
+**实测证据**（真实 Electron 里逐一调用注册好的回调）：
+
+```
+clipboard-read            → ★ 抛错: ReferenceError: win is not defined
+clipboard-sanitized-write → ★ 抛错: ReferenceError: win is not defined
+media / audioCapture / videoCapture / geolocation / notifications / midi → 全部同样抛错
+```
+
+修法：把 `win` 改成显式参数 `owner`，并且**把整个回调体包进 try/catch** —— 回调里的任何意外都只降级为"拒绝本次权限"，绝不抛回 Electron 的回调栈。
+
+### 第二个缺陷（同一个函数里）：复制即使不崩也会失败
+
+排查过程中实测发现：`navigator.clipboard.writeText()` 在 Electron 里投递的权限名是 **`clipboard-read`**（`readText` 和 `writeText` 都走这个名字，靠权限名分不出读还是写）—— 不是文档里常写的 `clipboard-sanitized-write`。
+
+而 0.3.44 我把 `clipboard-read` 放进了**危险级拒绝**清单，于是即便修好崩溃，复制依然会被拒（`NotAllowedError: Write permission denied`）。
+
+修法：剪贴板权限**按来源判定**而不是按权限名 —— 本应用自己的回环页面（`127.0.0.1`/`localhost`/`[::1]`）有正当的复制/粘贴需求，放行；其它来源一律拒绝。
+
+### 教训（已写进代码注释）
+
+1. **回调引用的变量必须来自参数或闭包捕获**，不能依赖调用点的局部名。函数能注册成功 ≠ 回调能正常工作。
+2. **"注册成功"不等于"回调可用"**：`try/catch` 只包住注册，是假的安全感。
+3. **不要凭文档猜权限名** —— 实测 `writeText` 走的是 `clipboard-read`。这个"猜"直接导致复制功能被误杀。
+4. **我上一版的测试给了假绿灯**：`test-044` 只做静态正则匹配（检查源码里有没有某段字符串），根本没有调用过注册的回调，所以"代码里有 `win`"这件事它看不见。新增的 `test-045` 改为**用假 session 驱动真实注册的回调**，逐权限调用并断言"不抛异常 + 回调一定被调用"。
+
+### 验证
+
+- **421 项断言全部通过**（新增 `test-045` 48 项；`test-044` 同步修正，不再把回归缺陷当规范锁死）
+- **端到端（真实 Electron）**：页面调用 `navigator.clipboard.writeText()` → 复制成功（`ok`）、主进程零未捕获异常
+- 回归测试特意覆盖：权限回调内异常被降级为拒绝、非本应用来源被拒、危险权限仍被拒（**安全策略没有为了修崩溃而放宽**）
+
 ## 0.3.44（2026-10-11）
 
 **收尾 A/C 报告剩余的 P1/P2。其中"三段式退出"经实测确认在 Windows 上不适用，改做本平台真正能兑现的保证。**
