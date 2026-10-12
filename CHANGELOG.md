@@ -33,6 +33,39 @@ media / audioCapture / videoCapture / geolocation / notifications / midi → 全
 
 修法：把 `win` 改成显式参数 `owner`，并且**把整个回调体包进 try/catch** —— 回调里的任何意外都只降级为"拒绝本次权限"，绝不抛回 Electron 的回调栈。
 
+### 生产日志实证（比任何复现都硬）
+
+用户机器的 `DSH-Desktop-日志.txt` 里**真实记录了这个崩溃 5 次**，每次都紧跟一次会话重启：
+
+```
+[2026-10-12T09:01:44.866Z] 未捕获异常: ReferenceError: win is not defined
+   at Function.<anonymous> (C:\Program Files\DSH Desktop\resources\app.asar\main.js:1215:38)
+===== 会话开始 PID=29532 版本=0.3.44 日志目录=... =====   ← 崩溃后重启
+```
+
+`main.js:1215` 正是 `const isOurs = webContents === win.webContents;` 这一行。
+
+**为什么会直接退出**：`main.js:17-25` 有全局兜底：
+
+```js
+process.on('uncaughtException', (err) => {
+  try { diag('未捕获异常:', err); } catch {}
+  try { dialog.showErrorBox('DSH Desktop 主进程异常', ...); } catch {}
+  app.exit(1);          // ← 主动退出
+});
+```
+
+所以链路是完整的：**点复制 → `clipboard-read` 权限请求 → request 回调 → 第 1215 行读 `win` → ReferenceError → 全局处理器 → `app.exit(1)` → 应用消失**。
+
+**一个关键细节（也是我最初判断失误的地方）**：剪贴板权限**不经过 `check` 通道**，直达 `request` 通道。实测枚举为：
+
+```
+check:media / check:web-app-installation / check:geolocation
+request:clipboard-read          ← 剪贴板只走 request
+```
+
+因此 `check` 处理器里那行 `return false` 拦不住它。我最初的探测脚本因为没有加载应用的全局 `uncaughtException` 处理器，一度得出"进程存活"的错误结论——**是生产日志纠正了我**：崩溃是真实发生的。
+
 ### 第二个缺陷（同一个函数里）：复制即使不崩也会失败
 
 排查过程中实测发现：`navigator.clipboard.writeText()` 在 Electron 里投递的权限名是 **`clipboard-read`**（`readText` 和 `writeText` 都走这个名字，靠权限名分不出读还是写）—— 不是文档里常写的 `clipboard-sanitized-write`。
