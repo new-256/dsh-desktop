@@ -9,17 +9,40 @@ const http = require('http');
 const mgr = require('./updater-backend');
 const diagLog = require('./diag-log');
 const crashReport = require('./crash-report');
+const lifecycle = require('./lifecycle-log');
 const { createQuitGuard } = require('./quit-guard');
 const ladderPolicy = require('./ladder-policy');
 const diag = diagLog.write;
 
+/**
+ * 桌面日志的**绝对路径**（用户可见文案统一用它）。
+ *
+ * 0.3.46：此前弹窗里写的是裸文件名「DSH-Desktop-日志.txt」。本机同时存在
+ * 两个同名文件 —— 活的在 <安装目录>\logs\，9-10 起就停更的死文件在
+ * %APPDATA%\DSH Desktop\logs\。裸文件名会把排查者引到死文件上（这正是
+ * 2026-10-20 事故前期走偏的根源之一）。
+ */
+function desktopLogPath() {
+  try { return diagLog.logFile(); } catch {}
+  return 'DSH-Desktop-日志.txt';
+}
+
+// 0.3.46 · 生命周期台账：本次进程实例的「启动」记录。
+//
+// 存在的理由（2026-10-20 事故取证盲区）：此前**任何退出路径都不写日志**，
+// 于是「应用内静默退出（托盘退出等）」与「外部强杀」在证据上完全等价，事后
+// 无法指认是谁杀了旧实例。现在每次启动写一条 start、每次退出写一条带原因的
+// exit；有 start 无 exit ⇒ 进程没走到退出路径 ⇒ 外部强杀/断电。
+lifecycle.start(process.argv.includes('--hidden') ? 'boot-hidden' : 'boot', { cwd: process.cwd() });
+
 // 任何主进程异常都先落到桌面日志，再向用户展示 —— 不再出现"无声崩溃"。
 process.on('uncaughtException', (err) => {
   try { diag('未捕获异常:', err); } catch {}
+  try { lifecycle.crash('uncaught-exception', (err && (err.stack || err.message)) || String(err)); } catch {}
   try {
     dialog.showErrorBox('DSH Desktop 主进程异常',
       ((err && (err.stack || err.message)) || String(err)) +
-      '\n\n详情已写入桌面日志：DSH-Desktop-日志.txt');
+      '\n\n详情已写入桌面日志：' + desktopLogPath());
   } catch {}
   app.exit(1);
 });
@@ -176,6 +199,7 @@ const quitGuard = createQuitGuard({
   },
   now: () => {
     isQuitting = true;
+    try { lifecycle.exit('tray-quit', '用户从系统托盘选择「退出」'); } catch {}
     if (tray) { try { tray.destroy(); } catch {} tray = null; }
     killProcessTree(backend);
     app.quit();
@@ -554,7 +578,7 @@ async function startBackendWithHealing(opts = {}) {
               conflicts.map((c) => `${c.id}：${c.reason}`).join('\n') +
               `\n\n原配置已备份到：\n${res.backup}\n\n如需恢复，请对照备份文件修改 cordis.patch.yml。`
           });
-          if (r0.response === 1) { isQuitting = true; app.exit(0); return; }
+          if (r0.response === 1) { isQuitting = true; try { lifecycle.exit('user-exit-dialog', '启动预检冲突弹窗选择「退出」'); } catch {} app.exit(0); return; }
         } catch {}
         await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 800ms sleep
         try {
@@ -618,7 +642,7 @@ async function startBackendWithHealing(opts = {}) {
                 analysis.broken.map((b) => `${b.id}（${b.reason}）`).join('\n') +
                 `\n\n原配置已备份到：\n${res.backup}\n\n修复插件后，用备份文件恢复即可重新启用。`
             });
-            if (r.response === 1) { isQuitting = true; app.exit(0); return; }
+            if (r.response === 1) { isQuitting = true; try { lifecycle.exit('user-exit-dialog', '插件条目禁用弹窗选择「退出」'); } catch {} app.exit(0); return; }
           } catch {}
         }
       }
@@ -663,7 +687,7 @@ async function startBackendWithHealing(opts = {}) {
               failingBundles.map((b) => `${b.name}（${b.reason}）`).join('\n') +
               `\n\n原配置已备份到：\n${res1c.backup}\n\n修复或更新该插件后，把备份中对应的条目加回 profiles/web/package.json 的 dsh.profile.bundles 即可重新启用。`
           });
-          if (r1c.response === 1) { isQuitting = true; app.exit(0); return; }
+          if (r1c.response === 1) { isQuitting = true; try { lifecycle.exit('user-exit-dialog', '插件包禁用弹窗选择「退出」'); } catch {} app.exit(0); return; }
         } catch {}
         await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 800ms sleep
         try {
@@ -948,7 +972,7 @@ function handleBackendCrashed() {
     detail: 'DSH 后端意外退出。重启应用可恢复；你的会话与配置保存在独立数据目录中，不会丢失。'
   }).then((r) => {
     crashNotified = false;
-    if (r.response === 0) restartApp(); else { isQuitting = true; app.quit(); }
+    if (r.response === 0) restartApp(); else { isQuitting = true; try { lifecycle.exit('backend-crashed-close', '后端异常退出后用户选择关闭'); } catch {} app.quit(); }
   });
 }
 
@@ -1131,6 +1155,7 @@ function showMainWindow() {
 
 function quitApp() {
   isQuitting = true;
+  try { lifecycle.exit('quit-app', '应用退出'); } catch {}
   if (tray) { try { tray.destroy(); } catch {} tray = null; }
   killProcessTree(backend);
   app.quit();
@@ -1332,6 +1357,40 @@ function createChromiumWindow(url) {
     if (regFail) handleClientBundleFailure(regFail[1]).catch(() => {});
   });
 
+  // 0.3.46 · 渲染层「非正常消失」的取证（对齐官方 main.ts:1110-1118 的
+  // render-process-gone / preload-error 两个监听，我们此前完全缺失）。
+  //
+  // 意义：渲染进程被 OOM / 被系统杀掉 / 加载器崩了，**主进程毫发无损** ——
+  // 此前这类事件不留任何痕迹，页面直接空白，用户看到的只是"窗口白了"，
+  // 事后无法判断是渲染层崩了还是后端死了。现在：
+  //   · 写进退出原因台账（可与「外部强杀」区分开）；
+  //   · 写一份独立崩溃报告（保留 reason / exitCode 等字段）。
+  win.webContents.on('render-process-gone', (_e, details) => {
+    const info = {
+      reason: details && details.reason,
+      exitCode: details && details.exitCode,
+      killed: !!(details && details.killed),
+    };
+    diag('[RENDERER GONE]', info);
+    try { lifecycle.crash('renderer-gone', JSON.stringify(info)); } catch {}
+    try {
+      crashReport.writeCrashReport({
+        source: 'renderer', phase: 'running',
+        error: `渲染进程异常消失：${JSON.stringify(info)}`,
+        backendReady: !!activeUrl, backendLogTail: backendLogs.join('').slice(-64 * 1024),
+        rendererConsole: rendererConsoleTail.slice(-200),
+      });
+    } catch {}
+  });
+  win.webContents.on('preload-error', (_e, preloadPath, error) => {
+    diag('[PRELOAD ERROR]', preloadPath, error);
+    try { lifecycle.note('preload-error', `${preloadPath}: ${(error && error.message) || error}`); } catch {}
+  });
+  win.webContents.on('unresponsive', () => {
+    diag('[RENDERER UNRESPONSIVE] 主窗口无响应');
+    try { lifecycle.note('renderer-unresponsive', '主窗口无响应（渲染层卡死）'); } catch {}
+  });
+
   // 0.3.39 · F12 / Ctrl+Shift+I 切换 DevTools（对齐官方：打包版同样可用，调试
   // 分发的黑盒问题不再需要 --remote-debugging-port）。在输入事件层拦截，
   // 不抢占页面自身的键盘处理。
@@ -1463,8 +1522,7 @@ async function showFatal(err) {
   setBootPhase('failed', err);
   closeSplash();
   const tail = backendLogs.join('').split(/\r?\n/).filter(Boolean).slice(-30).join('\n');
-  let logPath = 'DSH-Desktop-日志.txt';
-  try { logPath = diagLog.logFile(); } catch {}
+  const logPath = desktopLogPath();
 
   // 0.3.39 · 对齐官方 crash-report：写独立崩溃报告文件（完整错误+日志尾部+
   // 渲染层错误尾部），启动时清理旧的（只删 crash-*.log，保留 10 份）。
@@ -1495,6 +1553,7 @@ async function showFatal(err) {
       (addressInUse ? '端口被占用：请先退出其他正在运行的 DSH 实例，再重启本应用。\n\n' : '') +
       crashReport.crashDialogDetail(err && err.stack ? err.stack : String(err), reportPath,
         `完整日志：${logPath}`));
+    try { lifecycle.crash('startup-fatal', (err && err.stack) || String(err)); } catch {}
     app.quit();
     return;
   }
@@ -1735,7 +1794,7 @@ async function stageConfirmedUpdates(updates, info) {
     diag('全部更新下载失败，版本未变化。', failText);
     dialog.showMessageBox(mainWindow, {
       type: 'error', buttons: ['知道了'], title: APP_NAME, message: '更新下载失败',
-      detail: failText + '\n\n当前版本未受影响、未重启需求。\n可能原因：该版本尚未发布到 npm 镜像。\n\n详情已写入桌面日志：DSH-Desktop-日志.txt'
+      detail: failText + '\n\n当前版本未受影响、未重启需求。\n可能原因：该版本尚未发布到 npm 镜像。\n\n详情已写入桌面日志：' + desktopLogPath()
     }).catch(() => {});
     return;
   }
@@ -2007,6 +2066,7 @@ async function requestPatchRepair() {
 async function restartApp(extraArgs = []) {
   diag('restartApp：准备重启（更新应用流程）');
   isQuitting = true;
+  try { lifecycle.exit('restart', '应用重启（更新/安全模式/手动重启）'); } catch {}
   const proc = backend;
   backend = null;
   activeUrl = null;
@@ -2194,6 +2254,7 @@ handleIpc('app:restart', () => restartApp());
 // ---------------------------------------------------------------------------
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
+  try { lifecycle.exit('second-instance', '单实例锁被占用：本进程是第二实例，直接退出'); } catch {}
   app.quit();
 } else {
   app.on('second-instance', (_e, argv) => {
@@ -2322,7 +2383,7 @@ if (!gotLock) {
             dialog.showMessageBox(null, {
               type: 'info', buttons: ['继续启动'], defaultId: 0, title: APP_NAME,
               message: '已自动迁移自定义 Agent 预设',
-              detail: '上游组件 dsh-persona 升级后配置格式变更（text → prefix），你的自定义预设已自动迁移到新格式，会话可正常恢复。\n\n原文件已按 .persona-migrate-*.bak 后缀备份，详情见桌面日志：DSH-Desktop-日志.txt'
+              detail: '上游组件 dsh-persona 升级后配置格式变更（text → prefix），你的自定义预设已自动迁移到新格式，会话可正常恢复。\n\n原文件已按 .persona-migrate-*.bak 后缀备份，详情见桌面日志：' + desktopLogPath()
             }).catch(() => {});
           }
         }
@@ -2373,11 +2434,22 @@ if (!gotLock) {
       // entry is disabled — sibling entries stay active).
       try {
         const preConflicts = mgr.findLoaderIdConflicts();
-        const preResolve = mgr.preflightBareNameResolution() || { repaired: [], broken: [] };
+        // 0.3.46 · 先恢复、后禁用：应用自己误禁用过的条目（此前解析根判错导致
+        // 误伤）在包现在能解析时自动恢复 —— 自愈必须对称，否则误伤是单向的。
+        const restored = mgr.restorePreflightDisabledEntries(mgr.dshHome(), {
+          conflictIds: new Set(preConflicts.map((c) => c.id)),
+        }) || { restored: [], skipped: [] };
+        if (restored.restored.length) {
+          diag('启动预检：已恢复此前被误禁用的条目', restored.restored);
+          for (const r of restored.restored) {
+            pushLog(`启动预检：条目 ${r.id}（${r.name}）此前因解析判断错误被禁用，现已自动恢复。\n`);
+          }
+        }
+        const preResolve = mgr.preflightBareNameResolution() || { repaired: [], broken: [], restored: [], skipped: [], roots: [], anchor: null };
         const repaired = preResolve.repaired || [];
         const allConflicts = preConflicts.concat(preResolve.broken || []);
-        if (allConflicts.length || repaired.length) {
-          diag('启动预检发现待处理项:', { conflicts: allConflicts, repaired });
+        if (allConflicts.length || repaired.length || restored.restored.length) {
+          diag('启动预检发现待处理项:', { conflicts: allConflicts, repaired, restored: restored.restored });
           if (repaired.length) {
             updateSplash('已自动修复插件的解析链接…');
             for (const r of repaired) {
@@ -2387,19 +2459,22 @@ if (!gotLock) {
           let fix = { fixed: [] };
           if (allConflicts.length) {
             pushLog(`启动预检：发现 ${allConflicts.length} 个问题条目，正在自动处理…\n`);
-            fix = mgr.applyLoaderConflictFixes(allConflicts);
+            fix = mgr.applyLoaderConflictFixes(allConflicts, { kind: 'preflight', reason: '启动预检判定该条目会导致冷启动失败' });
             if (fix.fixed.length) {
               updateSplash('已自动禁用冲突的插件配置条目…');
               const total = fix.fixed.reduce((n, f) => n + f.ids.length, 0);
               pushLog(`启动预检：已禁用 ${total} 个问题条目（各文件已备份）。\n`);
             }
           }
-          if (!autoStartHidden && (repaired.length || fix.fixed.length)) {
+          if (!autoStartHidden && (repaired.length || fix.fixed.length || restored.restored.length)) {
+            const restoredPart = restored.restored.length
+              ? '已自动恢复（此前被误禁用，现在可以正常加载）：\n\n' + restored.restored.map((r) => `${r.id}：${r.name || ''}`).join('\n') + '\n\n'
+              : '';
             const repairPart = repaired.length
               ? '已自动修复（插件继续正常加载，无需操作）：\n\n' + repaired.map((r) => `${r.name}：安装目录名与包名不一致，已建好解析链接`).join('\n') + '\n\n'
               : '';
             const disablePart = fix.fixed.length
-              ? '已禁用（与内置组件/官方安装重复，或包无法解析；原配置已备份，后缀 .bak）：\n\n' +
+              ? '已禁用（与内置组件/官方安装重复，或包确实无法解析；原配置已备份，后缀 .bak）：\n\n' +
                 allConflicts.map((c) => `${c.id}：${c.reason}`).join('\n')
               : '';
             const r5 = await dialog.showMessageBox(null, {
@@ -2407,10 +2482,10 @@ if (!gotLock) {
               buttons: ['继续启动', '退出'], defaultId: 0, cancelId: 1,
               title: APP_NAME,
               message: fix.fixed.length ? '已处理冲突的插件配置条目' : '已自动修复插件解析',
-              detail: repairPart + disablePart +
-                '\n\n其余插件不受影响。详情见桌面日志：DSH-Desktop-日志.txt'
+              detail: restoredPart + repairPart + disablePart +
+                '\n\n其余插件不受影响。详情见桌面日志：' + desktopLogPath()
             });
-            if (r5.response === 1) { isQuitting = true; app.exit(0); return; }
+            if (r5.response === 1) { isQuitting = true; lifecycle.exit('user-exit-preflight'); app.exit(0); return; }
           }
         } else {
           diag('启动预检：无冲突条目');
@@ -2572,8 +2647,24 @@ if (!gotLock) {
   app.on('window-all-closed', () => {
     // With a live tray the app is keep-alive: closing the (hidden) window must
     // not quit. Only quit for a real exit or when the tray could not be created.
-    if (isQuitting || !tray) { isQuitting = true; killProcessTree(backend); app.quit(); }
+    if (isQuitting || !tray) {
+      const why = isQuitting ? 'window-all-closed' : 'no-tray-quit';
+      isQuitting = true;
+      try { lifecycle.exit(why, '窗口全部关闭且托盘不可用'); } catch {}
+      killProcessTree(backend); app.quit();
+    }
   });
+
+  // 0.3.46 · 系统关机/注销：Electron 在 Windows 上会先发 before-quit，
+  // 这里补一条带原因的退出记录，让「机器关机导致的退出」与「被杀」可区分。
+  try {
+    const { powerMonitor } = require('electron');
+    if (powerMonitor && typeof powerMonitor.on === 'function') {
+      powerMonitor.on('shutdown', () => {
+        try { lifecycle.exit('system-shutdown', '收到系统关机/注销事件'); } catch {}
+      });
+    }
+  } catch {}
 
   // 0.3.42 · 退出前确认（对齐官方 quit-confirmation.ts）。
   //
@@ -2585,19 +2676,28 @@ if (!gotLock) {
   // 这里拦截第一次 before-quit，问一次；用户确认或选择不再询问后放行。
   // 防重入由 quitGuard 内部处理（合并重复请求，不叠弹窗）。
   app.on('before-quit', (e) => {
-    if (isQuitting) { killProcessTree(backend); return; }
-    if (quitGuard.settled) { isQuitting = true; killProcessTree(backend); return; }
+    // 0.3.46 · 退出原因台账：所有走到这里还没记过原因的退出，一律记下。
+    // 「退出」这一动作本身没有原因可考，但**有没有走到这条路径**能区分
+    // 「应用内退出」与「外部强杀」—— 后者根本不会触发本事件。
+    if (isQuitting) { try { lifecycle.exit('quit-confirmed', '退出路径已确认'); } catch {} killProcessTree(backend); return; }
+    if (quitGuard.settled) { isQuitting = true; try { lifecycle.exit('quit-confirmed', '退出确认已通过'); } catch {} killProcessTree(backend); return; }
     // 后端没起来过 / 已不在 ⇒ 没有任何会被中断的东西，不打扰用户。
     if (!backend || backend.exitCode !== null || !activeUrl) {
-      isQuitting = true; killProcessTree(backend); return;
+      isQuitting = true; try { lifecycle.exit('quit-no-backend', '后端未运行，直接退出'); } catch {} killProcessTree(backend); return;
     }
     e.preventDefault();
     quitGuard.requestQuit('before-quit').then(() => {
       if (isQuitting) killProcessTree(backend);
     }).catch((err) => {
       diag('退出确认异常，直接退出:', err && err.message);
-      isQuitting = true; killProcessTree(backend); app.quit();
+      isQuitting = true; try { lifecycle.exit('quit-guard-error', String((err && err.message) || err)); } catch {} killProcessTree(backend); app.quit();
     });
   });
-  process.on('exit', () => { isQuitting = true; killProcessTree(backend); });
+  // 0.3.46 · 兜底：进程走到 exit 事件却没有任何原因记录 ⇒ 说明是 app.exit()
+  // 这类没有专门标注的路径（此时补记一条），而不是外部强杀（强杀不会触发）。
+  process.on('exit', () => {
+    isQuitting = true;
+    try { lifecycle.exit('exit-event', '进程 exit 事件（未标注更具体原因）'); } catch {}
+    killProcessTree(backend);
+  });
 }

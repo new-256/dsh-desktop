@@ -22,7 +22,7 @@
  * 写 `.dsh-backend.json` 戳记，记录「请求值 → 解析值 → 来源」，便于事后追溯。
  *
  * ── 环境变量 ──────────────────────────────────────────────────────────────
- *   DSH_VERSION         期望版本，默认 latest（精确版本如 0.1.7-alpha.2 会强校验）
+ *   DSH_VERSION         期望版本，默认 DEFAULT_BACKEND_VERSION（**精确版本**）
  *   DSH_BACKEND_FORCE   1 = 忽略已有 vendor/dsh，强制重新准备
  *   DSH_SKIP_BACKEND    1 = 完全跳过后端准备
  *   DSH_NPM_REGISTRY    覆盖 npm registry（国内构建建议 npmmirror）
@@ -35,7 +35,18 @@ const os = require('os');
 
 const ROOT = path.join(__dirname, '..');
 const VENDOR = path.join(ROOT, 'vendor', 'dsh');
-const DSH_VERSION = (process.env.DSH_VERSION || 'latest').trim();
+// 0.3.46 · **钉死精确版本**（原默认是 `latest`）。
+//
+// 为什么必须钉：`latest` 是移动靶 —— 同一份代码今天打包与明天打包会得到两个
+// 不同的后端，构建不可复现；而 npm 的各子包 dist-tag 还严重不一致
+// （实测 @deepseek-ai/dsh-app-boot 的 latest 仍停在 0.1.0-rc.6），
+// 解析结果随 registry 状态漂移。
+//
+// 钉的版本 = 本壳已在真机验证过的后端版本。升级到更新的官方版本（如
+// 0.2.1-rc.2）走应用内的静默后端更新通道（有 journal + 回滚），
+// 而不是悄悄改变打包产物。
+const DEFAULT_BACKEND_VERSION = '0.2.1-alpha.5';
+const DSH_VERSION = (process.env.DSH_VERSION || DEFAULT_BACKEND_VERSION).trim();
 // 戳记放在 vendor/ 下、与 dsh 平级：pack-vendor.js 只打包 vendor/dsh 本身，
 // 因此戳记不会被装进 7z、也不会出现在用户的 backend 目录里。
 const STAMP = path.join(ROOT, 'vendor', '.dsh-backend.json');

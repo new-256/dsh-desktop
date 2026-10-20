@@ -2,6 +2,55 @@
 
 这里记录每个版本改了什么。版本号和 `package.json` 保持一致。
 
+## 0.3.46（2026-10-20）
+
+**启动预检的解析根修正 + 退出原因台账。0.3.45 会把「官方后端里明明装着的包」判成装不上，并自动禁用用户的插件配置 —— 2026-10-20 19:59 那次弹窗就是这么来的。**
+
+### 根因：解析根取错了树
+
+预检判断「裸包名能不能解析」时，只从 `<dsh-home>/profiles/<profile>` 向上找 `node_modules`；而 DSH 运行时对裸包名还有一层**解析拦截**，其作用域是官方后端安装树 `<backend>/dsh/node_modules`。
+
+这两个目录是**兄弟、不是祖先** ⇒ 纯 walk-up 永远看不见官方包 ⇒ 官方包一律被判死：
+
+| 时间 | 被误禁用的条目 | 后果 |
+|---|---|---|
+| 2026-09-10 03:20 | mcp-agy / mcp-codebuddy / mcp-playwright-global | 3 条 MCP 通道消失 |
+| 2026-10-15 01:00 | 同上 4 条 + mcp-mimo-global | 4 条 MCP 通道消失 |
+| 2026-10-20 19:59 | mcp-cli-bridge-global | 18 个 `mcp__cli__*` 工具消失 + 弹窗 |
+
+43 天内 13 次 `.disabled-*.bak` 里，这 3 次是**同一个缺陷**造成的（共 8 个条目实例，包名全是 `@deepseek-ai/dsh-mcp-client`）。
+
+铁证：同名的 `@deepseek-ai/dsh-mcp-resources` 声明在**内置** `dsh-base` 补丁里，一直正常加载 —— 内置补丁就在 `<backend>/dsh/node_modules/@deepseek-ai/dsh-base/`，恰好证明官方树里的裸包名是可解析的。
+
+### 改了什么
+
+1. **解析根模型重写**（新增 `plugin-resolution.js`）
+   - installation scope 直接取 Node 自己的 `require.resolve.paths()`（与 DSH 的 `installAnchor` 同源）
+   - local scope = profile 目录向上 walk-up
+   - 口径**保守放行**：看得见就不禁（误禁代价 ≫ 误放行；真失败时 DSH 启动自检会给权威诊断）
+2. **自校验锚点**（防复发）：用内置 `dsh-base` 补丁里的裸包名当锚点；锚点解析不到 ⇒ 根集合不可信 ⇒ **拒绝任何破坏性禁用**，只报告不删除
+3. **自愈对称化**：禁用时写机器可读标记（`dsh-desktop:preflight-disabled … kind=…`），启动时把**自己造成的、且现在能解析的**条目自动恢复；其它原因的禁用（loader id 冲突等）不动；历史条目用**桌面日志取证**（只有 reason 含「冷启动必然失败」的那几条才算受害者）
+4. **退出原因台账**（新增 `lifecycle-log.js`）：每次启动写 `start`、每条退出路径写带原因的 `exit` —— **有 start 无 exit ⇒ 外部强杀/断电**。覆盖托盘退出、窗口关闭、启动失败、更新重启、系统关机、渲染层崩溃、单实例、异常兜底
+5. **弹窗不再指死文件**：「详情见桌面日志」改成**绝对路径**（本机同时存在一个 9-10 起停更的同名死文件，那正是本次前期走偏的根源之一）
+6. **渲染层取证**（对齐官方 `main.ts:1110-1118`）：补 `render-process-gone` / `preload-error` / `unresponsive` 监听 —— 渲染进程被 OOM 或被杀，此前一点痕迹都不留
+7. **构建可复现性**：`scripts/install-backend.js` 默认后端版本从 `latest` 钉成精确版本 `0.2.1-alpha.5`（`latest` 是移动靶，且 npm 各子包的 `latest` 严重不一致：`dsh-app-boot` 的 latest 还停在 `0.1.0-rc.6`）
+
+### 现场已修好
+
+- 本机 `dsh-home/cordis.patch.yml` 的 5 条被误禁条目**已恢复**（写前留 `.restore-*.bak`，YAML 校验通过、无重复 id）
+- 家级 `node_modules` 补了 `@deepseek-ai/dsh-mcp-client` → 官方后端树的 junction：**在 0.3.46 装上之前，0.3.45 的旧预检也不会再误禁用**
+
+> 恢复的条目需要**重启 DSH** 才会重新挂载（host 组合变更不可热加载）。
+
+### 验证
+
+- 新增 `scripts/test-046-preflight-resolution.js`：**34 项断言，0 失败**
+- 既有回归全绿：040(20) / 041(45) / 042(66) / 043(31) / 043-ladder(50) / 044(66) / 045(48) / manifest(30)
+
+### 官方版本比对（顺带做的）
+
+本机官方后端 `0.2.1-alpha.5`，npm 最新 `0.2.1-rc.2`（10-17 发布）—— **落后一整条 rc 线**；官方这轮 Electron 壳几乎没动（`apps/desktop/src` 68→69 个文件，只改 5 个、新增 1 个），**而官方压根没有 crash reporter / 退出原因记录**，我们在取证这一项上已经领先。详见 `lab/notes/official-version-compare.md`。
+
 ## 0.3.45（2026-10-12）
 
 **紧急修复 0.3.44 引入的崩溃：点击「复制」按钮会导致主进程崩溃。这是我自己上一版引入的缺陷，不是既有问题。**

@@ -31,6 +31,16 @@ const fs = require('fs');
 const os = require('os');
 const https = require('https');
 const crypto = require('crypto');
+// 0.3.46 · 补丁解析原语与裸包名解析根模型抽成独立模块（同一套解析语义只能有一份）
+const pluginResolution = require('./plugin-resolution');
+const {
+  parseHomePatchBlocks,
+  parseCommentedPatchEntries,
+  specToPath,
+  normalizeSpecifier,
+  isBarePackageName,
+  barePackageName,
+} = require('./patch-file');
 
 // 更新路线：托盘「设置」窗可切换 'mirror'（npmmirror，国内快、同步滞后）与
 // 'official'（npmjs，版本始终最新）。未设置时退回环境变量，再退回镜像站。
@@ -135,7 +145,8 @@ function P() {
 // --------------------------------------------------------------------------
 // helpers
 // --------------------------------------------------------------------------
-const diagLog = require('./diag-log').write;
+const diagLogMod = require('./diag-log');
+const diagLog = diagLogMod.write;
 function log(...a) { console.log('[backend-mgr]', ...a); diagLog('[backend-mgr]', ...a); }
 function mkdirp(d) { fs.mkdirSync(d, { recursive: true }); }
 function execSync(cmd) {
@@ -2219,18 +2230,10 @@ function clearPluginIsolation() { try { fs.unlinkSync(pluginIsolationStatePath()
 // the failure logs, match them to patch entries, back up the patch file,
 // comment out just those entries, notify the user, and retry once.
 
-/** Normalize a module specifier for matching: file:// URLs -> decoded path, strip ?v=N query, lowercase, forward slashes. */
-function normalizeSpecifier(spec) {
-  let s = String(spec || '').trim();
-  if (!s) return '';
-  if (s.startsWith('file://')) {
-    const rest = s.slice('file://'.length).replace(/^\/+/, ''); // file:///C:/... -> C:/...
-    try { s = decodeURIComponent(rest); } catch { s = rest; }
-  }
-  s = s.split('?')[0];
-  s = s.replace(/:\d+(?::\d+)?$/, ''); // strip :line[:col] suffixes from error URLs
-  return s.replace(/\\/g, '/').toLowerCase();
-}
+/**
+ * Normalize a module specifier for matching: file:// URLs -> decoded path, strip ?v=N query, lowercase, forward slashes.
+ * （0.3.46 起实现在 patch-file.js —— 与预检/归因共用同一份语义）
+ */
 
 /**
  * Collect failing module/package specifiers from backend log text.
@@ -2293,66 +2296,19 @@ function failingSpecifiersFromLogs(logText) {
  * sub-entries [{ id, name, lineStart, lineEnd }] where lineStart/lineEnd are
  * 0-based line indexes covering exactly that entry (its id/name/config lines,
  * NOT the whole block). Returns [] if nothing can be parsed.
+ *
+ * 0.3.46：实现在 patch-file.js（与解析根模型共用，避免两处语义漂移）。
  */
-function parseHomePatchBlocks(yamlText) {
-  const lines = String(yamlText || '').split(/\r?\n/);
-  const blocks = [];
-  let cur = null;
-  for (let i = 0; i < lines.length; i++) {
-    if (/^\s*- insert:/.test(lines[i])) {
-      if (cur) blocks.push(cur);
-      cur = { start: i, end: lines.length, entries: [] };
-      continue;
-    }
-    if (!cur) continue;
-    const idm = /^\s*-\s+id:\s*(\S+)/.exec(lines[i]);
-    if (idm) {
-      // Close the previous entry's range at this entry's first line.
-      if (cur.entries.length) cur.entries[cur.entries.length - 1].lineEnd = i;
-      cur.entries.push({ id: idm[1], name: null, lineStart: i, lineEnd: lines.length });
-    } else if (cur.entries.length) {
-      const last = cur.entries[cur.entries.length - 1];
-      if (last.name === null) {
-        const nm = /^\s*name:\s*(.+)$/.exec(lines[i]);
-        if (nm) last.name = nm[1].trim().replace(/^['"]|['"]$/g, '');
-      }
-    }
-  }
-  if (cur) blocks.push(cur);
-  for (let i = 0; i < blocks.length; i++) {
-    blocks[i].end = i + 1 < blocks.length ? blocks[i + 1].start : lines.length;
-  }
-  // Trim each entry's range to its last meaningful line (drop trailing blank
-  // lines and foreign comment banners so disabling never touches more than
-  // the entry itself).
-  const meaningful = (l) => l && l.trim() !== '' && !l.trimStart().startsWith('#');
-  for (const block of blocks) {
-    for (const entry of block.entries) {
-      entry.lineEnd = Math.min(entry.lineEnd, block.end);
-      while (entry.lineEnd > entry.lineStart + 1 && !meaningful(lines[entry.lineEnd - 1])) entry.lineEnd--;
-    }
-  }
-  return blocks;
-}
-
-/** Convert a patch entry `name` to a filesystem path for file:// names (or null). */
-function specToPath(name) {
-  let s = String(name || '').trim();
-  if (!/^file:/i.test(s)) return null;
-  if (s.startsWith('file://')) {
-    const rest = s.slice('file://'.length).replace(/^\/+/, ''); // file:///C:/... -> C:/...
-    try { s = decodeURIComponent(rest); } catch { s = rest; }
-  } else {
-    try { s = decodeURIComponent(s.slice('file:'.length)); } catch {}
-  }
-  return s.split('?')[0];
-}
 
 /**
  * Whether a patch entry's source is currently loadable:
  *  - file:// name -> the referenced file must exist on disk
- *  - bare name   -> a valid junction/package must exist in one of the profile
- *    layers or the home-level node_modules (upward resolution order)
+ *  - bare name   -> must resolve through the **runtime** resolution roots
+ *    (the same model the pre-flight uses — see plugin-resolution.js).
+ *
+ * 0.3.46：旧实现只认 profiles/web|profiles|家级 node_modules 下的 **junction**
+ * （真实目录都不算），既漏掉了官方后端安装树里的官方包，又把真实目录误判为
+ * 「不可用」。归因逻辑与预检用同一套模型，才能得出互不矛盾的结论。
  */
 function pluginSourceAvailable(home, entry) {
   const name = entry && entry.name;
@@ -2361,7 +2317,11 @@ function pluginSourceAvailable(home, entry) {
     const p = specToPath(name);
     return !!(p && fs.existsSync(p));
   }
-  const bare = name.split('?')[0]; // tolerate a ?v=N cache buster on bare names
+  const bare = barePackageName(name); // tolerate a ?v=N cache buster on bare names
+  if (!bare) return false;
+  const roots = runtimeResolutionRoots(home);
+  if (pluginResolution.resolveBareName(roots, bare).resolved) return true;
+  // 家级 node_modules 下的 junction 也算可用（历史行为，保持兼容）
   const candidates = ['profiles/web/node_modules', 'profiles/node_modules', 'node_modules'];
   for (const rel of candidates) {
     const link = path.join(home, rel, bare);
@@ -2646,12 +2606,30 @@ function analyzeConfigEntryConflicts(home, logText) {
 }
 
 /**
+ * 禁用标记：预检/冲突修复禁用条目时，在被注释的条目上方留一行**机器可读**的
+ * 标记。它是「这条注释是我们自动禁用留下的、可被自动恢复」的唯一凭据 ——
+ * 用户自己注释掉的条目没有这行标记，因此永远不会被自动恢复。
+ *
+ * 0.3.46 新增：此前禁用只有整文件备份，事后无法区分「应用禁用的」与
+ * 「用户注释的」，只能靠人肉比对 .disabled-*.bak。
+ */
+const PREFLIGHT_MARKER = 'dsh-desktop:preflight-disabled';
+
+/** 构造一行标记（单行 YAML 注释，换行与制表符一律压平）。 */
+function buildDisableMarker(id, name, kind, reason) {
+  const one = (v) => String(v == null ? '' : v).replace(/[\r\n\t]+/g, ' ').trim();
+  return `# ${PREFLIGHT_MARKER} id=${one(id)} name=${one(name)} kind=${one(kind || 'unknown')} at=${new Date().toISOString()} reason=${one(reason || '')}`;
+}
+
+/**
  * Comment out ONLY the given plugin entry id(s) inside a cordis.patch.yml —
  * entry-level granularity: sibling entries in the same `- insert:` block are
  * left untouched. Backs the file up first. Returns
  * { disabled: [ids], backup: <path|null> }.
+ *
+ * 0.3.46：每个被禁用的条目上方写一行 PREFLIGHT_MARKER 标记（可被自动恢复）。
  */
-function disablePatchEntriesInFile(patchPath, ids) {
+function disablePatchEntriesInFile(patchPath, ids, meta = {}) {
   if (!ids || !ids.length || !fs.existsSync(patchPath)) return { disabled: [], backup: null };
 
   let yamlText;
@@ -2662,6 +2640,11 @@ function disablePatchEntriesInFile(patchPath, ids) {
   const want = new Set(ids);
   const hit = new Set();
 
+  // 先算出「哪些行要注释」以及「哪些块头要注释」，再一次性拼装输出 ——
+  // 这样标记行可以插在条目正上方，且不影响其它条目的行号语义。
+  const commentLines = new Set();
+  const entryStarts = new Map();   // 行号 → { id, name }
+  const commentBlockStarts = new Set();
   for (const block of blocks) {
     let disabledInBlock = 0;
     for (const entry of block.entries) {
@@ -2671,15 +2654,16 @@ function disablePatchEntriesInFile(patchPath, ids) {
       for (let i = entry.lineStart; i < entry.lineEnd; i++) {
         const l = lines[i];
         if (l.trimStart().startsWith('#')) continue;
-        lines[i] = l.trim() === '' ? '#' : '#' + l; // keep indentation for easy manual restore
+        commentLines.add(i);
       }
+      entryStarts.set(entry.lineStart, { id: entry.id, name: entry.name });
     }
     // If EVERY active entry of the block got disabled, comment the block's
     // `- insert:` line too — a bare `- insert:` with nothing under it would
     // become a null insert for the loader.
     if (block.entries.length > 0 && disabledInBlock === block.entries.length) {
       const l = lines[block.start];
-      if (l && !l.trimStart().startsWith('#')) lines[block.start] = '#' + l;
+      if (l && !l.trimStart().startsWith('#')) commentBlockStarts.add(block.start);
     }
   }
 
@@ -2689,12 +2673,322 @@ function disablePatchEntriesInFile(patchPath, ids) {
   const backup = patchPath + `.disabled-${ts}.bak`;
   try { fs.copyFileSync(patchPath, backup); } catch (e) { log('backup patch failed:', e.message); return { disabled: [], backup: null }; }
 
-  let out = lines.join(eol);
-  if (!lines.some((l) => /^\s*- insert:/.test(l))) out += eol + '[]' + eol; // keep a valid (empty) patch array
+  const outLines = [];
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const meta2 = entryStarts.get(i);
+    if (meta2) {
+      outLines.push(buildDisableMarker(meta2.id, meta2.name, meta.kind, meta.reason || meta2.name));
+    }
+    if (commentLines.has(i)) {
+      outLines.push(l.trim() === '' ? '#' : '#' + l); // keep indentation for easy manual restore
+    } else if (commentBlockStarts.has(i)) {
+      outLines.push('#' + l);
+    } else {
+      outLines.push(l);
+    }
+  }
+
+  let out = outLines.join(eol);
+  if (!outLines.some((l) => /^\s*- insert:/.test(l))) out += eol + '[]' + eol; // keep a valid (empty) patch array
   try { fs.writeFileSync(patchPath, out); } catch (e) { log('write patch failed:', e.message); return { disabled: [], backup: null }; }
 
   log(`disabled patch entries in ${path.basename(path.dirname(patchPath))}: ${[...hit].join(', ')} (backup: ${backup})`);
   return { disabled: [...hit], backup };
+}
+
+/**
+ * 把一行「原文」转成禁用后的样子（用于校验 live 文件确实是该备份禁用出来的）。
+ */
+function expectedDisabledLine(original) {
+  if (original.trim() === '') return '#';
+  if (original.trimStart().startsWith('#')) return original;
+  return '#' + original;
+}
+
+/**
+ * 恢复「被预检误禁用、且现在已经能解析」的条目。
+ *
+ * 0.3.46 新增 —— 自愈对称化：应用会自动禁用条目，就必须也能自动撤销自己的
+ * 误伤。2026-10-15 / 10-20 两次把官方后端树里的 @deepseek-ai/dsh-mcp-client
+ * 判成「装不上」并禁用（其中一次还弹了窗），若没有恢复通道，用户只能手工
+ * 改补丁文件。
+ *
+ * 恢复依据与安全约束：
+ *   · 依据 = 应用自己写下的 `.disabled-<ts>.bak` 快照（禁用前的原文）；
+ *   · 只恢复「备份里是活跃的、live 里被注释掉的」条目 —— 用户自己注释掉的
+ *     条目在备份里同样是注释，不会被误恢复；
+ *   · live 的注释行必须**逐行**等于「备份原文加前缀 #」，否则跳过（说明用户
+ *     在禁用之后改过文件，不能替他决定）；
+ *   · 条目当前必须真的能解析（裸包名走运行时解析根 / file:// 目标存在），
+ *     否则保持禁用 —— 恢复一个仍然装不上的条目只会让下次启动再崩一次；
+ *   · 恢复前给 live 文件再留一份备份。
+ *
+ * @param {string} home dsh-home
+ * @param {object} opts { roots, conflictIds:Set<string> }
+ * @returns {{restored: [{file,id,name}], skipped: [{file,id,reason}]}}
+ */
+function restorePreflightDisabledEntries(home, opts = {}) {
+  const out = { restored: [], skipped: [] };
+  const roots = opts.roots || runtimeResolutionRoots(home);
+  const conflictIds = opts.conflictIds || new Set();
+  const homePatchPath = path.join(home, 'cordis.patch.yml');
+  const profilesDir = path.join(home, 'profiles');
+  const patchFiles = [homePatchPath];
+  try {
+    for (const d of fs.readdirSync(profilesDir, { withFileTypes: true })) {
+      if (!d.isDirectory() || d.name === 'node_modules') continue;
+      patchFiles.push(path.join(profilesDir, d.name, 'cordis.patch.yml'));
+    }
+  } catch {}
+
+  for (const patchPath of patchFiles) {
+    if (!fs.existsSync(patchPath)) continue;
+    let liveText;
+    try { liveText = fs.readFileSync(patchPath, 'utf8'); } catch { continue; }
+    const eol = liveText.includes('\r\n') ? '\r\n' : '\n';
+    let liveLines = liveText.split(/\r?\n/);
+    // 历史禁用事件（桌面日志取证）—— 只在需要时读一次
+    const logEvents = loggedBareNameDisableEvents(readDesktopLogTail(opts.logFile));
+
+    // 备份按时间戳倒序（新的在前）
+    let backups = [];
+    try {
+      const dir = path.dirname(patchPath);
+      const base = path.basename(patchPath);
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.startsWith(`${base}.disabled-`) || !f.endsWith('.bak')) continue;
+        backups.push(path.join(dir, f));
+      }
+    } catch {}
+    backups.sort((a, b) => b.localeCompare(a));
+    if (!backups.length) continue;
+
+    // 每次恢复都会改变行号 ⇒ 反复扫描直到不再有可恢复项
+    let progress = true;
+    let dirty = false;
+    while (progress) {
+      progress = false;
+      const liveTextNow = liveLines.join(eol);
+      const commented = parseCommentedPatchEntries(liveTextNow);
+      if (!commented.length) break;
+      // live 里当前活跃的条目 id（用于重复 id 守卫）
+      const activeIds = new Set();
+      for (const b of parseHomePatchBlocks(liveTextNow)) {
+        for (const e of b.entries) activeIds.add(e.id);
+      }
+      // 我们自己写的禁用标记（0.3.46 起）—— 标记里带 kind，能区分禁用原因
+      const markers = readDisableMarkers(liveTextNow);
+
+      for (const backupPath of backups) {
+        let backupText;
+        try { backupText = fs.readFileSync(backupPath, 'utf8'); } catch { continue; }
+        const backupLines = backupText.split(/\r?\n/);
+        const backupBlocks = parseHomePatchBlocks(backupText);
+        const backupEntries = new Map();
+        for (const b of backupBlocks) {
+          for (const e of b.entries) backupEntries.set(e.id, { entry: e, block: b });
+        }
+
+        // 受害者集合：**只撤销「裸包名不可解析」这一类误伤**。
+        //   ① 0.3.46 起：条目上方有我们自己的标记，kind=bare-name-unresolvable；
+        //   ② 0.3.46 之前：没有标记，靠桌面日志里的禁用事件与备份文件时间对齐取证。
+        // 其它原因的禁用（loader id 冲突、插件包加载失败等）**不在恢复范围内** ——
+        // 擅自恢复它们可能直接造成启动失败。
+        const victims = new Set();
+        for (const [id, mk] of markers) {
+          if (mk.kind === 'bare-name-unresolvable') victims.add(id);
+        }
+        if (!victims.size && logEvents.length) {
+          let stamp = backupStampMs(backupPath);
+          if (!Number.isFinite(stamp)) {
+            try { stamp = fs.statSync(backupPath).mtimeMs; } catch { stamp = NaN; }
+          }
+          for (const ev of logEvents) {
+            if (ev.file !== patchPath) continue;
+            if (!Number.isFinite(ev.t) || !Number.isFinite(stamp)) continue;
+            if (ev.t >= stamp - 180000 && ev.t <= stamp + 60000) for (const id of ev.ids) victims.add(id);
+          }
+        }
+
+        // 同 id 可能有多份副本（历史快照恢复版 vs 更早的旧版）。**较新的那份才是
+        // 当前意图**（旧版是快照恢复时被取代的遗留注释），所以从后往前尝试，
+        // 先命中的是最后一份副本。
+        const candidates = commented.slice().sort((a, b) => b.lineStart - a.lineStart);
+        for (const c of candidates) {
+          if (!victims.has(c.id)) continue;            // 不是这一类误伤 ⇒ 不碰
+          if (conflictIds.has(c.id)) { pushSkip(out, patchPath, c.id, '仍存在 loader id 冲突'); continue; }
+          // 同一 id 在 live 里已有活跃条目 ⇒ 恢复会造成 duplicate loader entry id
+          // （那是致命的启动失败）。
+          if (activeIds.has(c.id)) {
+            pushSkip(out, patchPath, c.id, '同 id 的条目已处于活跃状态，恢复会造成重复 id（跳过）');
+            continue;
+          }
+          const be = backupEntries.get(c.id);
+          if (!be) continue;                       // 备份里它本就不是活跃条目 → 不是我们禁用的
+          const original = backupLines.slice(be.entry.lineStart, be.entry.lineEnd);
+          if (!original.length) continue;
+
+          // 逐行校验：live 必须是「原文加 # 前缀」的结果
+          const livePart = liveLines.slice(c.lineStart, c.lineEnd);
+          const rebuilt = [];
+          let bi = 0;
+          let ok = true;
+          for (const ll of livePart) {
+            const bl = original[bi];
+            if (bl !== undefined && ll === expectedDisabledLine(bl)) { rebuilt.push(bl); bi++; continue; }
+            if (bl === undefined) { rebuilt.push(ll); continue; }
+            // 当前行与备份对不上：用户在禁用之后改过文件 ⇒ 不替他决定
+            if (ll.trim() !== '' && !ll.trimStart().startsWith('#')) { ok = false; break; }
+            rebuilt.push(ll);
+          }
+          if (!ok || bi !== original.length) {
+            pushSkip(out, patchPath, c.id, 'live 内容与禁用前快照不一致（用户改过），不自动恢复');
+            continue;
+          }
+
+          // 条目现在必须真的可用，否则保持禁用
+          const name = be.entry.name;
+          const usable = name
+            ? (/^file:/i.test(name)
+              ? !!(specToPath(name) && fs.existsSync(specToPath(name)))
+              : pluginResolution.resolveBareName(roots, barePackageName(name)).resolved)
+            : false;
+          if (!usable) {
+            pushSkip(out, patchPath, c.id, `包「${barePackageName(name)}」目前仍无法解析，保持禁用`);
+            continue;
+          }
+
+          // 恢复：换回备份里的原文，并清掉我们自己写的禁用标记
+          const head = liveLines.slice(0, c.lineStart);
+          const tail = liveLines.slice(c.lineEnd);
+          const markerLine = head.length ? head[head.length - 1] : '';
+          const markerRe = new RegExp(`^\\s*#\\s*${PREFLIGHT_MARKER}\\s+id=${c.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`);
+          if (markerRe.test(markerLine)) head.pop();
+          liveLines = head.concat(rebuilt, tail);
+
+          // 块头 `- insert:` 若当初也被注释掉了，一并恢复（**必须是本条目所属的块头**，
+          // 不能取文件里第一个被注释的块头 —— 那可能属于另一个块）
+          const blockBackupLine = backupLines[be.block.start];
+          if (blockBackupLine && /^\s*- insert:/.test(blockBackupLine) && c.blockStart >= 0) {
+            const liveBlockLine = liveLines[c.blockStart];
+            if (liveBlockLine && /^\s*#\s*- insert:/.test(liveBlockLine)) liveLines[c.blockStart] = blockBackupLine;
+          }
+
+          out.restored.push({ file: patchPath, id: c.id, name });
+          dirty = true;
+          progress = true;
+          break;
+        }
+        if (progress) break;
+      }
+    }
+
+    if (dirty) {
+      if (opts.dryRun) {
+        log('[dry-run] 将恢复以下条目:', out.restored.map((r) => r.id).join(', '));
+        continue;
+      }
+      // 并发保护：写回之前确认文件自我们读取以来没被改过（另一个会话/用户
+      // 可能正在编辑补丁文件 —— 覆盖掉别人的改动是不可接受的）。
+      let current = '';
+      try { current = fs.readFileSync(patchPath, 'utf8'); } catch {}
+      if (current !== liveText) {
+        log('restore aborted: 补丁文件在处理期间被修改过（不覆盖别人的改动）', patchPath);
+        out.skipped.push({ file: patchPath, id: '(全部)', reason: '文件在处理期间被修改，已放弃写回' });
+        break;
+      }
+      const ts = formatDateTimestamp();
+      const backup = patchPath + `.restore-${ts}.bak`;
+      try { fs.copyFileSync(patchPath, backup); } catch (e) { log('backup before restore failed:', e.message); }
+      try { fs.writeFileSync(patchPath, liveLines.join(eol)); }
+      catch (e) { log('write patch (restore) failed:', e.message); }
+    }
+  }
+  if (out.restored.length) log('pre-flight restored previously disabled entries:', out.restored.map((r) => r.id).join(', '));
+  return out;
+}
+
+/** 记录一条「跳过恢复」的原因（同一条目只留一条）。 */
+function pushSkip(out, file, id, reason) {
+  if (out.skipped.some((s) => s.file === file && s.id === id)) return;
+  out.skipped.push({ file, id, reason });
+}
+
+/**
+ * 从补丁文件里读出**我们自己写的禁用标记**（0.3.46 起）。
+ * @returns {Map<string, {kind: string, reason: string, at: string}>}
+ */
+function readDisableMarkers(liveText) {
+  const map = new Map();
+  const re = new RegExp(`^\\s*#\\s*${PREFLIGHT_MARKER}\\s+id=(\\S+)\\s+name=([^\\s]*)\\s+kind=(\\S+)\\s+at=([^\\s]*)\\s+reason=(.*)$`);
+  for (const line of String(liveText || '').split(/\r?\n/)) {
+    const m = re.exec(line);
+    if (!m) continue;
+    map.set(m[1], { kind: m[3], reason: m[5] || '', at: m[4] });
+  }
+  return map;
+}
+
+/**
+ * 历史取证：从桌面日志里找出「因裸包名不可解析而被禁用」的事件。
+ *
+ * 0.3.46 之前禁用只留整文件备份、没有原因标记，只能靠日志还原：每次禁用前
+ * 都会紧跟一条「启动预检发现待处理项: {...}」JSON，其中的 reason 含
+ * 「冷启动必然失败」的就是**裸包名预检**的受害者 —— loader id 冲突的原因
+ * 文案（重复声明 / 已通过官方通道安装）不含这句话。
+ *
+ * @returns {Array<{t: number, file: string, ids: string[]}>}
+ */
+function loggedBareNameDisableEvents(logText) {
+  const out = [];
+  for (const line of String(logText || '').split(/\r?\n/)) {
+    if (!line.includes('启动预检发现待处理项:')) continue;
+    const ts = /^\[(\d{4}-\d{2}-\d{2}T[^Z]+Z)\]/.exec(line);
+    const jsonStart = line.indexOf('启动预检发现待处理项:') + '启动预检发现待处理项:'.length;
+    let payload = null;
+    try { payload = JSON.parse(line.slice(jsonStart).trim()); } catch { continue; }
+    const conflicts = (payload && payload.conflicts) || [];
+    const hits = conflicts.filter((c) => c && c.reason && /冷启动必然失败/.test(c.reason));
+    if (!hits.length) continue;
+    const t = ts ? Date.parse(ts[1]) : NaN;
+    const byFile = new Map();
+    for (const c of hits) {
+      if (!byFile.has(c.file)) byFile.set(c.file, []);
+      byFile.get(c.file).push(c.id);
+    }
+    for (const [file, ids] of byFile) out.push({ t, file, ids });
+  }
+  return out;
+}
+
+/**
+ * 备份文件名里的时间戳 → epoch 毫秒（本地时区）。
+ *
+ * 禁用备份的命名是 `<patch>.disabled-<YYYYMMDD-HHMMSS>.bak`，那个时间戳就是
+ * **禁用发生的那一刻**。注意：不能用文件的 mtime —— Windows 的 CopyFile 会
+ * 继承源文件的时间戳，备份的 mtime 其实是补丁文件上次被编辑的时间
+ * （实测 10-20 的禁用备份 mtime 停在 10-19 20:44），对不上日志事件。
+ */
+function backupStampMs(backupPath) {
+  const m = /\.disabled-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.bak$/.exec(String(backupPath));
+  if (!m) return NaN;
+  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+}
+
+/** 读桌面日志尾部（避免一次读进几十 MB）。 */
+function readDesktopLogTail(logFile, maxBytes = 8 * 1024 * 1024) {
+  try {
+    const file = logFile || diagLogMod.logFile();
+    const size = fs.statSync(file).size;
+    const start = Math.max(0, size - maxBytes);
+    const fd = fs.openSync(file, 'r');
+    try {
+      const buf = Buffer.alloc(size - start);
+      fs.readSync(fd, buf, 0, buf.length, start);
+      return buf.toString('utf8');
+    } catch { return ''; }
+  } catch { return ''; }
 }
 
 /**
@@ -2846,13 +3140,13 @@ function findLoaderIdConflicts() {
         const prev = (seenInFile.get(entry.id) || 0) + 1;
         seenInFile.set(entry.id, prev);
         if (baseIds.has(entry.id)) {
-          out.push({ file: patchPath, id: entry.id, name: entry.name, reason: `条目 id「${entry.id}」已由 DSH 内置提供，重复声明会让启动直接失败` });
+          out.push({ file: patchPath, id: entry.id, name: entry.name, kind: 'loader-id-conflict', reason: `条目 id「${entry.id}」已由 DSH 内置提供，重复声明会让启动直接失败` });
         } else if (prev > 1) {
-          out.push({ file: patchPath, id: entry.id, name: entry.name, reason: `条目 id「${entry.id}」在同一文件里声明了两次` });
+          out.push({ file: patchPath, id: entry.id, name: entry.name, kind: 'loader-id-conflict', reason: `条目 id「${entry.id}」在同一文件里声明了两次` });
         } else if (entry.name) {
           const bare = entry.name.split('?')[0].replace(/^['"]|['"]$/g, '');
           if (bare && ownBundles.has(bare)) {
-            out.push({ file: patchPath, id: entry.id, name: entry.name, reason: `插件「${bare}」已通过官方通道安装（profile bundle），补丁里再注册一次会冲突` });
+            out.push({ file: patchPath, id: entry.id, name: entry.name, kind: 'loader-id-conflict', reason: `插件「${bare}」已通过官方通道安装（profile bundle），补丁里再注册一次会冲突` });
           }
         }
       }
@@ -2863,20 +3157,24 @@ function findLoaderIdConflicts() {
 }
 
 /**
- * Apply entry-level disables for pre-flight conflicts, grouped per file.
- * Returns { fixed: [{ file, ids, backup }] }.
+ * Apply entry-level disables for pre-flight conflicts, grouped per file **and
+ * per kind** — 禁用标记里要写清是哪种原因，恢复通道据此只撤销自己造成的
+ * 那一类误伤（loader id 冲突导致的禁用不该被自动撤销）。
+ * Returns { fixed: [{ file, ids, backup, kind }] }.
  */
-function applyLoaderConflictFixes(conflicts) {
-  const byFile = new Map();
+function applyLoaderConflictFixes(conflicts, meta = {}) {
+  const groups = new Map();
   for (const c of conflicts || []) {
     if (!c || !c.file || !c.id) continue;
-    if (!byFile.has(c.file)) byFile.set(c.file, new Set());
-    byFile.get(c.file).add(c.id);
+    const kind = c.kind || meta.kind || 'loader-conflict';
+    const key = `${c.file}${kind}`;
+    if (!groups.has(key)) groups.set(key, { file: c.file, kind, ids: new Set() });
+    groups.get(key).ids.add(c.id);
   }
   const fixed = [];
-  for (const [file, ids] of byFile) {
-    const res = disablePatchEntriesInFile(file, [...ids]);
-    if (res.disabled.length) fixed.push({ file, ids: res.disabled, backup: res.backup });
+  for (const g of groups.values()) {
+    const res = disablePatchEntriesInFile(g.file, [...g.ids], { kind: g.kind, reason: meta.reason || '' });
+    if (res.disabled.length) fixed.push({ file: g.file, ids: res.disabled, backup: res.backup, kind: g.kind });
   }
   return { fixed };
 }
@@ -2885,28 +3183,43 @@ function applyLoaderConflictFixes(conflicts) {
  * Node-style upward resolution check: does <name> exist as a directory in any
  * node_modules on the walk-up chain from `dir`? This is the necessary
  * condition for `import '<name>'` to resolve — if no such directory exists
- * anywhere, the import is guaranteed to fail with ERR_MODULE_NOT_FOUND (no
- * false positives; package.json/exports subtleties are out of scope).
+ * anywhere, the import is guaranteed to fail with ERR_MODULE_NOT_FOUND.
+ *
+ * 0.3.46：实现搬到 plugin-resolution.js（预检与归因共用同一份），这里保留
+ * 薄封装以兼容既有调用点。
+ *
+ * 注意旧注释里那句「no false positives」是错的：解析根取错就会把「装在官方
+ * 后端树里」的包判成不存在（2026-10-20 事故）。根的构成见 plugin-resolution.js。
  */
 function resolvesFromDir(dir, name) {
-  const segs = String(name).split('/');
-  let cur = path.resolve(dir);
-  for (;;) {
-    let st = null;
-    try { st = fs.statSync(path.join(cur, 'node_modules', ...segs)); } catch {}
-    if (st && st.isDirectory()) return true;
-    const parent = path.dirname(cur);
-    if (parent === cur) return false;
-    cur = parent;
-  }
+  return pluginResolution.resolvesFromDir(dir, name);
 }
 
 /**
- * Find a REAL directory (not a link) directly under modulesDir whose
- * package.json declares the given package name — i.e. a hand-copied install
- * whose directory name does not match its package name.
+ * Find a REAL directory (not a link) under modulesDir whose package.json
+ * declares the given package name — i.e. a hand-copied install whose
+ * directory name does not match its package name.
+ *
+ * 0.3.46：支持 scope（@scope/name）—— 旧实现直接跳过 '@' 开头的目录，
+ * 于是 @deepseek-ai/* 这类包永远无法被自动修复。
  */
 function findRealDirByPackageName(modulesDir, pkgName) {
+  const segs = String(pkgName || '').split('/').filter(Boolean);
+  if (!segs.length) return null;
+  // scope 形式：<modulesDir>/@scope/<pkg>
+  if (segs.length === 2) {
+    const scopeDir = path.join(modulesDir, segs[0]);
+    const full = path.join(scopeDir, segs[1]);
+    try {
+      const st = fs.lstatSync(full);
+      if (st.isDirectory() && !st.isSymbolicLink()) {
+        const pj = readJson(path.join(full, 'package.json'), null);
+        if (pj && pj.name === pkgName) return full;
+      }
+    } catch {}
+    return null;
+  }
+  if (segs.length !== 1) return null;
   let entries;
   try { entries = fs.readdirSync(modulesDir); } catch { return null; }
   for (const entry of entries) {
@@ -2922,22 +3235,64 @@ function findRealDirByPackageName(modulesDir, pkgName) {
 }
 
 /**
+ * 运行时解析根清单（本机 dsh-home 视角）。
+ *
+ * 根的构成见 plugin-resolution.js 的说明：权威根是**官方后端安装树**
+ * （<backend>/dsh/node_modules），因为 Cordis loader 对裸包名执行的是
+ * loader 包文件所在目录为基准的普通 ESM 动态 import。profile 目录与家级
+ * DSH_HOME 也保留在清单里（loader.internal 可得时解析按补丁文件目录进行）。
+ */
+function runtimeResolutionRoots(home) {
+  const profilesDir = path.join(home, 'profiles');
+  const profileDirs = [];
+  try {
+    for (const d of fs.readdirSync(profilesDir, { withFileTypes: true })) {
+      if (!d.isDirectory() || d.name === 'node_modules') continue;
+      const dir = path.join(profilesDir, d.name);
+      if (fs.existsSync(path.join(dir, 'package.json'))) profileDirs.push(dir);
+    }
+  } catch {}
+  return pluginResolution.resolutionRoots({
+    dshPkgPath: P().dshPkg,
+    backendDshDir: P().dshDir,
+    dshHome: home,
+    profileDirs,
+  });
+}
+
+/**
  * Pre-flight: verify every active patch entry that references a package by
- * BARE NAME actually resolves from the profile directories. An unresolvable
- * bare name is a guaranteed cold-start crash (ERR_MODULE_NOT_FOUND → plugin
- * tree failed to load — the 9/8 15:32 bot-gateway incident: a local tgz
- * install had copied the plugin to a real dir named `bot-gateway` while the
- * patch entry referenced the bare package name `dsh-bot-gateway`).
+ * BARE NAME actually resolves through the **runtime** resolution roots.
+ *
+ * 0.3.46 · 本次事故的直接修复点
+ * ──────────────────────────────────────────────────────────────
+ * 旧实现只从 <dsh-home>/profiles/* 向上找 node_modules，而 Cordis loader
+ * 对裸包名实际是以 **loader 包所在目录**（<backend>/dsh/node_modules）为
+ * 基准做普通 ESM 动态 import —— 于是官方后端树里明明装着的
+ * @deepseek-ai/dsh-mcp-client 被判成「冷启动必然失败」并自动禁用：
+ *   2026-10-15 01:00 误伤 4 条、2026-10-20 19:59 误伤 1 条（并弹窗）。
+ *
+ * 现在的行为：
+ *   1. 用 plugin-resolution.js 组装解析根清单（每条根带来源说明）；
+ *   2. 用**内置 dsh-base 补丁里的裸包名**做自校验锚点 —— 锚点解析不到就
+ *      判定「根集合不可信」，此时**拒绝任何破坏性的禁用**，只报告不删除；
+ *   3. 只有根集合可信时，才把确实解析不到的条目判为 broken（禁用前留备份）。
  *
  * Auto-repair: when the package exists as a misnamed real directory under
  * home node_modules, create a correctly-named junction — the plugin keeps
- * working instead of being disabled. Otherwise the entry is reported broken
- * (the caller disables it entry-level, with backup).
+ * working instead of being disabled.
  *
- * Returns { repaired: [{id, name, junction, target}], broken: [{file, id, name, reason}] }.
+ * Returns {
+ *   repaired: [{id, name, junction, target}],
+ *   broken:   [{file, id, name, reason}],
+ *   restored: [{file, id, name}],        // 本次一并恢复的误禁用条目
+ *   skipped:  [{reason, detail}],        // 因根集合不可信而跳过的破坏性动作
+ *   roots:    [{dir, why}],
+ *   anchor:   {names, resolved, trusted},
+ * }
  */
 function preflightBareNameResolution() {
-  const out = { repaired: [], broken: [] };
+  const out = { repaired: [], broken: [], restored: [], skipped: [], roots: [], anchor: null };
   const home = dshHome();
   const homePatchPath = path.join(home, 'cordis.patch.yml');
   const profilesDir = path.join(home, 'profiles');
@@ -2953,6 +3308,27 @@ function preflightBareNameResolution() {
   } catch {}
   if (!profileDirs.length) return out;
 
+  // 解析根清单（installation scope = 官方后端安装树）
+  const roots = pluginResolution.resolutionRoots({
+    dshPkgPath: P().dshPkg,
+    backendDshDir: P().dshDir,
+    dshHome: home,
+    profileDirs,
+  });
+  out.roots = roots.map((r) => ({ why: r.why, dir: r.dir, paths: r.paths }));
+
+  // 自校验锚点：内置 dsh-base 补丁里的裸包名（已知可用）
+  const anchorNames = pluginResolution.controlBareNames(P().dshDir);
+  const verdict = pluginResolution.verifyRoots({ roots, anchorNames });
+  out.anchor = { names: anchorNames, resolved: verdict.anchorResolved, trusted: verdict.trusted, reason: verdict.reason };
+  log('pre-flight 解析根:', pluginResolution.describeRoots(roots), '| 自校验:', verdict.reason);
+  if (!verdict.trusted) {
+    // 根集合不可信 ⇒ 「包不存在」的结论不可信 ⇒ 禁止任何禁用动作。
+    log('pre-flight 解析根自校验未通过 —— 本次不做任何条目禁用（只报告）:', verdict.reason);
+    out.skipped.push({ reason: 'resolution-roots-unverified', detail: verdict.reason });
+    return out;
+  }
+
   // Active entries with bare package names from home + profile patches.
   // file:// URLs and scheme forms (npm:…) are not bare imports — skip them.
   const entries = [];
@@ -2964,30 +3340,38 @@ function preflightBareNameResolution() {
       for (const e of block.entries) {
         if (!e.name) continue;
         const n = String(e.name).trim();
-        if (!n || n.includes(':') || n.includes('?') || n.startsWith('.') || n.startsWith('/') || n.startsWith('\\')) continue;
+        if (!isBarePackageName(n)) continue;
         entries.push({ file: patchPath, id: e.id, name: n });
       }
     }
   }
 
   for (const e of entries) {
-    if (profileDirs.some((dir) => resolvesFromDir(dir, e.name))) continue;
+    const bare = barePackageName(e.name);
+    if (pluginResolution.resolveBareName(roots, bare).resolved) continue;
     // Unresolvable — try to auto-repair from a misnamed real-dir install.
-    const junctionPath = path.join(home, 'node_modules', e.name);
+    const junctionPath = path.join(home, 'node_modules', ...bare.split('/'));
     if (!fs.existsSync(junctionPath)) {
-      const realDir = findRealDirByPackageName(path.join(home, 'node_modules'), e.name);
+      const realDir = findRealDirByPackageName(path.join(home, 'node_modules'), bare);
       if (realDir) {
         try {
+          fs.mkdirSync(path.dirname(junctionPath), { recursive: true });
           fs.symlinkSync(realDir, junctionPath, 'junction');
           out.repaired.push({ id: e.id, name: e.name, junction: junctionPath, target: realDir });
-          log(`pre-flight auto-repair: junction ${e.name} -> ${realDir} (directory name did not match package name)`);
+          log(`pre-flight auto-repair: junction ${bare} -> ${realDir} (directory name did not match package name)`);
           continue;
         } catch (err) {
-          log(`pre-flight auto-repair failed for ${e.name}: ${err.message}`);
+          log(`pre-flight auto-repair failed for ${bare}: ${err.message}`);
         }
       }
     }
-    out.broken.push({ file: e.file, id: e.id, name: e.name, reason: `包「${e.name}」在 node_modules 解析链里不存在，冷启动必然失败` });
+    out.broken.push({
+      file: e.file,
+      id: e.id,
+      name: e.name,
+      kind: 'bare-name-unresolvable',
+      reason: `包「${bare}」在运行时解析根里不存在（已查：${pluginResolution.describeRoots(roots)}），冷启动必然失败`,
+    });
   }
   if (out.broken.length) log('pre-flight unresolvable bare names:', out.broken.map((b) => b.name).join(', '));
   return out;
@@ -4156,6 +4540,9 @@ module.exports = {
   attributeCriticalFailure, CRITICAL_SERVICE_PACKAGES,
   analyzeFailingBundles, disableFailingBundles, BASE_BUNDLES,
   findLoaderIdConflicts, applyLoaderConflictFixes, disablePatchEntriesInFile,
+  // 0.3.46 · 解析根模型与自愈恢复通道
+  runtimeResolutionRoots, restorePreflightDisabledEntries, PREFLIGHT_MARKER,
+  loggedBareNameDisableEvents, readDisableMarkers, readDesktopLogTail,
   validatePatchFile, repairPatchFile, validateAndRepairPatchLayers, ensurePatchArrayText,
   preflightBareNameResolution, migrateAgentPresetPersonaText,
   // main.js spawns the backend with this dedicated/isolated environment.
