@@ -7,8 +7,9 @@
  * 到用户数据目录 \logs），桌面只在"疑似故障"出现时才生成错误报告文件。
  *   - 主日志　DSH-Desktop-日志.txt（超过 10MB 自动按时间戳切分存档）
  *   - 错误清单 DSH-Desktop-错误清单.txt（单独列出疑似故障条目；超过 2MB 同样切分）
- *   - 桌面报告 DSH-Desktop-错误报告-<时间>.txt（仅在捕获到疑似故障时写入桌面）
- *   - 定时清除：存档按份数（主日志 14 份 / 错误清单 7 份）与天数（30 天）双上限清理
+ *   - 桌面报告 DSH-Desktop-错误报告.txt（**固定名**：桌面永远只有「当前这一份」）
+ *   - 定时清除：存档按份数（主日志 14 份 / 错误清单 7 份 / 桌面报告 10 份）与
+ *     天数（30 天）双上限清理
  *
  * 写日志失败绝不影响主流程。
  */
@@ -25,8 +26,26 @@ const MAX_ARCHIVES = parseInt(process.env.DSH_DIAG_MAX_ARCHIVES || '14', 10) || 
 const MAX_ERROR_ARCHIVES = parseInt(process.env.DSH_DIAG_MAX_ERROR_ARCHIVES || '7', 10) || 7;       // 错误清单保留存档份数
 const MAX_ARCHIVE_DAYS = parseInt(process.env.DSH_DIAG_MAX_ARCHIVE_DAYS || '30', 10) || 30;         // 存档最长保留天数
 const MAX_DESKTOP_REPORT_BYTES = parseInt(process.env.DSH_DIAG_REPORT_MAX || '262144', 10) || 262144; // 桌面错误报告大小上限（超出停止追加）
+const MAX_DESKTOP_REPORT_ARCHIVES = parseInt(process.env.DSH_DIAG_MAX_DESKTOP_REPORT_ARCHIVES || '10', 10) || 10; // 桌面报告归档保留份数
+const MAX_DESKTOP_REPORT_ARCHIVE_DAYS = parseInt(process.env.DSH_DIAG_MAX_DESKTOP_REPORT_ARCHIVE_DAYS || '30', 10) || 30;
 let sessionHeaderWritten = false;
-let desktopReportPath = null;                // 本次启动的桌面错误报告文件
+let desktopReportPath = null;                // 本次启动的桌面错误报告文件（固定名）
+let desktopArchiveDone = false;              // 本次启动是否已归档过桌面历史报告
+
+/**
+ * 桌面报告的**固定名**（0.3.47）。
+ *
+ * 0.3.46 之前桌面报告文件名带时间戳（`DSH-Desktop-错误报告-<时间戳>.txt`），
+ * 每次启动新建一个、**从不清理** —— 桌面上因此堆了 7 份历史报告（实测
+ * 2026-10-19 一天就 5 份），排查时根本分不清哪份是当前的。
+ *
+ * 现在：桌面只留 `DSH-Desktop-错误报告.txt` 一份（当前这次启动的），
+ * 上一轮的以及 0.3.46 之前遗留的时间戳名报告，全部归档到安装目录 logs/，
+ * 并按份数 + 天数定期清除。
+ */
+const DESKTOP_REPORT_NAME = 'DSH-Desktop-错误报告.txt';
+/** 归档名（也用于识别 0.3.46 之前遗留在桌面上的历史报告）。 */
+const DESKTOP_REPORT_ARCHIVE_RE = /^DSH-Desktop-错误报告-\d{4}-\d{2}-\d{2}-\d{6}(?:-\d+)?\.txt$/;
 
 /** 疑似故障行匹配：捕获进错误清单的关键字（英文错误关键字 + 中文提示）。 */
 const ERROR_LINE_RE = /error|fail|crash|fatal|exception|uncaught|unhandled|cannot |unable |refused|timeout|abort|denied|enoent|eacces|eperm|eaddr|etimedout|econnrefused|ERR_[A-Z0-9_]+|SyntaxError|TypeError|ReferenceError|RangeError|is not a function|is not defined|exit code|code=\d|non-zero|失败|错误|异常|崩溃|找不到|无法|拒绝|超时|出错|异常退出/i;
@@ -130,7 +149,58 @@ function housekeep() {
     const dir = logsDir();
     pruneArchives(dir, /^DSH-Desktop-日志-\d{4}-\d{2}-\d{2}-\d{6}(?:-\d+)?\.txt$/, MAX_ARCHIVES, MAX_ARCHIVE_DAYS);
     pruneArchives(dir, /^DSH-Desktop-错误清单-\d{4}-\d{2}-\d{2}-\d{6}(?:-\d+)?\.txt$/, MAX_ERROR_ARCHIVES, MAX_ARCHIVE_DAYS);
+    // 桌面报告的归档（历史上都堆在桌面上，0.3.47 起归档到安装目录并定期清除）
+    pruneArchives(dir, /^DSH-Desktop-错误报告-\d{4}-\d{2}-\d{2}-\d{6}(?:-\d+)?\.txt$/, MAX_DESKTOP_REPORT_ARCHIVES, MAX_DESKTOP_REPORT_ARCHIVE_DAYS);
   } catch (_) {}
+}
+
+/**
+ * 把桌面上的历史报告归档到安装目录 logs，让桌面**只留当前这一份**。
+ *
+ * 做两件事：
+ *   ① 上一轮留下的固定名报告 `DSH-Desktop-错误报告.txt` → 改名为带时间戳的
+ *      归档名搬进 logs/（同盘用 rename，跨盘退化为 copy + unlink）；
+ *   ② 0.3.46 之前遗留在桌面上的时间戳名报告（每次启动新建一份、从不清理）
+ *      → 同样搬进 logs/；归档里已有同名则丢弃桌面那份（内容已在归档里）。
+ *
+ * 每次启动只做一次（在第一次写日志时触发）。归档失败不致命 —— 只是桌面
+ * 多留一份文件，不影响主流程。
+ */
+function archiveDesktopReports() {
+  if (desktopArchiveDone) return;
+  desktopArchiveDone = true;
+  const ddir = desktopDir();
+  const ldir = logsDir();
+
+  // ① 上一轮的固定名报告 → 归档
+  try {
+    const current = path.join(ddir, DESKTOP_REPORT_NAME);
+    if (fs.existsSync(current)) {
+      const stamp = stampFile(timestamp());
+      let dest = path.join(ldir, `DSH-Desktop-错误报告-${stamp}.txt`);
+      let n = 1;
+      while (fs.existsSync(dest)) dest = path.join(ldir, `DSH-Desktop-错误报告-${stamp}-${n++}.txt`);
+      try { fs.mkdirSync(ldir, { recursive: true }); } catch (_) {}
+      try { fs.renameSync(current, dest); }
+      catch (_) { try { fs.copyFileSync(current, dest); fs.unlinkSync(current); } catch (_) {} }
+    }
+  } catch (_) { /* 归档失败不影响主流程 */ }
+
+  // ② 历史遗留的时间戳名报告 → 归档
+  try {
+    for (const name of fs.readdirSync(ddir)) {
+      if (name === DESKTOP_REPORT_NAME) continue;
+      if (!DESKTOP_REPORT_ARCHIVE_RE.test(name)) continue;
+      const from = path.join(ddir, name);
+      const to = path.join(ldir, name);
+      try {
+        if (fs.existsSync(to)) { fs.unlinkSync(from); continue; }
+        fs.renameSync(from, to);
+      } catch (_) {
+        try { fs.copyFileSync(from, to); fs.unlinkSync(from); } catch (_) {}
+      }
+    }
+  } catch (_) { /* 归档失败不影响主流程 */ }
 }
 
 function captureError(line) {
@@ -138,13 +208,14 @@ function captureError(line) {
     const errFile = errorLogFile();
     rotateIfNeeded(errFile, MAX_ERROR_BYTES);
     fs.appendFileSync(errFile, line, 'utf8');
-    // 桌面报告：本启动会话最多一个文件，超出大小上限即停止追加。
+    // 桌面报告：**固定名** —— 桌面永远只有「当前这一次」一份。
     if (!desktopReportPath) {
       const ddir = desktopDir();
       try { fs.mkdirSync(ddir, { recursive: true }); } catch (_) {}
-      desktopReportPath = path.join(ddir, `DSH-Desktop-错误报告-${stampFile(timestamp())}.txt`);
+      desktopReportPath = path.join(ddir, DESKTOP_REPORT_NAME);
       const hdr = `===== DSH Desktop 错误报告 ${timestamp()} PID=${process.pid} 版本=${((electronApp && electronApp.getVersion()) || 'unknown')} =====\n`;
-      fs.appendFileSync(desktopReportPath, hdr, 'utf8');
+      // 写头用覆盖语义：本次启动从头开始（上一轮的那份已在启动时归档）
+      fs.writeFileSync(desktopReportPath, hdr, 'utf8');
       housekeep();
     }
     if (fs.statSync(desktopReportPath).size < MAX_DESKTOP_REPORT_BYTES) {
@@ -161,6 +232,9 @@ function write(...parts) {
       let ver = 'unknown';
       try { ver = (electronApp && electronApp.getVersion()) || 'unknown'; } catch (_) {}
       fs.appendFileSync(file, `\n===== 会话开始 PID=${process.pid} 版本=${ver} 日志目录=${path.dirname(file)} ${timestamp()} =====\n`, 'utf8');
+      // 0.3.47 · 桌面只留当前这一份：上一轮的报告与历史遗留的时间戳名报告
+      // 全部归档到安装目录 logs/（归档再按份数 + 天数定期清除）。
+      archiveDesktopReports();
       housekeep();
     }
     // 每次写入都检查滚动阈值（长会话内同样会切分，而不是只在下一次启动时）。
@@ -174,4 +248,9 @@ function write(...parts) {
   }
 }
 
-module.exports = { write, logFile, errorLogFile, logsDir, desktopDir, housekeep };
+module.exports = {
+  write, logFile, errorLogFile, logsDir, desktopDir, housekeep,
+  // 0.3.47 · 桌面报告纪律（固定名 + 归档 + 定期清除）
+  DESKTOP_REPORT_NAME, archiveDesktopReports,
+  desktopReportPath: () => desktopReportPath,
+};
