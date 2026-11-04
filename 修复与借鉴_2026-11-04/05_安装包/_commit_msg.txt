@@ -1,0 +1,8 @@
+0.3.50: 两阶段加固——阶段一修 7 项缺陷（数据丢失/启动挂起/静默回退/回滚死接线/设置窗提权链/通知通道/日志同步写）、阶段二借鉴官方 8 项（cookie 清理/沙箱与白名单/轮询工程化/完整性校验/干净退出/确认绑定/插件台账），并新增 5 道出包门禁
+
+- 阶段一（H-01…H-10）：修数据丢失、启动挂起、静默回退、回滚死接线、设置窗提权链、通知通道 AUMID、日志同步写
+- 阶段二（B-01…B-17）：cookie 串端口清理、窗口 sandbox + 外链白名单、更新轮询工程化（单调时钟/退避/抖动/单飞）、
+  下载包完整性校验（sha512 优先，缺元数据显式告知）、干净退出才应用更新、更新确认绑定版本、插件操作环形台账
+- 出包门禁 5 道：build-files-gate / app-identity-gate / dist-artifact-guard / 成品 asar 身份核对 / 视觉验收门禁
+- 新增模块 7 个：app-identity、startup-deadline、settings-renderer、url-policy、session-hygiene、update-schedule、plugin-journal
+- 版本 0.3.50；安装包 DSH Desktop Setup 0.3.50.exe（239,278,266 B，SHA-256 AFDC586EB86650DD0F149C56D7A404A48E68728BFE21C59CDA10D292C28D0313），安装包本身不入库
