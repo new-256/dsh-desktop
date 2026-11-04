@@ -1,0 +1,31 @@
+打包白名单完整性
+  被 require 的本地模块: crash-report.js, diag-log.js, ladder-policy.js, lifecycle-log.js, package.json.js, patch-file.js, plugin-resolution.js, quit-guard.js, startup-deadline.js, updater-backend.js
+  ✓ 扫描到了本地模块依赖（检查器本身有效）
+  ✗ build.files 包含 crash-report.js
+  ✗ build.files 包含 diag-log.js
+  ✗ build.files 包含 ladder-policy.js
+  ✗ build.files 包含 lifecycle-log.js
+  ✗ build.files 包含 package.json.js
+  ✗ build.files 包含 patch-file.js
+  ✗ build.files 包含 plugin-resolution.js
+  ✗ build.files 包含 quit-guard.js
+  ✗ build.files 包含 startup-deadline.js
+  ✗ build.files 包含 updater-backend.js
+  ✓ 白名单条目存在: package.json
+  ✗ 白名单条目存在: *.js
+  ✗ 白名单条目存在: *.html
+
+────────────────────────────────────────────────────────────
+通过 2 项，失败 12 项
+  - build.files 包含 crash-report.js
+  - build.files 包含 diag-log.js
+  - build.files 包含 ladder-policy.js
+  - build.files 包含 lifecycle-log.js
+  - build.files 包含 package.json.js
+  - build.files 包含 patch-file.js
+  - build.files 包含 plugin-resolution.js
+  - build.files 包含 quit-guard.js
+  - build.files 包含 startup-deadline.js
+  - build.files 包含 updater-backend.js
+  - 白名单条目存在: *.js
+  - 白名单条目存在: *.html

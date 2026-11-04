@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, shell, dialog, ipcMain, Tray, nativeImage, clipboard } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain, Tray, nativeImage, clipboard, Notification, session } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -12,6 +12,16 @@ const crashReport = require('./crash-report');
 const lifecycle = require('./lifecycle-log');
 const { createQuitGuard } = require('./quit-guard');
 const ladderPolicy = require('./ladder-policy');
+// 0.3.48 · H-01/H-03：启动超时与启动恢复的**判定逻辑**全在这个纯函数模块里
+// （不 require electron，可在 Node 里直接单测），main.js 只做接线。
+const startupDeadline = require('./startup-deadline');
+// 0.3.49 · B-05/B-11：导航白名单 / 开窗默认拒 / 外链协议白名单（纯函数，可单测）。
+const urlPolicy = require('./url-policy');
+// 0.3.49 · B-01：旧后端源遗留 cookie 清理（cookie 忽略端口，端口每次启动都变）。
+const sessionHygiene = require('./session-hygiene');
+// 0.3.49 · 插件操作台账（task-12 交付）。main.js 只做接线：存储/落盘/崩溃钩子都在模块里，
+// 它有 4 路钩子自己 flush，这里**不需要**额外 flush，也绝不在高频日志路径调用。
+const pluginJournal = require('./plugin-journal');
 const diag = diagLog.write;
 
 /**
@@ -56,6 +66,39 @@ catch (err) { console.warn('[dsh-desktop] electron-updater unavailable:', err &&
 
 const APP_NAME = 'DSH Desktop';
 const isPackaged = app.isPackaged;
+
+/**
+ * 0.3.48 · H-08（含打包后失效的复修）：进程侧 AppUserModelID **必须**与安装器
+ * 写进快捷方式的身份一致，否则系统会把托盘气泡当成"另一个应用"而**静默丢弃**
+ * （不报错、不进日志，用户永远收不到"有新版本"/"启动失败"的提示）。
+ *
+ * 为什么身份来自 `./app-identity` 而不是 `package.json`：
+ * electron-builder 打包时会重写 app 的 package.json，把 `build` 段整个剥掉
+ * （实测成品 asar 内 package.json 仅 503 字节、无 `build`）。旧写法
+ * `require('./package.json').<build 字段>` 因此在**开发态正确、成品里恒为
+ * undefined** → `setAppUserModelId` 在 shipped 包里从未执行，AUMID 保护空转。
+ * 现在身份是随包模块里的常量（`*.js` 已被 build.files 覆盖），且由
+ * `scripts/app-identity-gate.js` 机械校验它与安装器身份逐字符相等（不等即
+ * 禁止出包），所以"两处写死会漂移"变成构建失败而不是靠记忆。
+ *
+ * 非法常量会让本 require **直接抛错**（app-identity.js 加载即自检）——
+ * 主进程已注册 uncaughtException 处理器，表现为"桌面日志 + 明确错误框 + exit(1)"，
+ * 而不是无声崩溃，也不是悄悄变成"没有 AUMID"。
+ */
+const { DSH_APP_ID } = require('./app-identity');
+/** 实际生效的 AUMID（设置抛错时保持 null，日志据此判定"气泡被吞"的风险）。 */
+let appUserModelIdApplied = null;
+try {
+  app.setAppUserModelId(DSH_APP_ID);
+  appUserModelIdApplied = DSH_APP_ID;
+  // 自证日志：出包后只看这一行就能判断 AUMID 到底有没有生效（B 版复验口径）。
+  diag('AppUserModelID 已设置 aumidApplied:true appId=' + DSH_APP_ID + ' 来源=app-identity.js');
+} catch (e) {
+  // 失败也要可见：这里不退化成"跳过设置"，而是明确记下 aumidApplied:false 与原因，
+  // 让"气泡可能被吞"这件事在日志里可归因。
+  diag('设置 AppUserModelID 失败 aumidApplied:false appId=' + DSH_APP_ID + ' 原因=' + (e && e.message));
+}
+
 // Auto-started at login (the tray toggle writes `--hidden` to the Windows Run
 // key): boot fully but stay hidden in the tray — keep-alive by default.
 const autoStartHidden = process.argv.includes('--hidden');
@@ -144,6 +187,49 @@ function ownedWebContentsIds() {
   return ids;
 }
 
+// ---------------------------------------------------------------------------
+// 0.3.49 · 每个窗口能调用哪些通道（阶段一审计遗留：两窗共用一套校验）
+//
+// 为什么必须按窗口身份分开：设置窗与主窗加载的是**完全不同的文档**，权限面也不同。
+// 主窗里跑的是后端 Web UI（会加载第三方插件的前端代码），它**绝不该**能调到
+// `plugins:install`（→ pnpm → postinstall = 代码执行）、`plugins:set-path-entry`
+// （改用户 PATH）、`backend:rollback-to`（换后端版本）这类设置窗专属能力；反之设置窗
+// 也不该调用主窗的通道。0.3.48 之前两边共用"是自家窗口就放行"，等于让插件的前端
+// 代码有机会借主窗身份碰设置窗的高危通道（preload 白名单只限制"正常路径"，
+// 不限制"页面里被注入的脚本调 ipcRenderer" —— 那正是 H-06 的注入链终点）。
+//
+// 清单来源必须与 preload 白名单一致：`SETTINGS_WINDOW_CHANNELS` 就是
+// `settings-preload.js` 的 ALLOWED_CHANNELS（测试里会交叉核对两份清单，防止漂移）。
+// ---------------------------------------------------------------------------
+const SETTINGS_WINDOW_CHANNELS = Object.freeze([
+  // 更新 / 外壳状态
+  'settings:get', 'settings:set-route', 'settings:check-updates', 'settings:download-updates',
+  'settings:set-autostart', 'settings:open-log', 'settings:restart-app', 'settings:open',
+  // Node 基座
+  'settings:set-node-dist', 'settings:check-node', 'settings:download-node',
+  // 后端版本
+  'backend:list-versions', 'backend:compat-plan', 'backend:rollback-to',
+  // 插件安装与终端接线
+  'plugins:terminal-status', 'plugins:set-dsh-home-env', 'plugins:set-path-entry',
+  'plugins:write-wrappers', 'plugins:install', 'plugins:scan-legacy', 'plugins:import-legacy',
+  // 通用剪贴板
+  'shell:copy-text'
+]);
+
+/** 主窗（后端 Web UI）允许的通道 —— 与 `preload.js` 暴露的 3 个 API 对应，外加后端状态查询。 */
+const MAIN_WINDOW_CHANNELS = Object.freeze([
+  'app:get-version', 'app:device-info', 'app:restart',
+  // 后端运行态查询（updateStatus / 版本 / 环境隔离快照）：主窗专属，设置窗用 settings:* 对应通道
+  'backend:check-updates', 'backend:versions', 'env:isolation'
+]);
+
+/** 判定某个窗口身份是否允许该通道（纯查表，便于单测与日志）。 */
+function channelAllowedForWindow(windowKind, channel) {
+  if (windowKind === 'settings') return SETTINGS_WINDOW_CHANNELS.includes(channel);
+  if (windowKind === 'main') return MAIN_WINDOW_CHANNELS.includes(channel);
+  return false;
+}
+
 /**
  * 校验一次 IPC 调用是否来自我们拥有的文档，不是则抛错。
  * @param {Electron.IpcMainInvokeEvent|Electron.IpcMainEvent} event
@@ -152,11 +238,21 @@ function ownedWebContentsIds() {
 function assertOwnedSender(event, channel) {
   const frame = event && event.senderFrame;
   if (!frame) throw new Error(`已拒绝来自未知来源的 IPC（${channel}：无 sender frame）`);
-  const ids = ownedWebContentsIds();
   const senderId = event.sender ? event.sender.id : -1;
-  if (!ids.has(senderId)) {
+
+  // 0.3.49：先按"究竟是哪个窗口"判定，再按窗口身份查通道权限。
+  const fromMain = !!(mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id === senderId);
+  const fromSettings = !!(settingsWindow && !settingsWindow.isDestroyed() && settingsWindow.webContents.id === senderId);
+  if (!fromMain && !fromSettings) {
     throw new Error(`已拒绝来自非本应用窗口的 IPC（${channel}）`);
   }
+  const windowKind = fromSettings ? 'settings' : 'main';
+  if (!channelAllowedForWindow(windowKind, channel)) {
+    // 这是一条**真实缺陷**信号（被注入的脚本试图越权），必须可见可归因。
+    diag(`已拒绝越权 IPC：${windowKind} 窗不得调用 ${channel}`);
+    throw new Error(`已拒绝越权 IPC：${windowKind === 'settings' ? '设置' : '主'}窗口不得调用 ${channel}`);
+  }
+
   // origin 兜底：主窗口只允许后端地址，设置窗口只允许本地文件。
   let url;
   try { url = new URL(frame.url); } catch { throw new Error(`已拒绝来源不可解析的 IPC（${channel}）`); }
@@ -234,6 +330,112 @@ function pushRendererConsoleError(text) {
 // ── 0.3.39 · 关窗确认标记（对齐官方 background-close-confirmed）─────────────
 // 确认一次写进 Electron userData，更新保留、卸载随目录消失；autoStartHidden
 // 的隐藏启动不算「用户关窗」，不写标记。
+// ── 0.3.48 · H-03 · 启动阶段打点与超时预算 ────────────────────────────────
+// 为什么需要打点：0.3.47 的启动链没有任何时间信息，超时/失败时只能回答"没起来"，
+// 回答不了"卡在哪一步、等了多久"。打点是纯内存的几十个字节，却能让事后复盘
+// 一眼看到 ready → seeded → applied → spawn → url-ready → health-ok → loaded
+// 这条时间线断在哪（超时弹窗里也会原样带上）。
+const bootTrace = startupDeadline.createTrace({ now: () => Date.now() });
+
+/** 启动超时预算（环境变量可覆盖；非法值不静默容忍，见 startup-deadline.js）。 */
+let startupBudgetCache = null;
+function startupBudgets() {
+  if (startupBudgetCache) return startupBudgetCache;
+  const resolved = startupDeadline.resolveBudgets(process.env);
+  startupBudgetCache = resolved.budgets;
+  diag('启动超时预算:', resolved.budgets, '| 来源:', resolved.source);
+  if (resolved.errors.length) {
+    // 配置错必须被看见：否则"我明明设了 300s"会变成查不出来的谜。
+    diag('启动超时环境变量有误（已按默认值继续）:', resolved.errors);
+    pushLog('启动超时环境变量有误（已按默认值继续）：' + resolved.errors.join('；') + '\n');
+  }
+  return startupBudgetCache;
+}
+
+let paintWatchdog = null;
+
+/**
+ * 0.3.48 · H-08：唯一主动通知通道（托盘气泡）的**统一出口**。
+ *
+ * 为什么需要一个出口：Win10/11 上未设置 AUMID（或 AUMID 与安装器身份不一致）的
+ * 进程调用托盘气泡时，系统会**静默丢弃** —— 不抛错、不返回失败，代码无从得知。
+ * 于是"用户没收到更新提示"这件事在事后完全无法判定是"没发"还是"被吞"。
+ *
+ * 这里的做法不是猜，而是**取证**：
+ *   1) 每次发送都写一条诊断日志（含 AUMID 与实际生效状态）；
+ *   2) 监听 Electron 的 `balloon-show`（气泡真的显示时才触发）——
+ *      1.5s 内没等到，就如实记为"疑似被系统吞掉"；
+ *   3) 只有在**观察到没显示**时才改用可验证的 Notification 通道补一次
+ *      （同一语义、无二次确认，绝不引入新的确认流程）；托盘入口始终保留。
+ */
+function notificationSupported() {
+  try {
+    return typeof Notification !== 'undefined' && typeof Notification.isSupported === 'function'
+      ? !!Notification.isSupported()
+      : false;
+  } catch (e) {
+    diag('探测 Notification 支持性失败:', e && e.message);
+    return false;
+  }
+}
+
+/** 托盘气泡不可用时的替代通道（Windows Toast）；不可用时如实记录，不假装发过。 */
+function deliverFallbackNotification(title, content, why) {
+  if (!notificationSupported()) {
+    diag('替代通知通道不可用（Notification.isSupported=false），本条通知仅落日志:', { title, why });
+    return false;
+  }
+  try {
+    new Notification({ title: String(title), body: String(content), silent: false }).show();
+    diag('已改用 Notification 通道发送通知:', { title, why });
+    return true;
+  } catch (e) {
+    diag('Notification 通道发送失败（本条通知仅落日志）:', { title, why, error: e && e.message });
+    return false;
+  }
+}
+
+function notifyUser(title, content, opts = {}) {
+  const iconType = opts.iconType || 'info';
+  const base = { title, content, aumid: appUserModelIdApplied, platform: process.platform };
+  const silentDropRisk = process.platform === 'win32' && !appUserModelIdApplied;
+
+  if (!tray || tray.isDestroyed()) {
+    diag('托盘气泡未发出（托盘不存在），改用替代通道:', { ...base, silentDropRisk });
+    const sent = deliverFallbackNotification(title, content, 'no-tray');
+    return { channel: sent ? 'notification' : 'none', confirmed: false };
+  }
+
+  let shown = false;
+  const onShown = () => { shown = true; };
+  try { tray.once('balloon-show', onShown); } catch (e) { diag('监听 balloon-show 失败（无法确认气泡是否显示）:', e && e.message); }
+
+  try {
+    tray.displayBalloon({ iconType, title, content });
+    diag('托盘气泡已发出:', { ...base, silentDropRisk: silentDropRisk ? '高（未设置 AUMID，系统可能静默丢弃）' : '低（AUMID 已设置）' });
+  } catch (e) {
+    // 气泡 API 直接抛出 = 通道确实不可用：这是可观测失败，必须补通道 + 记录。
+    diag('托盘气泡发送抛错（通道不可用）:', { ...base, error: e && e.message });
+    try { tray.removeListener('balloon-show', onShown); } catch (err) { diag('移除 balloon-show 监听失败:', err && err.message); }
+    const sent = deliverFallbackNotification(title, content, 'balloon-threw');
+    return { channel: sent ? 'notification' : 'balloon-failed', confirmed: false };
+  }
+
+  setTimeout(() => {
+    try { if (tray && !tray.isDestroyed()) tray.removeListener('balloon-show', onShown); } catch (e) { diag('移除 balloon-show 监听失败:', e && e.message); }
+    if (shown) {
+      diag('托盘气泡已由系统确认显示（balloon-show 已触发）:', base);
+      return;
+    }
+    // 观察结论：这次气泡没有显示。换成可验证的通道补发一次，并记录这次对照结果 ——
+    // 这正是 H-08 说的"AUMID 设置前后的行为差异"，它是实测出来的，不是猜的。
+    diag('托盘气泡未收到 balloon-show 确认（已设置 AUMID 的前提下仍疑似被系统丢弃）:', base);
+    deliverFallbackNotification(title, content, 'balloon-unconfirmed');
+  }, 1500);
+
+  return { channel: 'balloon', confirmed: null };
+}
+
 function closeConfirmMarkerPath() {
   try { return path.join(app.getPath('userData'), 'background-close-confirmed'); } catch { return null; }
 }
@@ -398,61 +600,160 @@ function updateSplash(message) {
   splashWindow.webContents.executeJavaScript(`(() => { const el = document.querySelector('.sub'); if (el) el.textContent = '${text}'; })()`).catch(() => {});
 }
 
+/**
+ * 0.3.48 · H-02：把 `spawnBackend()` 里**同步就可能抛错**的部分集中到这里。
+ *
+ * 为什么要抽出来：旧实现的 `new Promise(async (resolve, reject) => {...})` 让
+ * executor 变成 async 函数 —— 函数体里同步抛出的异常只会 reject **那个被丢弃的
+ * 内部 Promise**，外层 Promise 既不 resolve 也不 reject，于是整条启动链永久
+ * pending、`showFatal` 永不执行。把同步准备收进一个普通（非 async）函数，
+ * 外层就能用一个 try/catch 显式 reject，从结构上消灭这个反模式。
+ *
+ * 可能抛出（每条都实测过是同步抛出，不是 Promise 拒绝）：
+ *   · `mgr.buildDedicatedEnv()` → 内部 `mkdirSync`（%APPDATA% 权限/磁盘满/杀软拦截）
+ *   · `spawn()` → EACCES / EPERM（node.exe 被杀软锁住或被替换中断）
+ */
+function prepareBackendSpawn() {
+  const p = activePaths();
+  if (!fs.existsSync(p.nodeExe)) throw new Error('缺少 Node 运行时：未找到活跃 node.exe（seed 失败）。');
+  if (!fs.existsSync(p.dshBin)) throw new Error('缺少 DSH 后端：未找到活跃 dsh（seed 失败）。');
+
+  // Dedicated, fully-isolated environment: node prefix first on PATH,
+  // isolated npm/pnpm/corepack homes, isolated DSH_HOME. Never inherits user's
+  // global node/npm environment -> "dsh 专用 node 环境".
+  const env = mgr.buildDedicatedEnv();
+  env.DSH_HOME = p.dshHome;
+  delete env.ELECTRON_RUN_AS_NODE; // we spawn a real standalone node
+
+  // 后端只监听回环地址。--max-http-header-size 是必需的：Web 端把所有插件
+  // client.js 拼成一个组合脚本 URL，插件一多就超过 Node 默认 16KB 请求头上限，
+  // 后端会以 HTTP 431 拒绝，表现为「插件全部加载失败」。与手机功能无关，勿删。
+  const args = ['--max-http-header-size=1048576', p.dshBin, 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'];
+
+  const child = spawn(p.nodeExe, args, {
+    cwd: path.dirname(p.dshBin), env, windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  return { child, nodeExe: p.nodeExe, dshHome: p.dshHome };
+}
+
+/**
+ * Spawn the bundled backend from the active user-writable dir, with an isolated
+ * DSH_HOME so it never collides with the user's CLI `~/.dsh` (and its symlink
+ * state is fully owned by this app). Returns a promise resolving to the URL.
+ *
+ * 0.3.48 · H-02/H-03 两条结构性修改：
+ *   · executor 是**同步**函数，同步准备失败一律显式 `reject`（不再有哑掉的
+ *     async executor）；监听器注册也包在 try 里，同步抛错同样 reject。
+ *   · 两个阶段各有 deadline：等地址（spawn）与等 HTTP 响应（health）。
+ *     超时不是吞错误，而是把"静默挂起"变成带阶段名 + 最后一条日志 + 日志
+ *     绝对路径的失败，然后走既有的 `showFatal()` 路径。
+ */
 function spawnBackend() {
-  return new Promise(async (resolve, reject) => {
-    const p = activePaths();
-    if (!fs.existsSync(p.nodeExe)) return reject(new Error('缺少 Node 运行时：未找到活跃 node.exe（seed 失败）。'));
-    if (!fs.existsSync(p.dshBin)) return reject(new Error('缺少 DSH 后端：未找到活跃 dsh（seed 失败）。'));
+  return new Promise((resolve, reject) => {
+    let prepared;
+    try {
+      prepared = prepareBackendSpawn();
+    } catch (err) {
+      diag('后端进程准备失败（同步阶段，已显式 reject 外层）:', err && (err.stack || err.message));
+      reject(err);
+      return;
+    }
 
-    // Dedicated, fully-isolated environment: node prefix first on PATH,
-    // isolated npm/pnpm/corepack homes, isolated DSH_HOME. Never inherits user's
-    // global node/npm environment -> "dsh 专用 node 环境".
-    const env = mgr.buildDedicatedEnv();
-    env.DSH_HOME = p.dshHome;
-    delete env.ELECTRON_RUN_AS_NODE; // we spawn a real standalone node
-
-    // 后端只监听回环地址。--max-http-header-size 是必需的：Web 端把所有插件
-    // client.js 拼成一个组合脚本 URL，插件一多就超过 Node 默认 16KB 请求头上限，
-    // 后端会以 HTTP 431 拒绝，表现为「插件全部加载失败」。与手机功能无关，勿删。
-    const args = ['--max-http-header-size=1048576', p.dshBin, 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'];
-
-    const child = spawn(p.nodeExe, args, {
-      cwd: path.dirname(p.dshBin), env, windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
+    const { child, nodeExe, dshHome } = prepared;
     backend = child;
-    pushLog(`starting backend: node=${p.nodeExe} DSH_HOME=${p.dshHome} host=127.0.0.1 port=0\n`);
+    pushLog(`starting backend: node=${nodeExe} DSH_HOME=${dshHome} host=127.0.0.1 port=0\n`);
+    bootTrace.mark(startupDeadline.PHASES.SPAWN, `pid=${child.pid}`);
 
+    const budgets = startupBudgets();
     let settled = false;
-    const onUrl = (line) => {
-      const m = /dsh web:\s*(https?:\/\/[^\s]+)/i.exec(line);
-      if (!m) return;
-      const url = m[1].trim();
-
+    let urlSeen = false;
+    let spawnWatchdog = null;
+    const settle = (fn, value) => {
       if (settled) return;
       settled = true;
-      waitForServer(url, 60000, (ok) => {
-        if (ok) { activeUrl = url; resolve(url); }
-        else reject(new Error('后端已打印地址但未能在超时内响应 HTTP。'));
-      });
+      if (spawnWatchdog) { spawnWatchdog.stop(); spawnWatchdog = null; }
+      fn(value);
     };
-    child.stdout.on('data', (d) => { const t = d.toString(); pushLog(d); t.split(/\r?\n/).forEach(onUrl); });
-    child.stderr.on('data', (d) => { pushLog(d); });
-    child.on('error', (err) => { if (!settled) { settled = true; reject(err); } });
-    child.on('exit', (code, signal) => {
-      if (!settled) {
-        settled = true;
-        reject(new Error(`后端进程提前退出（code=${code} signal=${signal}）。\n\n` +
-          backendLogs.join('').split(/\r?\n/).slice(-30).join('\n')));
-      } else {
+
+    /** 采集一份超时现场（阶段/耗时/打点/最后一条日志/日志绝对路径）。 */
+    const timeoutReport = (phase, elapsedMs) => startupDeadline.buildTimeoutReport({
+      phase,
+      budgets,
+      elapsedMs,
+      trace: bootTrace,
+      lastLogLine: startupDeadline.lastMeaningfulLogLine(backendLogs),
+      logPath: desktopLogPath()
+    });
+
+    try {
+      // H-03 阶段一：等后端打印监听地址。0.3.47 在这里没有任何上限 —— 后端一旦
+      // "既不打印也不退出"，启动链就永久停在启动画面。
+      spawnWatchdog = startupDeadline.createWatchdog({
+        phase: startupDeadline.PHASES.SPAWN,
+        budgetMs: budgets.spawn,
+        now: () => Date.now(),
+        setTimer: setTimeout,
+        clearTimer: clearTimeout,
+        onExpire: (expired) => {
+          const err = startupDeadline.createTimeoutError(timeoutReport(expired.phase, expired.elapsedMs));
+          diag('启动超时（spawn 阶段）:', err.message);
+          // 先把卡住的后端杀掉：它占着端口与文件锁，不清掉会让下一级自愈重试
+          // 也一起失败（旧实现走不到这里，因为旧实现根本没有超时分支）。
+          try { killProcessTree(child); } catch (e) { diag('超时清理后端进程失败:', e && e.message); }
+          settle(reject, err);
+        }
+      });
+      spawnWatchdog.start();
+
+      const onUrl = (line) => {
+        const m = /dsh web:\s*(https?:\/\/[^\s]+)/i.exec(line);
+        if (!m) return;
+        if (settled || urlSeen) return;
+        urlSeen = true;
+        const url = m[1].trim();
+        if (spawnWatchdog) { spawnWatchdog.stop(); spawnWatchdog = null; }
+        bootTrace.mark('url-ready', url);
+        waitForServer(url, budgets.health, (ok) => {
+          if (ok) {
+            activeUrl = url;
+            bootTrace.mark('health-ok', url);
+            settle(resolve, url);
+            return;
+          }
+          // H-03 阶段二：地址已打印但 HTTP 不响应 —— 与"没打印地址"是两个不同
+          // 故障（进程活着但不可用），所以错误码也必须不同。
+          const err = startupDeadline.createTimeoutError(timeoutReport(startupDeadline.PHASES.HEALTH, budgets.health));
+          diag('启动超时（health 阶段）:', err.message);
+          try { killProcessTree(child); } catch (e) { diag('超时清理后端进程失败:', e && e.message); }
+          settle(reject, err);
+        });
+      };
+
+      child.stdout.on('data', (d) => { const t = d.toString(); pushLog(d); t.split(/\r?\n/).forEach(onUrl); });
+      child.stderr.on('data', (d) => { pushLog(d); });
+      child.on('error', (err) => { settle(reject, err); });
+      child.on('exit', (code, signal) => {
+        if (!settled) {
+          settle(reject, new Error(`后端进程提前退出（code=${code} signal=${signal}）。\n\n` +
+            backendLogs.join('').split(/\r?\n/).slice(-30).join('\n')));
+          return;
+        }
         // Backend died after boot. A controlled stop clears `backend` before
         // killing, so only an exit of the CURRENT active instance is a crash.
         pushLog(`backend exited after boot code=${code} signal=${signal}\n`);
         if (!isQuitting && backend === child) handleBackendCrashed();
-      }
-    });
+      });
+    } catch (err) {
+      // 注册监听本身失败（例如 stdio 管道已被销毁）：同样是同步错误，必须
+      // reject 外层而不是让它冒泡成一个无人处理的异常。
+      diag('后端监听器注册失败:', err && (err.stack || err.message));
+      try { killProcessTree(child); } catch (e) { diag('清理后端进程失败:', e && e.message); }
+      settle(reject, err);
+    }
   });
 }
+
 
 /** 把本轮阶梯裁决写入诊断日志（事故复盘用：能回答"为什么烧了 profile"）。 */
 function logLadderTrail(trail) {
@@ -676,6 +977,10 @@ async function startBackendWithHealing(opts = {}) {
       });
       ladderPolicy.recordAttempt(ladderTrail, '1c-disable-bundles', v1c);
       const res1c = mgr.disableFailingBundles(p.dshHome, failingBundles.map((b) => b.name));
+      // 0.3.49 · 台账：自愈 1c 禁用了哪些包（启动期，reason=ELOADFAIL）
+      for (const name of (res1c.disabled || [])) {
+        recordPluginJournal({ action: 'disable', plugin: name, source: 'profile', phase: 'startup', result: 'ok', reason: 'ELOADFAIL' });
+      }
       if (res1c.disabled.length) {
         pushLog(`临时禁用加载失败的插件包（仅从加载清单移除，依赖保留）：${res1c.disabled.join(', ')}（备份：${res1c.backup}）。\n`);
         try {
@@ -825,6 +1130,11 @@ async function startBackendWithHealing(opts = {}) {
     pushLog(`跳过 profile 隔离（${quarantineVerdict.reason}）。\n`);
   }
   const qRes = quarantineVerdict.allowed ? mgr.quarantineProfiles(p.dshHome) : null;
+  // 0.3.49 · 阶段一审计遗留：隔离结果不再只写日志。
+  // `abandoned=true` 或发生过 `restore` 时，用户有权知道"这轮隔离被放弃了 / 已还原"，
+  // 否则他们只会看到"插件好像还是不对劲"而完全不知道系统做过什么。
+  recordIsolationOutcome(qRes);
+  recordQuarantineJournal(qRes);
   let booted = false;
   if (qRes && qRes.quarantined) {
     if (!qRes.fallback) {
@@ -846,6 +1156,10 @@ async function startBackendWithHealing(opts = {}) {
       const restored = mgr.restoreProfileRegistrations(p.dshHome, qRes.registryFile, failingSpecs);
       if (restored.restored.length) {
         pushLog(`自动还原第三方注册：${restored.restored.join(', ')}${restored.skipped.length ? `；跳过失败日志点名的条目（${restored.skipped.join(', ')}）` : ''}，重启验证…\n`);
+        // 0.3.49 · 台账：隔离后自动还原第三方注册（逐条；这是"隔离--重建--还原"闭环的还原段）
+        for (const name of restored.restored) {
+          recordPluginJournal({ action: 'restore', plugin: name, source: 'profile', phase: 'startup', result: 'ok', reason: 'EPROFILE-QUARANTINE' });
+        }
         await stopBackendAndWait(); // 0.3.44: 原来是 stopBackend() + 固定 800ms sleep
         try {
           return await spawnBackend();
@@ -983,7 +1297,8 @@ function createSplash() {
   splashWindow = new BrowserWindow({
     width: 480, height: 320, frame: false, resizable: false, center: true, show: true,
     backgroundColor: '#0b1020', icon: path.join(__dirname, 'assets', 'icon.png'),
-    webPreferences: { contextIsolation: true, nodeIntegration: false }
+    // 0.3.49 · B-05：splash 也开 sandbox（它只显示静态 HTML，没有任何 IPC/Node 需求）。
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   splashWindow.loadFile(path.join(__dirname, 'splash.html'));
   splashWindow.on('closed', () => { splashWindow = null; });
@@ -1161,13 +1476,137 @@ function quitApp() {
   app.quit();
 }
 
-function applyWindowHandlers(win) {
-  win.webContents.setWindowOpenHandler(({ url: target }) => {
-    if (/^https?:\/\//i.test(target) && !/127\.0\.0\.1|localhost/i.test(target)) {
-      shell.openExternal(target); return { action: 'deny' };
-    }
-    return { action: 'allow' };
+/**
+ * 0.3.49 · B-05/B-11：给窗口装上"导航白名单 + 开窗默认拒"。
+ *
+ * 为什么两个窗口都要调：0.3.48 只有主窗调过，设置窗**根本没有**这层处理器 ——
+ * 而设置窗握着最高权限的一批通道，它才是最不该能被导航跑掉的那个窗口。
+ *
+ * 判定本身在 `url-policy.js`（纯函数、可单测）；这里只提供"当前窗口属于谁"的
+ * 上下文并执行副作用：
+ *   · 导航：不在白名单 → `preventDefault()` + 诊断日志（记录被拦的目标）。
+ *   · 开窗：默认 deny；只有白名单协议的外链才交给系统（`shell.openExternal`）。
+ *
+ * @param {Electron.BrowserWindow} win
+ * @param {{kind: 'main'|'settings', allowedFileRoots?: string[], ownUrl?: string}} options
+ *   `ownUrl`：建窗时即将加载的地址。用它兜底"当前 origin"——建窗发生在
+ *   `activeUrl` 赋值之前（或之后被清空）时，判定不能因此退化成"什么都不允许"。
+ */
+function applyWindowHandlers(win, options) {
+  const o = options || {};
+  const kind = o.kind || 'main';
+  const allowedFileRoots = Array.isArray(o.allowedFileRoots) && o.allowedFileRoots.length
+    ? o.allowedFileRoots
+    : [__dirname];
+  const currentOrigin = () => {
+    if (kind !== 'main') return 'file://';
+    return urlPolicy.originOf(activeUrl || '') || urlPolicy.originOf(o.ownUrl || '');
+  };
+
+  win.webContents.on('will-navigate', (event, target) => {
+    const decision = urlPolicy.decideNavigation({ target, currentOrigin: currentOrigin(), allowedFileRoots });
+    if (decision.allow) return;
+    event.preventDefault();
+    diag(urlPolicy.describeDecision(`will-navigate(${kind})`, target, decision));
   });
+
+  win.webContents.setWindowOpenHandler(({ url: target }) => {
+    const decision = urlPolicy.decideWindowOpen({
+      target,
+      currentOrigin: currentOrigin(),
+      externalHostAllowlist: externalHostAllowlist()
+    });
+    diag(urlPolicy.describeDecision(`window-open(${kind})`, target, decision));
+    if (decision.action !== 'open-external') return { action: 'deny' };
+    // 交给系统浏览器/邮件客户端；openExternal 失败必须留痕，不许静默。
+    Promise.resolve(shell.openExternal(decision.url))
+      .catch((e) => diag('openExternal 失败:', { url: decision.url, error: e && e.message }));
+    return { action: 'deny' };
+  });
+}
+
+/**
+ * 0.3.49 · B-05：读回 Electron **实际生效**的 webPreferences 并落盘。
+ *
+ * 为什么不用自己写进去的字面量做证据：`sandbox: true` 被忽略的情况（例如子窗口
+ * 使用了 `nativeWindowOpen`、或将来有人把某处配置改成继承父窗）在源码里看不出来。
+ * `getLastWebPreferences()` 拿的是渲染进程真正用到的那份配置，因此它是"真机证据"
+ * 里最关键的一行。API 不可用时如实记录"读不到"，绝不假装成功。
+ *
+ * @param {Electron.BrowserWindow} win
+ * @param {string} kind 'main' | 'settings' | 'splash'
+ */
+function logEffectiveWebPreferences(win, kind) {
+  try {
+    const wc = win && win.webContents;
+    if (!wc || typeof wc.getLastWebPreferences !== 'function') {
+      diag(`窗口安全配置（${kind}）：getLastWebPreferences 不可用（Electron 版本差异），无法读回实际生效值`);
+      return null;
+    }
+    const used = wc.getLastWebPreferences() || {};
+    const snapshot = {
+      window: kind,
+      sandbox: used.sandbox === undefined ? null : !!used.sandbox,
+      contextIsolation: used.contextIsolation === undefined ? null : !!used.contextIsolation,
+      nodeIntegration: !!used.nodeIntegration,
+      webSecurity: used.webSecurity === undefined ? null : !!used.webSecurity
+    };
+    diag('窗口安全配置（读回 Electron 实际生效值）:', snapshot);
+    return snapshot;
+  } catch (e) {
+    diag(`窗口安全配置（${kind}）读回失败:`, e && e.message);
+    return null;
+  }
+}
+
+/** 外链主机允许清单（可选收紧；未配置则按协议/凭据/ASCII 判定）。 */
+let externalAllowlistCache = null;
+function externalHostAllowlist() {
+  if (!externalAllowlistCache) externalAllowlistCache = urlPolicy.resolveExternalHostAllowlist(process.env);
+  return externalAllowlistCache;
+}
+
+/**
+ * 0.3.49 · B-01：清理本应用 session 里属于旧后端源的 cookie。
+ *
+ * 为什么放在 main.js 而不是模块里：清理的**判定**（哪些算"我们的旧 cookie"）在
+ * `session-hygiene.js` 里且可单测；这里只提供 Electron session、决定主机/前缀口径、
+ * 并把结果写进两处日志。
+ *
+ * 失败策略（不做假动作）：清理失败**不阻断启动**（启动比 cookie 重要），但必须
+ * 让失败可见 —— 诊断日志 + 后端日志各一条，写明扫描/清除/保留/失败条数。
+ */
+async function cleanLegacyBackendCookies() {
+  const policy = {
+    // 后端恒定监听回环；这三个主机名覆盖 127.0.0.1 / localhost / ::1 三种写法。
+    hosts: sessionHygiene.LOOPBACK_HOSTS,
+    namePrefixes: sessionHygiene.resolveNamePrefixes(process.env),
+    purgeAllOnLoopback: sessionHygiene.shouldPurgeAllLoopback(process.env)
+  };
+  try {
+    const hygiene = sessionHygiene.createCookieHygiene({
+      session: session.defaultSession,
+      log: (message, detail) => diag(message, detail)
+    });
+    const result = await hygiene.clean(policy);
+    bootTrace.mark('cookies-cleaned', `removed=${result.removed.length}`);
+    const line = sessionHygiene.summarizeResult(result);
+    pushLog(line + '（cookie 忽略端口：旧端口的 cookie 会串到本次新端口）\n');
+    if (result.failed.length || result.stillThere.length) {
+      // 失败与"删了但还在"都要显式上报（不是静默跳过）。
+      diag('旧后端 cookie 清理未完全成功:', {
+        failed: result.failed,
+        stillThere: result.stillThere.map((c) => `${c.domain}|${c.name}`),
+        policy
+      });
+      pushLog('旧后端 cookie 清理未完全成功：见诊断日志（重启后首次加载可能仍带旧登录态）\n');
+    }
+    return result;
+  } catch (e) {
+    diag('旧后端 cookie 清理失败（不阻断启动，但可能残留旧登录态）:', e && e.stack ? e.stack : e);
+    pushLog(`旧后端 cookie 清理失败：${e && e.message}（不阻断启动）\n`);
+    return null;
+  }
 }
 
 /**
@@ -1325,10 +1764,14 @@ function createChromiumWindow(url) {
     width: 1440, height: 920, minWidth: 900, minHeight: 600, show: false,
     backgroundColor: '#0b1020', title: APP_NAME,
     icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false }
+    // 0.3.49 · B-05：sandbox:true —— 渲染进程拿不到任何 Node/原生能力。
+    // preload.js 只 require('electron') 的 contextBridge/ipcRenderer + 读 process.platform，
+    // 两者在 sandbox 下都可用（实测见审计"功能清单"）。
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true }
   });
   Menu.setApplicationMenu(null);
-  applyWindowHandlers(win);
+  applyWindowHandlers(win, { kind: 'main', allowedFileRoots: [__dirname], ownUrl: url });
+  logEffectiveWebPreferences(win, 'main');
   // 显式传入 webContents —— 见 applyPermissionGates 的注释（回调不能依赖调用点局部名）。
   applyPermissionGates(win.webContents.session, win.webContents);
 
@@ -1457,7 +1900,11 @@ function createChromiumWindow(url) {
   // CURRENT address. Auto-retry bounded, main frame only (9/8 17:xx incident:
   // the user's workaround was a manual Ctrl+R — this does it for them).
   let loadRetries = 0;
-  win.webContents.on('did-finish-load', () => { loadRetries = 0; });
+  win.webContents.on('did-finish-load', () => {
+    loadRetries = 0;
+    // 0.3.48 · H-03：首帧阶段到此结束（停掉 paint deadline，并打一个点）。
+    markMainWindowLoaded();
+  });
   win.webContents.on('did-fail-load', (_e, code, desc, validatedURL, isMainFrame) => {
     pushLog(`chromium did-fail-load ${code} ${desc} ${validatedURL || ''}\n`);
     if (code === -3) return; // aborted (normal on redirect/replaced navigation)
@@ -1509,6 +1956,49 @@ function createChromiumWindow(url) {
   return win;
 }
 
+/**
+ * 0.3.48 · H-03 阶段三：主窗口首帧的 deadline。
+ *
+ * 为什么"窗口起来了"还要有超时：页面既不完成也不报错时（白窗），用户看到的东西
+ * 与"根本没启动"完全等价，而且 `did-fail-load` 只覆盖"明确失败"，覆盖不到
+ * "永远在加载"。所以这里给它一个上限，超时同样走既有的 `showFatal()`。
+ *
+ * 不杀后端：paint 阶段超时说明后端是好的（HTTP 已就绪），杀掉它只会让用户
+ * 连重试的机会都失去；`showFatal()` 本来就不动后端。
+ */
+function armPaintWatchdog() {
+  const budgets = startupBudgets();
+  if (paintWatchdog) paintWatchdog.stop();
+  paintWatchdog = startupDeadline.createWatchdog({
+    phase: startupDeadline.PHASES.PAINT,
+    budgetMs: budgets.paint,
+    now: () => Date.now(),
+    setTimer: setTimeout,
+    clearTimer: clearTimeout,
+    onExpire: (expired) => {
+      paintWatchdog = null;
+      const err = startupDeadline.createTimeoutError(startupDeadline.buildTimeoutReport({
+        phase: expired.phase,
+        budgets,
+        elapsedMs: expired.elapsedMs,
+        trace: bootTrace,
+        lastLogLine: startupDeadline.lastMeaningfulLogLine(backendLogs),
+        logPath: desktopLogPath(),
+        hint: '后端地址已经就绪，卡住的是主窗口的页面加载：可以重试启动，或先查看日志里的 did-fail-load 记录。'
+      }));
+      diag('启动超时（paint 阶段）:', err.message);
+      showFatal(err).catch((e) => diag('paint 超时后展示恢复弹窗失败:', e && e.message));
+    }
+  });
+  paintWatchdog.start();
+}
+
+/** 主窗口首帧就绪：停掉 paint deadline 并打点（幂等）。 */
+function markMainWindowLoaded() {
+  if (paintWatchdog) { paintWatchdog.stop(); paintWatchdog = null; }
+  bootTrace.mark('window-loaded');
+}
+
 async function createMainWindow(url) {
   // The Chromium window is always available and has no native-build/ABI risk.
   // (System WebView2 presence is recorded for diagnostics/future use.)
@@ -1517,12 +2007,491 @@ async function createMainWindow(url) {
   mainWindow = createChromiumWindow(url);
 }
 
+// ── 0.3.48 · H-01 · 启动恢复台账（失败计数落盘 + 自动回滚防死循环）──────────────
+//
+// 为什么必须落盘：触发条件是「连续两次**启动**失败」，而两次失败之间必然经历
+// 一次进程重启 —— 内存计数器在重启后归零，等于永远不会触发自动回滚。
+// 台账位置：%APPDATA%\DSH Desktop\startup-recovery.json（userData 根，不随
+// backend/ 重建而丢失，也不落进用户数据目录 dsh-home/）。
+const RECOVERY_STATE_NAME = 'startup-recovery.json';
+/** 一次启动只记一次失败（恢复弹窗的 for(;;) 重弹、托盘再次打开弹窗都不该重复计数）。 */
+let fatalCounted = false;
+
+// ── 0.3.49 · 延后通知队列（阶段一审计遗留的"只写日志"问题）────────────────────
+//
+// 为什么需要队列而不是当场弹窗：插件隔离的结果（abandoned / 已还原）与"上次更新
+// 未完成"这两类事实，都是在**启动早期**（后端还没起来、窗口还没建）确定的。
+// 此刻弹模态框会把启动卡住（用户看到的是"启动画面不动"），而只写日志又等于没告
+// 诉用户。所以先入队，等主窗口就绪后**一次性、非阻塞**地告诉用户。
+let deferredNotices = [];
+
+/**
+ * 0.3.49 · 插件操作台账接线（仅低频动作点）。
+ *
+ * 为什么自己包一层：台账模块的 record() 是"同步入队、零文件系统调用"，但它仍是
+ * 外部模块 —— 一次抛错不该把插件安装/启用这种用户动作带崩。这里兜住异常并**留痕**，
+ * 既不静默也不放大（不改变用户可见结果）。
+ */
+function recordPluginJournal(entry) {
+  try { pluginJournal.record(entry); }
+  catch (e) { diag('插件台账 record 失败（不影响插件操作本身）:', { entry, error: e && e.message }); }
+}
+
+/** spec → 台账里的插件名（不记 spec 原文：本地路径可能带用户名/私有源）。 */
+function pluginNameFromSpec(spec) {
+  const raw = String(spec == null ? '' : spec).trim();
+  if (!raw) return '(unknown)';
+  if (/^(?:file:|\/{1,2}|\.{1,2}[\\/]|[a-zA-Z]:[\\/])/.test(raw)) {
+    const base = raw.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+    return base || '(local)';
+  }
+  const at = raw.lastIndexOf('@');
+  return at > 0 ? raw.slice(0, at) : raw;
+}
+
+/** spec → 来源类别（只记类别，避免私有源/本地路径泄漏）。 */
+function pluginSourceFromSpec(spec) {
+  const raw = String(spec == null ? '' : spec).trim();
+  if (!raw) return 'unknown';
+  if (/^(?:file:|\.{1,2}[\\/]|[a-zA-Z]:[\\/]|\/)/.test(raw)) return 'local';
+  return 'registry';
+}
+
+/** 入队一条用户可见通知（幂等：同 kind 只保留一条，避免阶梯重试刷屏）。 */
+function queueNotice(notice) {
+  if (!notice || !notice.kind) return;
+  if (deferredNotices.some((n) => n.kind === notice.kind)) return;
+  deferredNotices.push(notice);
+}
+
+/** 启动成功后统一展示（非阻塞：不 await，不打断用户）。 */
+function showDeferredNotices() {
+  if (!deferredNotices.length) return 0;
+  const items = deferredNotices;
+  deferredNotices = [];
+  for (const n of items) {
+    diag(`展示启动提示（${n.kind}）:`, { title: n.title, message: n.message });
+    try {
+      notifyUser(n.title, n.message, { iconType: n.iconType || 'warning' });
+    } catch (e) { diag('启动提示的托盘气泡发送失败:', e && e.message); }
+    dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : null, {
+      type: n.iconType === 'error' ? 'error' : 'warning',
+      buttons: ['知道了'], defaultId: 0, noLink: true,
+      title: `${APP_NAME} · ${n.title}`,
+      message: n.message,
+      detail: n.detail || ''
+    }).catch((e) => diag(`启动提示弹窗显示失败（${n.kind}，不影响使用）:`, e && e.message));
+  }
+  return items.length;
+}
+
+/** 上次更新是否在交换阶段被打断（H-05；启动早期读取，见 whenReady 步骤 3.1）。 */
+let interruptedApply = null;
+
+/**
+ * 「上次更新未完成」的人话摘要（故障弹窗 detail 与启动提示共用，避免两处文案分叉）。
+ * 只陈述磁盘事实，不做推断 —— 因为推断错的代价是把用户唯一能用的旧树换掉。
+ */
+function interruptedApplyBrief() {
+  const s = interruptedApply;
+  if (!s || !s.active) return '';
+  const v = (x) => (x && x.version) || '无';
+  return `上次更新未完成（H-05）：中断发生在「${s.step}」步骤，目标版本 ${s.target || '未知'}。\n`
+    + `磁盘现状：dsh=${s.live ? v(s.live) : '缺失'}；dsh.old=${v(s.old)}；dsh.previous=${v(s.previous)}；dsh.new=${v(s.staged)}。\n`
+    + `可用的恢复动作：${s.recovery}（回滚按钮会使用磁盘上真正可用的那份旧版本）。`;
+}
+
+/**
+ * 0.3.49 · profile 隔离结果的用户可见化（阶段一审计遗留：结果只进日志）。
+ *
+ * 隔离是**不可逆**动作（把整棵 profiles 搬走/删除后重建）。H-04 修复后，失败路径
+ * 尽力保住用户数据，但"这一轮被放弃了"或"中途已用副本还原"这两个结论此前**只有
+ * 日志知道** —— 用户看到的现象是"插件还是那副样子"，完全无从判断系统做过什么。
+ *
+ * 触发条件：`quarantineProfiles()` 返回 `abandoned=true`（本轮隔离放弃，原树保持/已还原）
+ *   或 `restore` 非空（删除原树未完成，曾用校验过的副本还原）。
+ * 可逆性：此处**只做提示**，不改变任何磁盘状态。
+ * 证据要求：结果对象与归档目录名一并写日志；提示里给绝对路径方便自查。
+ *
+ * @param {{abandoned?: boolean, reason?: string|null, copied?: boolean, quarantined?: boolean,
+ *          fallback?: boolean, name?: string|null, path?: string|null, restore?: object|null}|null} res
+ */
+function recordIsolationOutcome(res) {
+  if (!res) return;
+  const restore = res.restore || null;
+  if (!res.abandoned && !restore) {
+    if (res.quarantined) {
+      diag('profile 隔离完成（未放弃，无需提示用户）:', { name: res.name, copied: !!res.copied, fallback: !!res.fallback });
+    }
+    return;
+  }
+  diag('profile 隔离结果（需要在启动后告知用户）:', {
+    abandoned: !!res.abandoned,
+    reason: res.reason || null,
+    copied: !!res.copied,
+    quarantined: !!res.quarantined,
+    quarantineName: res.name || null,
+    restore: restore ? {
+      ok: !!restore.ok,
+      restoredFiles: restore.restoredFiles,
+      restoredLinks: restore.restoredLinks,
+      reason: restore.reason || null
+    } : null
+  });
+  pushLog(`profile 隔离：${res.abandoned ? '本轮已放弃' : '已还原'}${res.reason ? `（${res.reason}）` : ''}\n`);
+
+  if (res.abandoned) {
+    queueNotice({
+      kind: 'isolation-abandoned',
+      title: '插件隔离已放弃',
+      message: '本轮插件隔离没能完成，已放弃 —— 你的插件目录保持原样',
+      detail: `原因：${res.reason || '未知'}\n\n`
+        + `系统做了什么：没有删除你的任何插件数据${res.name ? `（完整副本保留在 ${res.name}）` : ''}。\n`
+        + '后果：导致启动失败的问题可能仍未解决，但你的插件注册与依赖实体都在。\n'
+        + '下一步：可以「以安全模式重启」先进入界面，或查看日志定位真正的根因。\n'
+        + `完整日志：${desktopLogPath()}`
+    });
+    return;
+  }
+
+  if (restore) {
+    queueNotice({
+      kind: 'isolation-restored',
+      title: '插件目录已还原',
+      message: restore.ok
+        ? '隔离过程中删除原目录未完成，已用校验过的副本还原'
+        : '隔离过程中删除原目录未完成，还原也未完全成功（完整副本仍在）',
+      detail: (restore.ok
+        ? `已补回 ${restore.restoredFiles || 0} 个文件 / ${restore.restoredLinks || 0} 个链接。`
+        : `渲染未完成的原因：${restore.reason || '未知'}（这只是补回过程受阻，不代表数据丢失）。`)
+        + `\n\n完整副本位置：${res.name || res.path || '（见日志）'}\n`
+        + '如果插件仍不正常，可从该副本手动恢复，或在设置窗里重新安装插件。\n'
+        + `完整日志：${desktopLogPath()}`
+    });
+  }
+}
+
+/**
+ * 0.3.49 · 隔离动作的台账记录（plugin-journal 接线点 5）。
+ *
+ * 为什么单独一个函数：隔离结果有 4 种结局（quarantined / copied / abandoned / restore），
+ * 而台账要求"一个动作一条 entry"。失败结局用 result:{status:'fail',code}，
+ * reason 用 EQUARANTINE（执行了但没成）或 EGUARD（被阶梯护栏拦下，压根没执行）。
+ *
+ * 注意：isolate/restore 的失败**已由台账模块自动镜像到 diag-log 的 durability 层**
+ * （作者明确交代），这里不重复记诊断日志，只记台账。
+ */
+function recordQuarantineJournal(res) {
+  if (!res) return;
+  if (res.quarantined) {
+    recordPluginJournal({ action: 'isolate', plugin: '(profiles)', source: 'profile', phase: 'startup', result: 'ok', reason: res.fallback ? 'EQUARANTINE-COPY' : 'EQUARANTINE' });
+    return;
+  }
+  if (res.abandoned) {
+    recordPluginJournal({ action: 'isolate', plugin: '(profiles)', source: 'profile', phase: 'startup', result: { status: 'fail', code: 'EQUARANTINE' }, reason: 'EQUARANTINE' });
+    return;
+  }
+  // 走到这里说明调用了 quarantineProfiles 但目录不存在/未被允许：如实记一条，不假装成功。
+  recordPluginJournal({ action: 'isolate', plugin: '(profiles)', source: 'profile', phase: 'startup', result: { status: 'fail', code: 'EGUARD' }, reason: 'EGUARD' });
+}
+
+/**
+ * 解析**真正可用**的回滚目标（0.3.49 · H-05）。
+ *
+ * 为什么不能只看 `dsh.previous`：更新在交换阶段被打断时，现场可能是
+ *   ① `dsh` 缺失 + `dsh.old` 有旧树（交换进行到一半）→ 只有 dsh.old 能救；
+ *   ② `dsh` 缺失 + 只有 `dsh.previous`     → rollbackDsh() 本身就能处理；
+ *   ③ `dsh` 在 + 两个都在                  → 版本没坏，不需要回滚。
+ * 猜错目标比不回滚更糟（会把唯一还能用的树换掉），所以这里**只读磁盘事实**。
+ *
+ * @returns {{available: boolean, source: 'previous'|'old'|null, dir: string|null, version: string|null}}
+ */
+function resolveRollbackTarget() {
+  try {
+    const p = mgr.P();
+    const binOf = (dir) => path.join(dir, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
+    const versionOf = (dir) => {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'node_modules', '@deepseek-ai', 'dsh', 'package.json'), 'utf8'));
+        return pkg && pkg.version ? String(pkg.version) : null;
+      } catch { return null; }
+    };
+    if (fs.existsSync(binOf(p.dshPrevious))) {
+      return { available: true, source: 'previous', dir: p.dshPrevious, version: versionOf(p.dshPrevious) };
+    }
+    const oldDir = path.join(p.root, 'dsh.old');
+    // 只有"当前 dsh 缺失"时 dsh.old 才是回滚目标：dsh 还在说明交换没发生，
+    // 换掉它等于把一个能用的版本弄坏（这就是"不要猜测"的具体含义）。
+    if (fs.existsSync(binOf(oldDir)) && !fs.existsSync(binOf(p.dshDir))) {
+      return { available: true, source: 'old', dir: oldDir, version: versionOf(oldDir) };
+    }
+    return { available: false, source: null, dir: null, version: null };
+  } catch (e) {
+    diag('解析回滚目标失败:', e && e.message);
+    return { available: false, source: null, dir: null, version: null };
+  }
+}
+
+/**
+ * 0.3.49 · H-05：把 `dsh.old`（交换时的旧树）换回 `dsh`。
+ * 触发条件：`resolveRollbackTarget()` 判定 source==='old'（即 dsh 缺失 + dsh.old 可用）。
+ * 可逆性：**不可逆**（旧树被移动）；因此保留任何残留的 dsh 目录并改名归档，绝不删除。
+ * 证据要求：调用前必须已判定 dsh.old 内 bin.js 存在；全过程写诊断日志。
+ */
+function promoteDshOldToLive() {
+  const p = mgr.P();
+  const oldDir = path.join(p.root, 'dsh.old');
+  const brokenDir = path.join(p.root, `dsh.broken-${Date.now()}`);
+  try {
+    if (fs.existsSync(p.dshDir)) {
+      fs.renameSync(p.dshDir, brokenDir);
+      diag('用 dsh.old 恢复前，先把现有 dsh 归档:', brokenDir);
+    }
+    fs.renameSync(oldDir, p.dshDir);
+    diag('已用 dsh.old 恢复 dsh 目录:', { from: oldDir, to: p.dshDir });
+    return true;
+  } catch (e) {
+    diag('用 dsh.old 恢复 dsh 目录失败:', e && e.message);
+    return false;
+  }
+}
+
+function recoveryStatePath() {
+  try { return path.join(app.getPath('userData'), RECOVERY_STATE_NAME); }
+  catch (e) {
+    diag('读取 userData 路径失败（启动恢复台账不可用，自动回滚将失去防循环保障）:', e && e.message);
+    return null;
+  }
+}
+
+function loadRecoveryState() {
+  const file = recoveryStatePath();
+  if (!file) return startupDeadline.createGuardState();
+  try {
+    return startupDeadline.normalizeGuardState(JSON.parse(fs.readFileSync(file, 'utf8')));
+  } catch (e) {
+    // 首启动 ENOENT 是正常情况；其它错误必须留痕（不许静默把台账当空的）。
+    if (!e || e.code !== 'ENOENT') diag('启动恢复台账读取失败（按全新状态处理）:', e && e.message);
+    return startupDeadline.createGuardState();
+  }
+}
+
+function saveRecoveryState(state) {
+  const file = recoveryStatePath();
+  if (!file) return false;
+  try {
+    fs.writeFileSync(file, JSON.stringify(state, null, 2) + '\n', 'utf8');
+    return true;
+  } catch (e) {
+    // 写不进去 ⇒ 自动回滚的防循环会失效。这是必须被看见的降级，不是可吞的错误。
+    diag('启动恢复台账写入失败（自动回滚可能重复触发）:', e && e.message);
+    pushLog(`启动恢复台账写入失败：${e && e.message}（自动回滚的防循环保障失效）\n`);
+    return false;
+  }
+}
+
+/** 是否存在**可用**的回滚目标（0.3.49 起包含 dsh.old 分支，判定见 resolveRollbackTarget）。 */
+function rollbackTargetExists() {
+  return resolveRollbackTarget().available;
+}
+
+/** 当前活跃后端版本（拿不到就返回 null，不编造）。 */
+function currentDshVersion() {
+  try {
+    const v = mgr.currentVersions();
+    return (v && v.dsh) ? String(v.dsh) : null;
+  } catch (e) {
+    diag('读取当前后端版本失败:', e && e.message);
+    return null;
+  }
+}
+
+/** journal 里"已应用但未验证"的记录（H-01(3) 的决策输入之一）。 */
+function journalUnverifiedSafe() {
+  try { return mgr.journalUnverified() || []; }
+  catch (e) {
+    diag('journal 未验证记录读取失败（不影响启动判断）:', e && e.message);
+    return [];
+  }
+}
+
+/**
+ * 执行一次后端回滚（不可逆动作）。
+ *
+ * 触发条件：用户点「回滚到上一个版本」/ journal 提示里选回滚 / 连续失败 2 次自动回滚。
+ * 可逆性：**不可逆** —— 目标树被移动/替换；`dsh.previous` 路径由 `rollbackDsh()`
+ *   处理（当前 dsh 改名 dsh.failed 后删除），`dsh.old` 路径保留归档目录（dsh.broken-<ts>）。
+ *   补偿手段是重新下载/暂存该版本（设置窗可用）。
+ * 证据要求：目标由 `resolveRollbackTarget()` 从磁盘事实判定（**不猜**）；
+ *   每次执行都写诊断日志 + 生命周期台账，回滚后版本号必须落在日志里。
+ *
+ * @param {'auto'|'manual'} kind auto = 连续失败触发的自动回滚
+ */
+async function performRollback(kind) {
+  const from = currentDshVersion();
+  const state = loadRecoveryState();
+  const target = resolveRollbackTarget();
+  // 先停后端：dsh 目录里的文件被进程占着时 rename 会失败（Windows 上必然）。
+  const stopped = await stopBackendAndWait({ timeoutMs: 6000, forceTimeoutMs: 5000 });
+  diag(`回滚（${kind}）：后端已停止`, stopped);
+  diag(`回滚（${kind}）：目标来源`, target);
+
+  let ok = false;
+  let failure = null;
+  try {
+    // 0.3.49 · H-05：目标可能是 dsh.previous（正常回滚）或 dsh.old（更新被中断）。
+    ok = target.source === 'old' ? promoteDshOldToLive() : mgr.rollbackDsh() === true;
+  } catch (e) {
+    failure = e;
+  }
+  if (!ok) {
+    const reason = failure ? failure.message : '没有可用的上一个版本（dsh.previous / dsh.old 都不完整）';
+    diag(`回滚（${kind}）未完成:`, reason);
+    pushLog(`回滚失败：${reason}\n`);
+    return { ok: false, from, to: null, error: failure || new Error(reason), source: target.source };
+  }
+
+  const to = currentDshVersion();
+  diag(`回滚（${kind}）完成：${from || '未知'} → ${to || '未知'}（来源 ${target.source}）`);
+  pushLog(`已回滚 DSH 后端：${from || '未知'} → ${to || '未知'}（来源 ${target.source === 'old' ? 'dsh.old' : 'dsh.previous'}；只替换 backend 里的 dsh 程序目录，插件与数据未改动）\n`);
+  try {
+    lifecycle.note(kind === 'auto' ? 'auto-rollback' : 'manual-rollback', {
+      from, to, reason: kind, source: target.source, logFile: desktopLogPath()
+    });
+  } catch (e) { diag('生命周期台账写入回滚记录失败:', e && e.message); }
+
+  saveRecoveryState(startupDeadline.recordRollback(state, {
+    at: new Date().toISOString(), from, to, auto: kind === 'auto', reason: kind
+  }));
+  return { ok: true, from, to, error: null, source: target.source };
+}
+
+/** 手动回滚 → 重启；失败则如实告知（绝不静默地"点了没反应"）。 */
+async function manualRollbackAndRestart(reasonTag) {
+  diag('用户请求回滚到上一个版本:', reasonTag || 'manual');
+  const rb = await performRollback('manual');
+  if (!rb.ok) {
+    await dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : null, {
+      type: 'error', buttons: ['知道了'], defaultId: 0, noLink: true,
+      title: APP_NAME,
+      message: '回滚没能执行',
+      detail: `${(rb.error && rb.error.message) || '未知原因'}\n\n` +
+        '这不影响你现在能做的事情：可以先「以安全模式重启」排查，或在托盘「设置…」里换一个后端版本。\n' +
+        `完整日志：${desktopLogPath()}`
+    }).catch((e) => diag('回滚失败提示窗显示失败:', e && e.message));
+    return;
+  }
+  await restartApp();
+}
+
+/**
+ * 0.3.48 · H-01(2)：连续失败达到阈值时**自动**回滚一次（有上限，防死循环）。
+ * 回滚成功后立刻重启；"已自动回滚到 vX" 的提示无法活过重启，故暂存进台账，
+ * 由下一次启动读出后**非阻塞**显示一次。
+ */
+async function maybeAutoRollback(decision) {
+  if (!decision || decision.action !== 'auto-rollback') return false;
+  diag('触发自动回滚:', { reason: decision.reason });
+  pushLog('连续启动失败，正在自动回滚到上一个版本…\n');
+  const rb = await performRollback('auto');
+  if (!rb.ok) {
+    pushLog('自动回滚没能完成：下面会提供手动回滚按钮。\n');
+    return false;
+  }
+  saveRecoveryState(startupDeadline.stashNotice(loadRecoveryState(), {
+    kind: 'auto-rollback', at: new Date().toISOString(), from: rb.from, to: rb.to, reason: decision.reason
+  }));
+  try { lifecycle.note('auto-rollback-relaunch', `${rb.from || '?'} → ${rb.to || '?'}`); } catch (e) { diag('生命周期台账写入失败:', e && e.message); }
+  await restartApp();
+  return true;
+}
+
+/** 启动真的成功了：失败链断掉，清零计数（pendingNotice 必须保留，见下）。 */
+function markStartupHealthy() {
+  const state = loadRecoveryState();
+  if (state.consecutiveFailures > 0 || state.rollbacksInChain > 0) {
+    diag('启动成功：清空失败计数与自动回滚链', {
+      wasConsecutiveFailures: state.consecutiveFailures,
+      wasRollbacksInChain: state.rollbacksInChain,
+      pendingNotice: state.pendingNotice || null
+    });
+  }
+  saveRecoveryState(startupDeadline.resetOnHealthyBoot(state, { at: new Date().toISOString() }));
+  showPendingRecoveryNotice();
+}
+
+/**
+ * 显示上一次启动留下的「已自动回滚」提示（一次性、非阻塞）。
+ * 为什么非阻塞：启动已经成功了，这条提示只是告知，绝不能拦住用户去用应用。
+ */
+function showPendingRecoveryNotice() {
+  const state = loadRecoveryState();
+  const notice = state.pendingNotice;
+  if (!notice) return;
+  saveRecoveryState(startupDeadline.clearNotice(state, { at: new Date().toISOString() }));
+  const detail = startupDeadline.formatRollbackNotice({
+    from: notice.from, to: notice.to, auto: true, reason: notice.reason, logPath: desktopLogPath()
+  });
+  diag('显示自动回滚提示（一次性）:', notice);
+  notifyUser('已自动回滚到上一个版本', `DSH 后端已回滚：${notice.from || '故障版本'} → ${notice.to || '上一个版本'}`, { iconType: 'warning' });
+  dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : null, {
+    type: 'warning', buttons: ['知道了'], defaultId: 0, noLink: true,
+    title: `${APP_NAME} 已自动回滚`,
+    message: `已自动回滚到 v${notice.to || '上一个版本'}`,
+    detail
+  }).catch((e) => diag('自动回滚提示弹窗显示失败（不影响使用）:', e && e.message));
+}
+
+/**
+ * 0.3.48 · H-01(3)：journal 命中「已应用但未验证」时提示用户（原实现只写日志）。
+ * 非阻塞 —— 启动此刻已经成功，提示不该拦住任何人。
+ */
+function promptJournalUnverified(stale) {
+  const canRollback = rollbackTargetExists();
+  const buttons = canRollback ? ['知道了', '回滚到上一个版本'] : ['知道了'];
+  const evidence = startupDeadline.formatJournalEvidence(stale);
+  dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : null, {
+    type: 'warning', buttons, defaultId: 0, cancelId: 0, noLink: true,
+    title: `${APP_NAME} 上次更新未完成验证`,
+    message: '上次更新可能没有真正生效',
+    detail: `${evidence}\n\n` +
+      '这通常意味着上次更新在"验证"之前被打断（断电、强杀或那次启动失败），' +
+      '所以这次跑的版本有可能不是你以为的那个。\n\n' +
+      (canRollback
+        ? '如果随后遇到行为异常，可以回滚到上一个版本（只换程序目录，不动会话与密钥）。'
+        : '当前没有可用的上一个版本，暂时无法回滚。') +
+      `\n\n完整日志：${desktopLogPath()}`
+  }).then((r) => {
+    if (canRollback && r.response === 1) manualRollbackAndRestart('journal-unverified');
+  }).catch((e) => diag('journal 未验证提示窗显示失败（不影响启动）:', e && e.message));
+}
+
 async function showFatal(err) {
   diag('启动失败（fatal）:', err);
   setBootPhase('failed', err);
   closeSplash();
+  // 首帧 deadline 到此失去意义（已经走失败路径），必须停掉，避免二次进入。
+  if (paintWatchdog) { paintWatchdog.stop(); paintWatchdog = null; }
+  // 0.3.48 · H-03：超时报告的阶段打点一并落诊断日志 —— 事后能回答"卡在哪一步"。
+  diag('启动阶段打点:', bootTrace.lines());
   const tail = backendLogs.join('').split(/\r?\n/).filter(Boolean).slice(-30).join('\n');
   const logPath = desktopLogPath();
+
+  // 0.3.48 · H-01(2)：失败计数落盘（一次启动只记一次）。
+  if (!fatalCounted) {
+    fatalCounted = true;
+    const counted = startupDeadline.bumpFailure(loadRecoveryState(), {
+      at: new Date().toISOString(),
+      summary: String((err && err.message) || err)
+    });
+    saveRecoveryState(counted);
+    diag('启动失败计数:', {
+      consecutiveFailures: counted.consecutiveFailures,
+      rollbacksInChain: counted.rollbacksInChain,
+      threshold: startupDeadline.FAILURE_THRESHOLD,
+      autoRollbackLimit: startupDeadline.AUTO_ROLLBACK_LIMIT
+    });
+  }
 
   // 0.3.39 · 对齐官方 crash-report：写独立崩溃报告文件（完整错误+日志尾部+
   // 渲染层错误尾部），启动时清理旧的（只删 crash-*.log，保留 10 份）。
@@ -1560,13 +2529,49 @@ async function showFatal(err) {
 
   // Tray is alive: stay resident as a recovery console. Exiting here is what
   // used to strand the user — no tray icon, no safe mode, no way back in.
-  try {
-    tray.displayBalloon({
-      iconType: 'error', title: `${APP_NAME} 启动失败`,
-      content: '右键托盘图标可查看日志、修复配置或以安全模式重启。'
-    });
-  } catch {}
+  // 0.3.48 · H-08：气泡统一走 notifyUser（带 AUMID 取证与 balloon-show 观测）。
+  notifyUser(`${APP_NAME} 启动失败`, '右键托盘图标可查看日志、修复配置或以安全模式重启。', { iconType: 'error' });
   pushLog('启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。\n');
+
+  // 0.3.48 · H-01：把"要不要回滚"交给纯函数判定（连续失败计数 / 本轮已回滚次数 /
+  // 可用回滚目标 / journal 未验证证据 / 是否只是端口被占）。
+  // 0.3.49 · H-05：可用目标由 `resolveRollbackTarget()` 从磁盘事实解析（可能是
+  // dsh.previous，也可能是更新被中断后仅剩的 dsh.old）—— 这里只用事实，不猜。
+  const rollbackTarget = resolveRollbackTarget();
+  const recoveryDecision = startupDeadline.decideRecovery({
+    state: loadRecoveryState(),
+    previousAvailable: rollbackTarget.available,
+    journalEvidence: journalUnverifiedSafe(),
+    fatalKind: addressInUse ? 'address-in-use' : 'startup'
+  });
+  diag('启动恢复决策:', {
+    action: recoveryDecision.action,
+    reason: recoveryDecision.reason,
+    recommendRollback: recoveryDecision.recommendRollback,
+    rollbackTarget
+  });
+  // 0.3.49 · H-05：命中"上次更新未完成"时，把它作为**直接证据**参与决策 ——
+  // 这种情况下"当前版本可疑"不再是推测，而是磁盘上就摆着未完成的交换现场。
+  if (interruptedApply && interruptedApply.active && !addressInUse && rollbackTarget.available) {
+    recoveryDecision.recommendRollback = true;
+    recoveryDecision.detailExtra = interruptedApplyBrief() + '\n' + (recoveryDecision.detailExtra || '');
+    diag('H-05 中断态参与回滚决策:', { recovery: interruptedApply.recovery, target: rollbackTarget.source });
+  }
+  let autoRollbackFailed = false;
+  if (recoveryDecision.action === 'auto-rollback') {
+    // 注意：这一支成功后进程会直接重启（本函数不再往下走）；失败则继续弹窗，
+    // 由用户手动选择回滚 —— 不会出现"既不回滚也不告诉用户"的中间态。
+    const rolledBack = await maybeAutoRollback(recoveryDecision);
+    if (rolledBack) return;
+    autoRollbackFailed = true;
+  }
+  const rollbackOffered = !addressInUse && recoveryDecision.recommendRollback && rollbackTarget.available;
+  // 按钮文案要写清"会用哪份旧版本"：用户点之前就知道这个动作意味着什么。
+  const rollbackLabel = rollbackTarget.source === 'old'
+    ? `回滚到上一个版本（dsh.old${rollbackTarget.version ? ' ' + rollbackTarget.version : ''}）`
+    : (rollbackTarget.source === 'previous' && rollbackTarget.version
+      ? `回滚到上一个版本（${rollbackTarget.version}）`
+      : '回滚到上一个版本');
 
   // 0.3.39 · 弹窗 detail 有 1200 码元预算（尾部 8 行 + 崩溃报告路径 + 建议），
   // 完整诊断在崩溃报告文件里——不再让长栈撑爆原生弹窗。
@@ -1586,17 +2591,47 @@ async function showFatal(err) {
   // 若对应动作抛错，弹窗消失、屏幕没有任何变化、也没有新弹窗 —— 用户完全不知道
   // 发生了什么（这是我们自愈体系里最伤信任的一处）。现在把失败原因回灌到
   // message/detail 并重新弹窗，让"失败"本身成为一个可操作的状态。
-  let fatalMessage = addressInUse ? '端口被其他 DSH 实例占用' : '后端没能启动 —— 自救入口已就绪';
-  let fatalDetail = detail;
+  let fatalMessage = addressInUse
+    ? '端口被其他 DSH 实例占用'
+    : (autoRollbackFailed
+      ? '连续启动失败（自动回滚没能完成）'
+      : (interruptedApply && interruptedApply.active
+        ? '上次更新未完成，后端没能启动'
+        : recoveryDecision.message));
+  let fatalDetail = addressInUse
+    ? detail
+    : (autoRollbackFailed
+      ? '已经尝试自动回滚，但回滚没能完成（原因见下方日志与后台日志）。\n' +
+        '可以在下方手动选择「回滚到上一个版本」，或先以安全模式重启排查。\n\n' + detail
+      : (recoveryDecision.detailExtra ? recoveryDecision.detailExtra + '\n' + detail : detail));
+  // 0.3.48 · H-01：按钮改为「动作表」而不是魔法下标 —— 旧代码用 switch(r.response)
+  // 硬编码 0..5，加一个按钮就会把动作整体错位（0.3.44「注册与回调不一致」的同类风险）。
+  const fatalActions = addressInUse
+    ? [
+        { label: '重试启动', run: () => restartApp() },
+        { label: '退出', run: () => quitApp() }
+      ]
+    : [
+        ...(rollbackOffered
+          ? [{ label: rollbackLabel, run: () => manualRollbackAndRestart('fatal-dialog') }]
+          : []),
+        { label: '查看启动日志', run: async () => { try { await shell.openPath(logPath); } catch (e) { diag('打开日志失败:', e && e.message); } } },
+        { label: '修复插件配置', run: () => requestPatchRepair() },
+        { label: '以安全模式重启', run: () => requestEnterSafeMode() },
+        { label: '重试启动', run: () => restartApp() },
+        { label: '留在托盘稍后处理', run: async () => 'stay' },
+        { label: '退出', run: () => quitApp() }
+      ];
+  const stayIndex = fatalActions.findIndex((a) => a.label === '留在托盘稍后处理');
   for (;;) {
     let r;
     try {
       r = await dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : null, {
         type: 'error',
-        buttons: addressInUse
-          ? ['重试启动', '退出']
-          : ['查看启动日志', '修复插件配置', '以安全模式重启', '重试启动', '留在托盘稍后处理', '退出'],
-        defaultId: 0, cancelId: addressInUse ? 1 : 4, noLink: true,
+        buttons: fatalActions.map((a) => a.label),
+        defaultId: 0,
+        cancelId: addressInUse ? 1 : (stayIndex >= 0 ? stayIndex : fatalActions.length - 1),
+        noLink: true,
         title: `${APP_NAME} 启动失败`,
         message: fatalMessage,
         detail: fatalDetail
@@ -1606,20 +2641,10 @@ async function showFatal(err) {
       diag('恢复弹窗无法显示:', dialogErr && dialogErr.message);
       return;
     }
+    const action = fatalActions[r.response] || fatalActions[fatalActions.length - 1];
     try {
-      if (addressInUse) {
-        if (r.response === 1) quitApp(); else await restartApp();
-        return;
-      }
-      switch (r.response) {
-        case 0: try { await shell.openPath(logPath); } catch (e) { diag('打开日志失败:', e && e.message); } break;
-        case 1: await requestPatchRepair(); break;
-        case 2: await requestEnterSafeMode(); break;
-        case 3: await restartApp(); break;
-        case 4: return; // stay resident; tray remains the recovery console
-        case 5: quitApp(); return;
-        default: return;
-      }
+      const outcome = await action.run();
+      if (outcome === 'stay') return; // 留在托盘；托盘本身就是自救控制台
       return;
     } catch (actionErr) {
       // 动作失败：把原因显示给用户并重弹，而不是让弹窗无声消失。
@@ -1688,12 +2713,9 @@ function setupShellUpdater() {
     autoUpdater.on('update-available', (info) => {
       shellUpdateVersion = (info && info.version) || null;
       pushLog(`shell update available: ${shellUpdateVersion || 'unknown'}（等待用户确认）\n`);
-      try {
-        tray && tray.displayBalloon({
-          iconType: 'info', title: 'DSH Desktop 有新版本',
-          content: `桌面版 ${shellUpdateVersion || '新版本'} 可用。打开托盘菜单中的「设置」可确认下载。`
-        });
-      } catch {}
+      notifyUser('DSH Desktop 有新版本',
+        `桌面版 ${shellUpdateVersion || '新版本'} 可用。打开托盘菜单中的「设置」可确认下载。`,
+        { iconType: 'info' });
     });
     autoUpdater.on('update-downloaded', async () => {
       const r = await dialog.showMessageBox(mainWindow, {
@@ -1733,12 +2755,10 @@ async function checkBackendUpdates(options = {}) {
     if (info.updates && info.updates.length) {
       setUpdateStatus('available', '有新版本，点击此处确认', 0, info.updates.map((u) => `${u.component} → ${u.latest}`).join('；'), { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
       pushLog('发现新版本（等待用户确认后才下载）：' + info.updates.map((u) => `${u.component} ${u.current || '无'} → ${u.latest}`).join('；') + '\n');
-      try {
-        tray && tray.displayBalloon({
-          iconType: 'info', title: 'DSH 有可用更新',
-          content: info.updates.map((u) => `${u.component} → ${u.latest}`).join('；') + '\n打开托盘菜单中的「设置」可确认下载。'
-        });
-      } catch {}
+      // 0.3.48 · H-08：唯一主动通知通道统一走 notifyUser（带 AUMID 取证）。
+      notifyUser('DSH 有可用更新',
+        info.updates.map((u) => `${u.component} → ${u.latest}`).join('；') + '\n打开托盘菜单中的「设置」可确认下载。',
+        { iconType: 'info' });
     } else if (info.pending && info.pending.length) {
       pushLog('已暂存 ' + info.pending.map((p) => `${p.component}->${p.staged}`).join(', ') + '，将在下次启动时自动应用（跳过重复下载）\n');
       setUpdateStatus('ready', '更新待重启应用', 100, info.pending.map((p) => `${p.component} ${p.staged}`).join('；'), { current: info.current?.dsh || '未知', latest: info.latest?.dsh || '未知' });
@@ -1763,12 +2783,37 @@ async function stageConfirmedUpdates(updates, info) {
   setUpdateStatus('downloading', `开始下载 ${updates.length} 项更新`, 0, updates.map((u) => `${u.component} → ${u.latest}`).join('；'), { current: (info && info.current && info.current.dsh) || updateStatus.current, latest: (info && info.latest && info.latest.dsh) || updateStatus.latest });
   diag('用户已确认，开始下载更新:', updates.map((u) => `${u.component} ${u.current || '无'} → ${u.latest}`).join('；'));
   const cbs = { onLog: (m) => pushLog('[update] ' + m + '\n'), onProgress: (p) => setUpdateStatus('downloading', '正在下载更新', Math.round((p || 0) * 100), updateStatus.detail) };
+  // 0.3.49 · B-06：在"用户点下确认"的这一刻签发确认令牌。
+  // 令牌绑定的是**弹窗展示的那个候选**（revision + 版本 + 内容摘要），不是"最新版本"：
+  // 用户确认 A 却装上 B（上游重发同版本号、或中途切了镜像/版本）必须被拒绝。
+  let confirmation = null;
+  try {
+    confirmation = typeof mgr.issueUpdateConfirmation === 'function' ? mgr.issueUpdateConfirmation() : null;
+    diag('已签发更新确认令牌（B-06）:', confirmation
+      ? { revision: confirmation.revision, version: confirmation.version, digest: String(confirmation.digest || '').slice(0, 12) + '…' }
+      : '（无候选快照：本次不带令牌，updater 会按 unbound 放行并记录）');
+  } catch (e) {
+    diag('签发更新确认令牌失败（本次不带令牌）:', e && e.message);
+  }
   const summaries = [];
   const failures = [];
   for (const u of updates) {
     try {
       if (u.component === 'dsh') {
-        const staged = await mgr.stageDsh(cbs, u.latest);
+        // 0.3.49 · B-06：确认令牌一路带到下载路径 —— 过期令牌由 updater 在**网络之前**
+        // 拒绝（并写 ERR_UPDATER_CONFIRMATION_STALE 到 journal），这里只把结论如实告诉用户。
+        let staged;
+        try {
+          staged = await mgr.stageDsh(cbs, u.latest, { confirmation });
+        } catch (e) {
+          if (/CONFIRMATION_STALE/.test(String((e && e.message) || e))) {
+            diag('更新确认已过期（B-06 拒绝安装）:', e && e.message);
+            pushLog(`更新确认已过期：${e && e.message}（未下载任何内容）\n`);
+            failures.push(`DSH 后端 ${u.latest}：确认已过期，需要重新检查更新后再确认`);
+            continue;
+          }
+          throw e;
+        }
         summaries.push(`DSH 后端 ${u.current || '无'} → ${staged.version}`);
         if (u.changes && u.changes.length) summaries.push('上游更新：' + u.changes.slice(0, 3).join('；'));
       } else if (u.component === 'node') {
@@ -1821,8 +2866,12 @@ function createSettingsWindow() {
     width: 560, height: 720, show: false, resizable: false, maximizable: false, fullscreenable: false,
     title: `${APP_NAME} 设置`, icon: path.join(__dirname, 'assets', 'icon.png'),
     backgroundColor: '#0b1020', autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'settings-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false }
+    // 0.3.49 · B-05：设置窗握最高权限（plugins:install / set-path-entry / rollback-to），
+    // 因此它比主窗更需要 sandbox + 导航白名单（0.3.48 之前它连处理器都没装）。
+    webPreferences: { preload: path.join(__dirname, 'settings-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true }
   });
+  applyWindowHandlers(settingsWindow, { kind: 'settings', allowedFileRoots: [__dirname] });
+  logEffectiveWebPreferences(settingsWindow, 'settings');
   settingsWindow.loadFile(path.join(__dirname, 'settings.html'));
   settingsWindow.once('ready-to-show', () => settingsWindow.show());
   settingsWindow.on('closed', () => { settingsWindow = null; });
@@ -1960,10 +3009,89 @@ function scheduleSilentUpdates() {
   // Check-only cadence: announces new versions via the tray, never downloads.
   // First check is early (5s) so the tray shows fresh version data right after
   // a restart that applied an update.
-  setTimeout(() => checkBackendUpdates(), 5000);
-  setInterval(() => checkBackendUpdates(), 6 * 3600 * 1000);
+  //
+  // 0.3.49 · B-03：这两行旧的固定定时器（5s 一次 + 每 6h 一次）已删除，改由
+  // updater 的常驻节拍器驱动（单调时钟 + 完成起算 + 指数退避 + 抖动 + 单飞）。
+  // 为什么必须换：旧写法没有退避也没有单飞 —— 弱网下每 6 小时硬撞一次镜像，
+  // 且用户手动点"检查更新"与定时器可能并发出两份网络请求。
+  startBackendUpdateLoop();
   // Daily log retention cleanup (archives pruned by count + age).
   setInterval(() => { try { diagLog.housekeep(); } catch (_) {} }, 24 * 3600 * 1000);
+}
+
+/**
+ * 0.3.49 · B-03：后端更新检查的常驻节拍（接线薄层）。
+ *
+ * 语义边界（不变）：节拍器只决定**何时**检查；发现新版本仍然只"通知"，不下载。
+ * 下载永远等用户在设置窗确认（确认制）。
+ *
+ * 为什么首次检查仍延迟 5 秒：节拍器是"到期即跑"（首次 dueAt 为空 ⇒ 立刻到期），
+ * 直接 start() 会和启动链抢网络与 CPU（解压/补丁预检正在跑）。这里保留旧的
+ * 可感知节奏：启动 5 秒后开始第一次检查，之后完全交给节拍器的退避/单飞。
+ */
+let backendUpdateLoop = null;
+let lastUpdateLoopKey = '';
+let lastNotifiedCandidateKey = '';
+
+function startBackendUpdateLoop() {
+  if (backendUpdateLoop) return backendUpdateLoop;
+  const loop = mgr.createBackendUpdateLoop({
+    log: (msg, detail) => diag('[update-schedule] ' + msg, detail)
+  });
+  backendUpdateLoop = loop;
+  diag('更新节拍器已就绪（B-03：单调时钟 + 完成起算 + 退避 + 抖动 + 单飞）:', loop.status());
+  setTimeout(() => {
+    try {
+      const st = loop.start();
+      diag('更新节拍器已启动（首次检查在启动后约 5 秒）:', st);
+    } catch (e) {
+      diag('启动更新节拍器失败:', e && e.stack ? e.stack : e);
+      pushLog(`更新检查节拍器启动失败：${e && e.message}（自动更新检查不可用）\n`);
+    }
+  }, 5000);
+  // 节拍器没有事件钩子（update-schedule 的 API 是 start/stop/runCheck/status），
+  // 所以用 3 秒一次的内存轮询把"检查完成"映射到既有的通知制 UI —— 不产生任何网络请求。
+  const watcher = setInterval(() => syncUpdateUiFromLoop(loop), 3000);
+  if (watcher && typeof watcher.unref === 'function') watcher.unref();
+  return loop;
+}
+
+/**
+ * 把节拍器的一次"检查完成"翻译成托盘状态 + 通知（不下载、不发网络请求）。
+ *
+ * 判定依据是 updater 的**候选快照**：`checkForUpdates()` 发现新版本时会
+ * `recordUpdateCandidate()`，`issueUpdateConfirmation()` 读到的就是它。因此这里
+ * 不需要再查一次网络，也不会与节拍器的单飞机制打架。
+ */
+function syncUpdateUiFromLoop(loop) {
+  let status;
+  try { status = loop.status(); } catch (e) { diag('读取更新节拍器状态失败:', e && e.message); return; }
+  const c = status.counters || {};
+  const key = `${c.ok || 0}|${c.failed || 0}|${status.failures || 0}`;
+  if (key === lastUpdateLoopKey) return; // 没发生新的检查 → 什么都不做
+  lastUpdateLoopKey = key;
+
+  const current = (() => { try { return mgr.currentVersions()?.dsh || updateStatus.current; } catch { return updateStatus.current; } })();
+  let candidate = null;
+  try { candidate = typeof mgr.issueUpdateConfirmation === 'function' ? mgr.issueUpdateConfirmation() : null; } catch (e) { diag('读取更新候选失败:', e && e.message); }
+
+  if (candidate && candidate.version && String(candidate.version) !== String(current)) {
+    const candKey = `${candidate.version}|${candidate.revision}`;
+    setUpdateStatus('available', '有新版本，点击此处确认', 0,
+      `DSH 后端 ${current || '未知'} → ${candidate.version}`,
+      { current: current || '未知', latest: candidate.version });
+    if (candKey !== lastNotifiedCandidateKey) {
+      lastNotifiedCandidateKey = candKey;
+      pushLog(`发现新版本（等待用户确认后才下载）：DSH 后端 ${current || '未知'} → ${candidate.version}\n`);
+      notifyUser('DSH 有可用更新', `DSH 后端 ${current || '未知'} → ${candidate.version}\n打开托盘菜单中的「设置」可确认下载。`, { iconType: 'info' });
+    }
+    return;
+  }
+  if (status.failures) {
+    setUpdateStatus('error', '检查更新失败', 0, status.lastError || '未知错误', { current: current || '未知', latest: updateStatus.latest });
+    return;
+  }
+  setUpdateStatus('idle', '已是最新版本', 100, '', { current: current || '未知', latest: current || '未知' });
 }
 
 /**
@@ -1989,6 +3117,8 @@ async function handleClientBundleFailure(name) {
   clientDisabledBundles.add(name);
   const res = mgr.disableFailingBundles(paths.dshHome, [name]);
   if (!res || !res.disabled || !res.disabled.length) return;
+  // 0.3.49 · 台账：客户端注册失败后禁用（运行期，reason=ECLIENTREG）
+  recordPluginJournal({ action: 'disable', plugin: name, source: 'profile', phase: 'running', result: 'ok', reason: 'ECLIENTREG' });
   pushLog(`插件包 ${name} 客户端注册失败（后端进程正常）。已仅从加载清单移除该插件（依赖保留，其余插件、会话与设置不受影响），备份：${res.backup}。\n`);
   diag('client bundle registration failure — surgically disabled one bundle', { name, backup: res.backup });
   let restart = true;
@@ -2195,6 +3325,15 @@ handleIpc('plugins:install', async (_e, payload) => {
     pushPluginLog(`开始安装 ${spec}（profile=${profile}，DSH_HOME=${mgr.dshHome()}）`);
     const r = await mgr.installPluginViaCli(spec, { profile, onLog: pushPluginLog });
     diag('插件安装结果:', { spec, profile, ok: r.ok, code: r.code });
+    // 0.3.49 · 台账：安装动作（plugin 记包名、source 记类别，绝不记 spec 原文）
+    recordPluginJournal({
+      action: 'install', plugin: pluginNameFromSpec(spec), source: pluginSourceFromSpec(spec),
+      phase: 'running',
+      // 台账的 reason 语义固定为 ETIMEDOUT/EINSTALL（原始 code 已在上一行 diag 里，
+      // 这里不再塞进 result.code —— 台账模块会把 result.code 当 reason，反而盖掉语义）。
+      result: r.ok ? 'ok' : 'fail',
+      reason: r.ok ? '' : (r.timedOut ? 'ETIMEDOUT' : 'EINSTALL')
+    });
     if (r.ok) {
       const parent = settingsWindow || mainWindow;
       const box = await dialog.showMessageBox(parent, {
@@ -2232,6 +3371,17 @@ handleIpc('plugins:import-legacy', async (_e, payload) => {
     let file = null;
     try { file = mgr.exportLegacyImportReport(mgr.scanLegacyHome(), summary); } catch (e) { diag('迁移报告导出失败:', e && e.message); }
     diag('旧 Home 导入结果:', { total: summary.total, ok: summary.ok, failed: summary.failed, skipped: summary.skipped });
+    // 0.3.49 · 台账：迁移导入逐条记（跳过的记 ok + ESKIP，避免"看不出来它去哪了"）
+    for (const item of (summary.results || [])) {
+      const name = pluginNameFromSpec(item && (item.name || item.spec || item.package));
+      const skipped = !!(item && (item.skipped || item.status === 'skipped'));
+      const failed = !!(item && (item.ok === false || item.status === 'failed')) && !skipped;
+      recordPluginJournal({
+        action: 'install', plugin: name, source: 'legacy', phase: 'running',
+        result: failed ? { status: 'fail', code: (item && item.code) || 'EINSTALL' } : 'ok',
+        reason: skipped ? 'ESKIP' : (failed ? ((item && item.code) || 'EINSTALL') : '')
+      });
+    }
     if (summary.ok > 0) {
       const parent = settingsWindow || mainWindow;
       const box = await dialog.showMessageBox(parent, {
@@ -2264,6 +3414,7 @@ if (!gotLock) {
 
   app.whenReady().then(async () => {
     diag('启动流程开始', { hidden: autoStartHidden, packaged: isPackaged, versions: (() => { try { return mgr.currentVersions(); } catch { return null; } })() });
+    bootTrace.mark('ready', autoStartHidden ? 'hidden' : 'visible');
     // 0) Log housekeeping: retention cleanup on every boot (runs again daily via
     //    scheduleSilentUpdates). Logs live in the app logs dir, not the Desktop.
     try { diagLog.housekeep(); } catch (_) {}
@@ -2281,10 +3432,32 @@ if (!gotLock) {
     } catch (e) {
       diag('步骤0b 托盘提前创建失败:', e && e.message);
     }
+    // 0c) 0.3.48 · H-08 通知通道自检：把"能不能发通知"的判断依据一次写进日志。
+    //     事后看到"用户说没收到提示"时，这里能区分几种情况：没有托盘 / AUMID
+    //     没生效（可能被系统吞）/ 通道能力缺失（Notification 也不可用）。
+    //     0.3.48 复修后这里的 aumidApplied 在**成品里也应为 true**（身份取自随包
+    //     常量 app-identity.js，不再依赖会被打包剥离的构建字段）。
+    diag('通知通道自检（H-08）:', {
+      aumid: appUserModelIdApplied || DSH_APP_ID,
+      aumidApplied: !!appUserModelIdApplied,
+      aumidSource: 'app-identity.js',
+      platform: process.platform,
+      trayBalloonApi: !!(tray && typeof tray.displayBalloon === 'function'),
+      electronNotificationSupported: notificationSupported(),
+      packaged: isPackaged
+    });
+    if (!appUserModelIdApplied) {
+      // 设置失败必须显眼：这是我们唯一的主动通知通道的前提条件。
+      diag('警告：AppUserModelID 未生效（aumidApplied:false）—— Win10/11 可能静默丢弃托盘气泡');
+    }
     try {
       // 1) Seed writable active dir from factory resources (first run).
       diag('步骤1 初始化活跃目录 ensureSeeded');
+      // 注意：ensureSeeded 是**同步**的（解压 payload），主进程在它执行期间是阻塞的 ——
+      // 计时器根本不会跑。所以启动超时只覆盖"异步等待"的三个阶段（spawn/health/paint），
+      // 不假装能给同步解压设超时（那是做不到的，写出来只会误导排查者）。
       mgr.ensureSeeded();
+      bootTrace.mark('seeded');
       // 1b) 终端接线（0.3.32）：始终刷新 dsh-desktop/dsh 包装器脚本（内含固定
       //     DSH_HOME + 桌面版 node），并在"干净机器"（没有在用的 ~/.dsh）上
       //     首次启动写入用户级 DSH_HOME —— 让分发用户照 README 敲命令也落到
@@ -2331,6 +3504,47 @@ if (!gotLock) {
       diag('步骤3 应用暂存更新 applyStaged（前）:', (() => { try { return mgr.stagedVersions(); } catch { return null; } })());
       const applied = mgr.applyStaged();
       diag('步骤3 应用暂存更新 applyStaged（后）:', applied);
+      bootTrace.mark('applied', applied && applied.dsh ? `dsh→${applied.dsh}` : 'none');
+      // 3.1) 0.3.49 · H-05：读「上次更新在交换阶段被打断」的残留标记。
+      // 为什么要在启动早期读：此刻 `dsh`/`dsh.old`/`dsh.previous` 全是磁盘事实，
+      // 再晚（比如等 ensureSeeded 补种出厂版本之后）现场就被覆盖了 —— 那正是
+      // H-05「昨天刚更新，今天又变回去了」的成因窗口。
+      // 这里只**记录事实**，不做任何自动恢复（恢复是不可逆动作，决策权在 showFatal）。
+      try {
+        const interrupted = mgr.interruptedApplyState();
+        if (interrupted && interrupted.active) {
+          interruptedApply = interrupted;
+          diag('检测到上次更新未完成（H-05）:', {
+            step: interrupted.step,
+            target: interrupted.target,
+            recovery: interrupted.recovery,
+            live: interrupted.live && interrupted.live.version,
+            old: interrupted.old && interrupted.old.version,
+            previous: interrupted.previous && interrupted.previous.version,
+            unreadable: !!interrupted.unreadable
+          });
+          pushLog(`上次更新未完成：步骤=${interrupted.step} 目标=${interrupted.target || '未知'}；`
+            + `磁盘现状 dsh=${(interrupted.live && interrupted.live.version) || '缺失'} `
+            + `dsh.old=${(interrupted.old && interrupted.old.version) || '无'} `
+            + `dsh.previous=${(interrupted.previous && interrupted.previous.version) || '无'}`
+            + `（建议恢复动作=${interrupted.recovery}，不会自动执行）\n`);
+          queueNotice({
+            kind: 'interrupted-apply',
+            title: '上次更新未完成',
+            message: '上次在应用更新时被中断（断电 / 强杀 / 启动失败）',
+            detail: `中断发生在「${interrupted.step}」步骤，目标是版本 ${interrupted.target || '未知'}。\n\n`
+              + `磁盘现状：当前 dsh=${(interrupted.live && interrupted.live.version) || '缺失'}；`
+              + `dsh.old=${(interrupted.old && interrupted.old.version) || '无'}；`
+              + `dsh.previous=${(interrupted.previous && interrupted.previous.version) || '无'}。\n\n`
+              + '本次已按"尽量不覆盖可恢复现场"的顺序启动。如果随后出现版本异常或启动失败，'
+              + '可在恢复弹窗里选择「回滚到上一个版本」（会使用真正可用的那份旧版本）。\n'
+              + `完整日志：${desktopLogPath()}`
+          });
+        }
+      } catch (e) {
+        pushLog('检测「上次更新未完成」失败（不影响启动）: ' + (e && e.message) + '\n');
+        diag('interruptedApplyState 失败:', e && e.stack ? e.stack : e);
+      }
       // 3.2) Safe-mode resolution: --safe-mode keeps the reduced (core-only)
       // profile; a NORMAL launch while a safe-mode marker exists restores the
       // saved originals — a crash inside safe mode can never strand the
@@ -2340,6 +3554,10 @@ if (!gotLock) {
         safeMode = !!sm.active;
         if (sm.active) { updateSplash('正在以安全模式启动（仅核心组件）…'); pushLog('安全模式：仅加载核心组件，第三方插件已临时停用。\n'); }
         if (sm.exited) pushLog(`已退出安全模式并还原第三方插件：${(sm.restored || []).join('、') || '（无还原项）'}\n`);
+        // 0.3.49 · 台账：安全模式启动 = 第三方插件被跳过（一条 entry 说明"本轮为什么它们不在"）
+        if (sm.active) {
+          recordPluginJournal({ action: 'startup-skip', plugin: '(safe-mode)', source: 'profile', phase: 'startup', result: 'ok', reason: 'ESAFEMODE' });
+        }
       } catch (e) {
         pushLog('安全模式处理失败（按正常启动继续）: ' + (e && e.message) + '\n');
       }
@@ -2443,6 +3661,11 @@ if (!gotLock) {
           diag('启动预检：已恢复此前被误禁用的条目', restored.restored);
           for (const r of restored.restored) {
             pushLog(`启动预检：条目 ${r.id}（${r.name}）此前因解析判断错误被禁用，现已自动恢复。\n`);
+            // 0.3.49 · 台账：撤销自己此前的误伤（reason=EPREFLIGHT-MISFIRE）
+            recordPluginJournal({
+              action: 'restore', plugin: (r.name || r.id || '(unknown)'), source: 'profile', phase: 'startup',
+              result: 'ok', reason: 'EPREFLIGHT-MISFIRE'
+            });
           }
         }
         const preResolve = mgr.preflightBareNameResolution() || { repaired: [], broken: [], restored: [], skipped: [], roots: [], anchor: null };
@@ -2464,6 +3687,13 @@ if (!gotLock) {
               updateSplash('已自动禁用冲突的插件配置条目…');
               const total = fix.fixed.reduce((n, f) => n + f.ids.length, 0);
               pushLog(`启动预检：已禁用 ${total} 个问题条目（各文件已备份）。\n`);
+              // 0.3.49 · 台账：启动预检跳过的条目（startup-skip）。逐条记 id，
+              // 这样"某插件为什么没加载"在成品里能直接查到，而不是只有一行总数。
+              for (const f of fix.fixed) {
+                for (const id of (f.ids || [])) {
+                  recordPluginJournal({ action: 'startup-skip', plugin: String(id), source: 'profile', phase: 'startup', result: 'ok', reason: 'ELOADERCONFLICT' });
+                }
+              }
             }
           }
           if (!autoStartHidden && (repaired.length || fix.fixed.length || restored.restored.length)) {
@@ -2608,14 +3838,27 @@ if (!gotLock) {
       }
 
       // 5) Start backend (self-heals and retries on profile/symlink errors).
+      // 0.3.49 · B-01：**绑定新端口之前**清理旧后端源遗留的 cookie。
+      // 为什么必须在这之前：后端一旦以新端口起来，旧 cookie 就已经随首个请求发出去了；
+      // 而 cookie 又忽略端口（RFC 6265），清完再起才是干净的。
+      await cleanLegacyBackendCookies();
       diag('步骤5 启动后端');
       const url = await startBackendWithPluginIsolation(shouldIsolatePlugins);
       diag('步骤5 后端已启动:', url);
       // 6) Show UI + promote the tray to its normal (running) menu.
+      // 0.3.48 · H-03 阶段三：mainWindow 的"创建"是同步的，但"首帧加载完成"是
+      // 异步的 —— did-finish-load 之前给一个 deadline，否则白窗与没启动对用户等价。
+      armPaintWatchdog();
       await createMainWindow(url);
       createTray();
       setBootPhase('running');
       diag('步骤6 主窗口与托盘就绪');
+      // 0.3.48 · H-01：启动真的成功了 → 失败链断开（计数清零），并显示上一次
+      // 自动回滚留下的"已自动回滚到 vX"一次性非阻塞提示。
+      markStartupHealthy();
+      // 0.3.49 · 阶段一审计遗留：把启动早期入队的用户可见通知（插件隔离放弃/还原、
+      // 上次更新未完成）在主窗口就绪后**一次性、非阻塞**地告诉用户。
+      showDeferredNotices();
       // 更新 journal：后端已启动且主窗口加载成功，把 applied 记录推进到
       // verified。一条 applied 却从未 verified 的记录意味着上次更新在验证前
       // 崩溃 —— 这里闭环。
@@ -2631,6 +3874,10 @@ if (!gotLock) {
           const brief = stale.slice(-3).map((e) => `${e.kind}→${e.to || '?'}(${e.at})`).join('; ');
           diag(`journal：检测到 ${stale.length} 条上次更新未验证的记录（更新可能未真正生效）：${brief}`);
           pushLog(`[journal] ${stale.length} 条 applied 记录在验证前中断：${brief}\n`);
+          // 0.3.48 · H-01(3)：从「只写日志」升级为「决定是否提示用户」—— 这条
+          // 证据是"当前版本可能本身不可用"的唯一早期信号，必须让用户看见（非阻塞），
+          // 并顺手给出当时唯一有效的动作（回滚到上一个版本）。
+          promptJournalUnverified(stale);
         }
         const nV = mgr.journalMarkVerified();
         if (nV) diag(`journal：${nV} 条 applied 记录已标记 verified`);

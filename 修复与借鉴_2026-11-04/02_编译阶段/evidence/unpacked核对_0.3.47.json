@@ -1,0 +1,111 @@
+{
+  "generatedAt": "2026-11-03T17:21:48.708Z",
+  "dir": "C:\\Users\\lcl\\Desktop\\DSH\\release\\win-unpacked",
+  "checks": [
+    {
+      "name": "主程序 DSH Desktop.exe",
+      "ok": true,
+      "detail": "246082560 字节"
+    },
+    {
+      "name": "resources/app.asar",
+      "ok": true,
+      "detail": "2652265 字节"
+    },
+    {
+      "name": "resources/payload/vendor-manifest.json",
+      "ok": true,
+      "detail": "存在"
+    },
+    {
+      "name": "resources/payload/7za.exe",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "exe ProductVersion 与 package.json 一致",
+      "ok": false,
+      "detail": "exe=0.3.47.0 / package.json=0.3.47"
+    },
+    {
+      "name": "清单含 payload 分卷记录",
+      "ok": true,
+      "detail": "8 个分卷, dsh=0.2.1-alpha.5, node=24.4.0"
+    },
+    {
+      "name": "分卷 vendor-0.7z",
+      "ok": true,
+      "detail": "4432947 字节, sha256 一致"
+    },
+    {
+      "name": "分卷 vendor-1.7z",
+      "ok": true,
+      "detail": "12261648 字节, sha256 一致"
+    },
+    {
+      "name": "分卷 vendor-2.7z",
+      "ok": true,
+      "detail": "3274810 字节, sha256 一致"
+    },
+    {
+      "name": "分卷 vendor-3.7z",
+      "ok": true,
+      "detail": "29202823 字节, sha256 一致"
+    },
+    {
+      "name": "分卷 vendor-4.7z",
+      "ok": true,
+      "detail": "51698276 字节, sha256 一致"
+    },
+    {
+      "name": "分卷 vendor-5.7z",
+      "ok": true,
+      "detail": "8124042 字节, sha256 一致"
+    },
+    {
+      "name": "分卷 vendor-6.7z",
+      "ok": true,
+      "detail": "11333659 字节, sha256 一致"
+    },
+    {
+      "name": "分卷 vendor-7.7z",
+      "ok": true,
+      "detail": "6605985 字节, sha256 一致"
+    },
+    {
+      "name": "清单记录了 node 版本",
+      "ok": true,
+      "detail": "24.4.0"
+    },
+    {
+      "name": "清单记录了 dsh 版本",
+      "ok": true,
+      "detail": "0.2.1-alpha.5"
+    },
+    {
+      "name": "清单含两棵树的规模",
+      "ok": true,
+      "detail": "runtime 2315 文件 / dsh 63581 文件"
+    },
+    {
+      "name": "清单含关键文件哈希",
+      "ok": true,
+      "detail": "4 个关键文件"
+    },
+    {
+      "name": "asar 清单 + 闭包对账",
+      "ok": false,
+      "detail": "exit=1"
+    },
+    {
+      "name": "app.asar.unpacked 存在（可缺省）",
+      "ok": true,
+      "detail": "未生成（依赖中无原生二进制）"
+    }
+  ],
+  "passed": false,
+  "failed": [
+    "exe ProductVersion 与 package.json 一致",
+    "asar 清单 + 闭包对账"
+  ]
+}

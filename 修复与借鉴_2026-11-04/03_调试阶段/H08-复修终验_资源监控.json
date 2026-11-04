@@ -1,0 +1,24 @@
+{
+  "label": "H-08 复修终验",
+  "startedAt": "2026-11-03T18:03:03.958Z",
+  "durationSec": 21,
+  "samples": 20,
+  "intervalSec": 1,
+  "reason": "检测到停止文件 C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\H08_复修终验_监控.stop",
+  "filters": [
+    "node.exe",
+    "pwsh.exe"
+  ],
+  "pids": [],
+  "peaks": {
+    "cpu": 24.462532620852496,
+    "ws": 2748,
+    "pb": 2138,
+    "sysUsedPct": 83.96101429348919,
+    "gpuUtil": 98,
+    "gpuMem": 9572,
+    "gpuTemp": 70,
+    "gpu": "NVIDIA GeForce RTX 5060 Ti"
+  },
+  "csv": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\H08-复修终验_资源监控.csv"
+}

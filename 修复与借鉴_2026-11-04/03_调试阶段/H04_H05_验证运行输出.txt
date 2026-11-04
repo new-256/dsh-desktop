@@ -1,0 +1,219 @@
+===== H-04 / H-05 验证运行输出（runId: h04h05-20261104-012930）=====
+时间：2026-11-04 01:29:30 +08:00（Asia/Shanghai；互联网授时端点 TLS 不可达，取自本机时钟，与运行环境时区一致）
+Node：v24.21.0    Electron：44.3.0    OS：Microsoft Windows NT 10.0.22631.0
+
+----- node --check updater-backend.js
+exit=0
+----- node --check scripts\test-h04-h05-harness.js
+exit=0
+----- node --check scripts\test-h04-quarantine-safety.js
+exit=0
+----- node --check scripts\test-h05-apply-marker.js
+exit=0
+----- node --check scripts\test-043.js
+exit=0
+
+----- node scripts/test-h04-quarantine-safety.js
+  · 资源监控已启动（独立进程 pid=4256）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-04-quarantine-safety_资源监控_20261104-012931.log
+
+── 场景1 rename 成功（正常隔离）+ 隔离目录保留策略
+[backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-012931.json
+[diag] [2026-11-03T17:29:31.887Z] [backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-012931.json
+[backend-mgr] quarantined broken profiles to profiles.broken-20261104-012931
+[diag] [2026-11-03T17:29:31.892Z] [backend-mgr] quarantined broken profiles to profiles.broken-20261104-012931
+[backend-mgr] pruned old quarantine directory: profiles.broken-20200102-000000
+[diag] [2026-11-03T17:29:31.905Z] [backend-mgr] pruned old quarantine directory: profiles.broken-20200102-000000
+[backend-mgr] pruned old quarantine directory: profiles.broken-20200101-000000
+[diag] [2026-11-03T17:29:31.905Z] [backend-mgr] pruned old quarantine directory: profiles.broken-20200101-000000
+  ✓ 场景1 quarantined = true
+  ✓ 场景1 fallback（未走兜底） = false
+  ✓ 场景1 copied（未走复制兜底） = false
+  ✓ 场景1 abandoned = false
+  ✓ 场景1 原 profiles 已离开原位
+  ✓ 场景1 隔离目录含 web/package.json
+  ✓ 场景1 隔离目录含 other/data.bin
+  ✓ 场景1 第三方注册快照已落盘
+  ✓ 场景1 快照至少含 1 个 profile = true
+  ✓ 场景1 我方命名隔离目录只保留 2 份（实际 ["profiles.broken-20200103-000000","profiles.broken-20261104-012931"]） = 2
+  ✓ 场景1 用户手工建的同前缀目录未被删除
+  ✓ 场景1 本次隔离目录在保留集合里
+
+── 场景2 rename 被占用（真实句柄）→ 复制+校验兜底
+  ✓ 场景2 占用已生效（rename 会失败）
+  ✓ 场景2 前置：profiles 里存在指向用户源码的 junction
+[backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-012932.json
+[diag] [2026-11-03T17:29:32.641Z] [backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-012932.json
+[backend-mgr] rename profiles to profiles.broken-20261104-012932 failed (EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles.broken-20261104-012932'); falling back to copy-then-verify quarantine (user data is never deleted first)
+[diag] [2026-11-03T17:29:32.642Z] [backend-mgr] rename profiles to profiles.broken-20261104-012932 failed (EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles.broken-20261104-012932'); falling back to copy-then-verify quarantine (user data is never deleted first)
+[backend-mgr] copied profiles to profiles.broken-20261104-012932 and verified (5 files / 7 dirs / 1 links / 10821 bytes)
+[diag] [2026-11-03T17:29:32.764Z] [backend-mgr] copied profiles to profiles.broken-20261104-012932 and verified (5 files / 7 dirs / 1 links / 10821 bytes)
+[backend-mgr] original profiles tree NOT fully removed (walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles\web'); restoring it from the verified copy
+[diag] [2026-11-03T17:29:32.774Z] [backend-mgr] original profiles tree NOT fully removed (walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles\web'); restoring it from the verified copy
+[backend-mgr] 原 profiles 已从 profiles.broken-20261104-012932 还原（补回 4 文件 / 1 链接）
+[diag] [2026-11-03T17:29:32.893Z] [backend-mgr] 原 profiles 已从 profiles.broken-20261104-012932 还原（补回 4 文件 / 1 链接）
+  ✓ 场景2 日志记录了 rename 失败根因
+  ✓ 场景2 日志声明改走「复制→校验」而不是删除
+  ✓ 场景2 fallback（走了兜底） = true
+  ✓ 场景2 copied（复制并校验成功） = true
+  ✓ 场景2 日志含复制校验口径
+  ✓ 场景2 隔离目录有 web/package.json 副本
+  ✓ 场景2 package.json 内容与源一致 = true
+  ✓ 场景2 依赖实体内容一致（旧实现会永久丢失） = true
+  ✓ 场景2 隔离目录含 other/data.bin
+  ✓ 场景2 隔离目录里的 junction 被重建成链接（未跟随复制）
+  ✓ 场景2 隔离目录里不是被展开的真实目录
+  ✓ 场景2 用户插件源码仍在原位
+  ✓ 场景2 用户源码字节数未变 = 1234
+  ✓ 场景2 quarantined=false（同一占用让删除也失败，绝不谎报隔离完成） = false
+  ✓ 场景2 返回体如实报告删除失败原因
+  ✓ 场景2 abandoned=true（本轮隔离未达成） = true
+  ✓ 场景2 返回体说明「已用副本还原」
+  ✓ 场景2 原树已从校验副本还原成功
+  ✓ 场景2 日志声明用副本还原原树
+  ✓ 场景2 还原后原树文件数回到删除前（实际 5） = 5
+  ✓ 场景2 被半删的依赖实体已补回
+  ✓ 场景2 junction 已补回为链接
+  · 场景2 源目录文件数=5 删除结果={"removed":false,"linksUnlinked":1,"reason":"walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-h04-9324-1793726971730\\userData\\home2\\profiles\\web'"} 还原={"ok":true,"reason":null,"restoredFiles":4,"restoredLinks":1}
+  ✓ 场景2 被占用文件在原树中仍然存在（复制前绝不删）
+
+── 场景3 复制失败（人为制造读取失败）→ 放弃隔离、保留原目录
+  ✓ 场景3 前置：rename 会失败
+[backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-012933.json
+[diag] [2026-11-03T17:29:33.658Z] [backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-012933.json
+[backend-mgr] rename profiles to profiles.broken-20261104-012933 failed (EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles.broken-20261104-012933'); falling back to copy-then-verify quarantine (user data is never deleted first)
+[diag] [2026-11-03T17:29:33.659Z] [backend-mgr] rename profiles to profiles.broken-20261104-012933 failed (EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles.broken-20261104-012933'); falling back to copy-then-verify quarantine (user data is never deleted first)
+[backend-mgr] copy-based quarantine to profiles.broken-20261104-012933 failed: EPERM: operation not permitted, scandir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles\web'（副本清理：removed）
+[diag] [2026-11-03T17:29:33.665Z] [backend-mgr] copy-based quarantine to profiles.broken-20261104-012933 failed: EPERM: operation not permitted, scandir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles\web'（副本清理：removed）
+[backend-mgr] 复制隔离失败，已放弃本轮隔离并保留原 profiles：EPERM: operation not permitted, scandir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles\web'
+[diag] [2026-11-03T17:29:33.665Z] [backend-mgr] 复制隔离失败，已放弃本轮隔离并保留原 profiles：EPERM: operation not permitted, scandir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles\web'
+  ✓ 场景3 abandoned（放弃本轮隔离） = true
+  ✓ 场景3 quarantined=false（原目录没被移走） = false
+  ✓ 场景3 copied=false（复制未成功） = false
+  ✓ 场景3 返回体带明确失败原因（上层看得见）
+  ✓ 场景3 日志记录了复制失败根因
+  ✓ 场景3 失败后不留下半成品隔离目录 = 0
+  ✓ 场景3 原目录仍在
+  ✓ 场景3 原 package.json 内容未变 = "{\n  \"name\": \"dsh-profile-web\",\n  \"dsh\": {\n    \"profile\": {\n      \"bundles\": [\n        \"@deepseek-ai/dsh-base\",\n        \"@local/repo-push-access\"\n      ]\n    }\n  },\n  \"dependencies\": {\n    \"@local/repo-push-access\": \"^1.2.3\"\n  }\n}"
+  ✓ 场景3 其它 profile 数据未变 = 4096
+  ✓ 场景3 撤销 ACL 后仍无半成品目录 = 0
+
+── 场景4 源码结构断言：复制校验在前、删除在后
+  ✓ 场景4 兜底分支调用 quarantineProfilesByCopy
+  ✓ 场景4 删除原树发生在复制校验之后
+  ✓ 场景4 旧的 rimraf 兜底文案已消失
+  ✓ 场景4 兜底分支不再直接 rimraf(profiles)
+  ✓ 场景4 保留策略只认我方时间戳命名
+  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-04-quarantine-safety_资源监控_20261104-012931.log
+
+结果：53 通过 / 0 失败（耗时 2172ms）
+✓ H-04-quarantine-safety 全部通过
+
+exit=0
+
+----- node scripts/test-h05-apply-marker.js
+  · 资源监控已启动（独立进程 pid=31332）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-05-apply-marker_资源监控_20261104-012934.log
+
+── 场景1 正常路径：交换前落标记（含目标版本/开始时间/步骤名）→ 成功后清除
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud1\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T17:29:35.117Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud1\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud1\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T17:29:35.126Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud1\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] applied staged dsh 0.2.2-alpha.1
+[diag] [2026-11-03T17:29:35.128Z] [backend-mgr] applied staged dsh 0.2.2-alpha.1
+  ✓ 场景1 交换瞬间标记文件确实存在
+  ✓ 场景1 标记含目标版本 = "0.2.2-alpha.1"
+  ✓ 场景1 标记含来源版本 = "0.2.1-alpha.5"
+  ✓ 场景1 标记含步骤名（窗口A：dsh 暂时不在原位） = "dsh-hidden"
+  ✓ 场景1 标记含开始时间
+  ✓ 场景1 标记含本次操作 id（清理可精确到次）
+  ✓ 场景1 applied.dsh 为新版本 = "0.2.2-alpha.1"
+  ✓ 场景1 dsh 已是新版本 = "0.2.2-alpha.1"
+  ✓ 场景1 旧版本已进 dsh.previous（回滚素材） = "0.2.1-alpha.5"
+  ✓ 场景1 校验通过后标记已清除
+  ✓ 场景1 标记读取为 null = null
+  ✓ 场景1 journal 只有 1 条 dsh 记录 = 1
+  ✓ 场景1 journal 状态 applied = "applied"
+  ✓ 场景1 journal 目标版本正确 = "0.2.2-alpha.1"
+  ✓ 场景1 成功后不误报「更新被中断」 = false
+
+── 场景2 标记写不进去 → 取消本次交换，dsh/dsh.new 原样保留
+[backend-mgr] 写入更新中断标记失败，取消本次 dsh 交换（dsh.new 保留，下次启动重试）：EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud2\backend\apply-in-progress.json.34916.tmp' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud2\backend\apply-in-progress.json'
+[diag] [2026-11-03T17:29:35.153Z] [backend-mgr] 写入更新中断标记失败，取消本次 dsh 交换（dsh.new 保留，下次启动重试）：EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud2\backend\apply-in-progress.json.34916.tmp' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud2\backend\apply-in-progress.json'
+  ✓ 场景2 未执行交换（applied.dsh 为 null） = null
+  ✓ 场景2 dsh 仍是旧版本 = "0.3.0"
+  ✓ 场景2 dsh.new 原样保留（下次启动重试）
+  ✓ 场景2 没有产生 dsh.previous（交换确实没发生）
+  ✓ 场景2 日志明确说明取消交换的原因
+  ✓ 场景2 journal 落 ERR_UPDATER_APPLY_MARKER_FAILED（不静默） = 1
+
+── 场景3 断电模拟：残留标记 → ensureSeeded 早期检测、暴露故障态、不自动恢复
+  ✓ 场景3 前置：标记已写入
+  ✓ 场景3 前置：dsh 缺失（正是 H-05 的断电现场）
+[backend-mgr] 检测到残留的更新中断标记（上次应用更新在交换阶段被打断）：步骤=dsh-hidden 目标=0.4.0 开始=2026-11-03T17:29:35.171Z；dsh=缺失 dsh.old=0.4.0 dsh.previous=0.3.9 dsh.new=无；建议恢复动作=restore-from-dsh.old（不会自动执行，交给启动链决定）
+[diag] [2026-11-03T17:29:35.175Z] [backend-mgr] 检测到残留的更新中断标记（上次应用更新在交换阶段被打断）：步骤=dsh-hidden 目标=0.4.0 开始=2026-11-03T17:29:35.171Z；dsh=缺失 dsh.old=0.4.0 dsh.previous=0.3.9 dsh.new=无；建议恢复动作=restore-from-dsh.old（不会自动执行，交给启动链决定）
+[backend-mgr] projection migration for dsh null took 1ms
+[diag] [2026-11-03T17:29:35.178Z] [backend-mgr] projection migration for dsh null took 1ms
+[backend-mgr] dropped 1 foreign PATH entry(ies) from ambient PATH
+[diag] [2026-11-03T17:29:35.200Z] [backend-mgr] dropped 1 foreign PATH entry(ies) from ambient PATH
+  ✓ 场景3 ensureSeeded 早期检测到残留标记 = true
+  ✓ 场景3 暴露步骤名 = "dsh-hidden"
+  ✓ 场景3 暴露目标版本 = "0.4.0"
+  ✓ 场景3 暴露开始时间
+  ✓ 场景3 暴露当前 dsh 缺失 = null
+  ✓ 场景3 暴露 dsh.old 版本 = "0.4.0"
+  ✓ 场景3 暴露 dsh.previous 版本 = "0.3.9"
+  ✓ 场景3 给出恢复动作（用 dsh.old 兜底） = "restore-from-dsh.old"
+  ✓ 场景3 未自动执行恢复：dsh.old 仍在
+  ✓ 场景3 未自动执行恢复：dsh 仍缺失（决策权留给启动链）
+  ✓ 场景3 诊断日志记录了中断现场
+  ✓ 场景3 journal 落 ERR_UPDATER_APPLY_INTERRUPTED = 1
+[backend-mgr] 检测到残留的更新中断标记（上次应用更新在交换阶段被打断）：步骤=dsh-hidden 目标=0.4.0 开始=2026-11-03T17:29:35.171Z；dsh=缺失 dsh.old=0.4.0 dsh.previous=0.3.9 dsh.new=无；建议恢复动作=restore-from-dsh.old（不会自动执行，交给启动链决定）
+[diag] [2026-11-03T17:29:35.205Z] [backend-mgr] 检测到残留的更新中断标记（上次应用更新在交换阶段被打断）：步骤=dsh-hidden 目标=0.4.0 开始=2026-11-03T17:29:35.171Z；dsh=缺失 dsh.old=0.4.0 dsh.previous=0.3.9 dsh.new=无；建议恢复动作=restore-from-dsh.old（不会自动执行，交给启动链决定）
+  ✓ 场景3 再次检测仍为中断态 = true
+  ✓ 场景3 同一标记不重复写 journal（不刷屏） = 1
+  ✓ 场景3 主进程确认后清除标记 = true
+  ✓ 场景3 标记文件已删除 = null
+  ✓ 场景3 清除后不再报中断 = false
+
+── 场景3b 标记文件损坏（不可解析）→ 仍按中断处理，不静默
+[backend-mgr] 检测到残留的更新中断标记（上次应用更新在交换阶段被打断）：步骤=unreadable-marker 目标=? 开始=?；dsh=0.5.0 dsh.old=无 dsh.previous=无 dsh.new=无；建议恢复动作=apply-maybe-completed（不会自动执行，交给启动链决定）；注意：标记文件内容无法解析，按中断处理
+[diag] [2026-11-03T17:29:35.213Z] [backend-mgr] 检测到残留的更新中断标记（上次应用更新在交换阶段被打断）：步骤=unreadable-marker 目标=? 开始=?；dsh=0.5.0 dsh.old=无 dsh.previous=无 dsh.new=无；建议恢复动作=apply-maybe-completed（不会自动执行，交给启动链决定）；注意：标记文件内容无法解析，按中断处理
+  ✓ 场景3b 损坏的标记仍判为中断态 = true
+  ✓ 场景3b 显式标记 unreadable = true
+  ✓ 场景3b 步骤名如实标注 = "unreadable-marker"
+  ✓ 场景3b 仍给出恢复动作（dsh 在位） = "apply-maybe-completed"
+  ✓ 场景3b 诊断日志明确说明无法解析
+  ✓ 场景3b 损坏标记也能被确认清除 = true
+  ✓ 场景3b 清除后不再报中断 = false
+
+── 场景4 源码结构断言：标记 → 交换 → 校验 → 清标记
+  ✓ 场景4 applyStaged 把 dsh 交换交给独立函数
+  ✓ 场景4 找到标记写入点
+  ✓ 场景4 交换发生在标记写入之后
+  ✓ 场景4 校验发生在交换之后
+  ✓ 场景4 清标记发生在校验之后
+  ✓ 场景4 ensureSeeded 在 seed 决定之前调用检测
+  ✓ 场景4 检测发生在创建/写入活跃目录之前（真实时序）
+  ✓ 场景4 没有另起一套 journal 状态（标记文件即信封，journal 仍是唯一台账）
+  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-05-apply-marker_资源监控_20261104-012934.log
+
+结果：55 通过 / 0 失败（耗时 309ms）
+✓ H-05-apply-marker 全部通过
+
+exit=0
+
+----- 回归：既有 scripts/ 测试脚本（同一进程环境下逐个跑）
+test-038 : exit=0 :: 通过 21 项，失败 0 项
+test-039 : exit=0 :: 通过 28 项，失败 0 项
+test-040 : exit=0 :: 通过 20 项，失败 0 项
+test-041 : exit=0 :: 通过 45 项，失败 0 项
+test-042 : exit=0 :: 通过 66 项，失败 0 项
+test-043 : exit=0 :: 通过 33 项，失败 0 项  （Electron 44.3.0）
+test-043-ladder : exit=0 :: 通过 50 项，失败 0 项
+test-044 : exit=0 :: 通过 66 项，失败 0 项
+test-045 : exit=0 :: 通过 48 项，失败 0 项
+test-046-preflight-resolution : exit=0 :: 断言 34 项，失败 0 项
+test-manifest-verify : exit=0 :: 通过 30 项，失败 0 项
+verify-043-incident : exit=0 :: 
+verify-041-real : exit=0 ::   护栏模拟：命中凭据故障 → 跳过 profile 隔离 = ✓ 会跳过（不会烧 profile）
+verify-043-real : exit=0 ::     ★ 链接目标完好: true  ✓ 源码受保护

@@ -1,0 +1,121 @@
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T04:02:07.618+08:00
+  label    : npm run dist (0.3.50)
+  command  : npm run dist
+  timeout  : 2400s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+npm warn Unknown project config "electron_mirror". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "electron_builder_binaries_mirror". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> dsh-desktop@0.3.50 dist
+> node scripts/dist-artifact-guard.js pre && node scripts/build-files-gate.js && node scripts/app-identity-gate.js && node scripts/pack-vendor.js && electron-builder --win && node scripts/dist-artifact-guard.js post
+
+
+══════════════════════════════════════════════════════════════════════════════
+  出包前守卫（pre）：清走同版本旧产物，避免"失败却看起来像新的"
+  目标文件 : release\DSH Desktop Setup 0.3.50.exe
+══════════════════════════════════════════════════════════════════════════════
+  · 不存在，无需挪走：DSH Desktop Setup 0.3.50.exe
+  · 不存在，无需挪走：DSH Desktop Setup 0.3.50.exe.blockmap
+  ✔ 已写 in-progress 标记：release\.dist-in-progress.json
+
+
+══════════════════════════════════════════════════════════════════════════════
+  build.files 出包清单闭包门禁
+  仓库根 : C:\Users\lcl\Desktop\DSH
+  版本   : 0.3.50
+  入口   : main.js + settings.html + splash.html
+  白名单 : 4 条  黑名单 : 3 条
+══════════════════════════════════════════════════════════════════════════════
+
+【1】引用闭包 → build.files 覆盖检查
+  闭包文件数 : 22
+  ✔ 闭包内全部文件都被 build.files 覆盖
+
+【2】引用目标存在性（悬空引用）
+  ✔ 无悬空引用
+
+【3】反向体检（只告警，不阻断出包）
+  ✔ 未发现「列了却不存在」或「列了却没人用」的条目
+
+【3b】运行期读取「打包后会被剥离的字段」检查
+  ✔ 未发现运行期依赖被剥离字段
+
+【4】运行期裸包依赖（node_modules）
+  ✔ 已安装  electron-updater  (require 自: main.js；已在 dependencies）
+
+══════════════════════════════════════════════════════════════════════════════
+  结论：✔ 门禁通过 —— 引用闭包与 build.files 一致，可以出包。
+══════════════════════════════════════════════════════════════════════════════
+
+
+══════════════════════════════════════════════════════════════════════════════
+  随包 appId 常量一致性门禁（H-08 / AUMID）
+  仓库根 : C:\Users\lcl\Desktop\DSH
+  版本   : 0.3.50
+  期望 appId（package.json build.appId）: com.deepseek.dshdesktop
+══════════════════════════════════════════════════════════════════════════════
+
+【0】门禁自测：四种 appId 命名形状必须都被识别
+  ✔ 自测样本 APP_ID                   → MATCH（命中 1）
+  ✔ 自测样本 APP_USER_MODEL_ID        → MATCH（命中 1）
+  ✔ 自测样本 DSH_APP_ID               → MATCH（命中 1）
+  ✔ 自测样本 myAppId                  → MATCH（命中 1）
+  ✔ 自测样本 module.exports.APP_ID    → MATCH（命中 1）
+  ✔ 自测样本 exports.APP_USER_MODEL_ID → MATCH（命中 1）
+  ✔ 自测反向样本（无点号/非 appId 名）→ 未误判
+  ✔ 自测全部通过（6 个正向样本 + 反向样本未误判）
+
+【1】main.js 是否仍在读会被打包剥离的字段
+  ✔ main.js 不再依赖 package.json 的 build/scripts/devDependencies
+
+【2】随包 appId 常量模块
+  · app-identity.js → DSH_APP_ID = 'com.deepseek.dshdesktop'
+
+【3】常量值 vs build.appId 一致性
+  ✔ 1 个常量与 build.appId 完全一致：'com.deepseek.dshdesktop'
+
+【4】main.js 是否真的使用该常量设置 AUMID
+  main.js 有本地 require                : 是
+  main.js 调用 app.setAppUserModelId(…)  : 是
+  main.js 引用了候选常量名               : 是
+
+══════════════════════════════════════════════════════════════════════════════
+  �� 门禁通过 —— appId 常量与 build.appId 一致，且已被 main.js 用于设置 AUMID。
+══════════════════════════════════════════════════════════════════════════════
+
+[vendor-manifest] dsh=0.2.1-alpha.5 node=24.4.0 parts=8
+[vendor-manifest] files: runtime=2315 dsh=63581（合计 65896）
+[vendor-manifest] written: C:\Users\lcl\Desktop\DSH\build\payload\vendor-manifest.json (2644 bytes)
+[pack-vendor] 已是最新的 8 个分卷（均比所有输入文件新），跳过重打包。合计=121.1 MB
+  • electron-builder  version=26.15.3 os=10.0.22631
+  • loaded configuration  file=package.json ("build" field)
+  • executing @electron/rebuild  electronVersion=44.3.0 arch=x64 buildFromSource=false workspaceRoot=C:\Users\lcl\Desktop\DSH projectDir=./ appDir=./
+  • installing native dependencies  arch=x64
+  • completed installing native dependencies
+  • packaging       platform=win32 arch=x64 electron=44.3.0 appOutDir=release\win-unpacked
+  • downloaded      label=electron progress=100%
+  • downloaded electron zip extracted successfully  output=C:\Users\lcl\Desktop\DSH\release\win-unpacked
+  • searching for node modules  pm=npm searchDir=C:\Users\lcl\Desktop\DSH
+  • updating asar integrity executable resource  executablePath=release\win-unpacked\DSH Desktop.exe
+  • signing with signtool.exe  path=release\win-unpacked\DSH Desktop.exe
+  • building        target=nsis file=release\DSH Desktop Setup 0.3.50.exe archs=x64 oneClick=false perMachine=true
+  • signing with signtool.exe  path=release\win-unpacked\resources\elevate.exe
+  • signing with signtool.exe  path=release\DSH Desktop Setup 0.3.50.__uninstaller.exe
+  • signing with signtool.exe  path=release\DSH Desktop Setup 0.3.50.exe
+  • building block map  blockMapFile=release\DSH Desktop Setup 0.3.50.exe.blockmap
+
+══════════════════════════════════════════════════════════════════════════════
+  出包后守卫（post）：确认产物确实是"本轮新生成"的
+══════════════════════════════════════════════════════════════════════════════
+  文件   : C:\Users\lcl\Desktop\DSH\release\DSH Desktop Setup 0.3.50.exe
+  字节数 : 239278266
+  SHA-256: afdc586eb86650dd0f149c56d7a404a48e68728bfe21c59cda10d292c28d0313
+  blockmap: DSH Desktop Setup 0.3.50.exe.blockmap（251210 字节）
+  ✔ 产物存在、体积合理、且晚于本轮开始时间 —— 确认为本轮新生成。
+
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T04:03:16.265+08:00 exit=0 reason=exit elapsed=68.6s label=npm run dist (0.3.50)
+==============================================================================

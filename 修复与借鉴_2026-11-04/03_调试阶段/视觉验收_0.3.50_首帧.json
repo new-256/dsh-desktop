@@ -1,0 +1,59 @@
+{
+  "capturedAt": "2026-11-03T20:05:26.811Z",
+  "captureMethod": "cdp-page-captureScreenshot",
+  "targetUrl": "http://127.0.0.1:56821/",
+  "targetTitle": "DeepSeek Harness",
+  "viewport": {
+    "width": 1426,
+    "height": 884
+  },
+  "devicePixelRatio": 1.5,
+  "imagePixelSize": {
+    "width": 2139,
+    "height": 1326
+  },
+  "pngBytes": 49621,
+  "pngMagicOk": true,
+  "assertions": {
+    "readyState": "complete",
+    "readyStateOk": true,
+    "urlIsLocalBackend": true,
+    "nodes": 390,
+    "nodesOk": true,
+    "bodyTextLen": 71,
+    "anchorsHit": [
+      "新会话",
+      "插件",
+      "工作区",
+      "自动化任务",
+      "选择工作区",
+      "探索未至之境",
+      "标准模式",
+      "预览版"
+    ],
+    "anchorsOk": true,
+    "errorishEmpty": true,
+    "interactivePresent": true
+  },
+  "failedAssertions": [],
+  "domProbe": {
+    "inputs": 1,
+    "buttons": 13,
+    "svgIcons": 18,
+    "bodyTextHead": "新会话\nCtrl\n+\nAlt\n+\nN\n插件\n自动化任务\n工作区\n暂无会话\n更多\n探索未至之境\n预览版\n选择工作区\n标准模式\n选择一个工作区开始",
+    "errorish": []
+  },
+  "consoleErrors": [],
+  "note": "本图由 CDP Page.captureScreenshot 采集（target 级），不可能是其它程序的窗口；无本 .json 的截图不得作为验收证据。",
+  "provenance": {
+    "capturedInRun": "supp6-0.3.50-20261104-0408",
+    "capturedBy": "stage3-supplemental-verify.ps1 → stage1-cdp-probe.js screenshot",
+    "note": "本图由 0.3.50 便携副本实时采集（CDP Page.captureScreenshot），非复制。"
+  },
+  "byteIdenticalTo": {
+    "file": "视觉验收_0.3.49_首帧.png",
+    "sha256": "55E0013DB748727C4BA6F359906BC9407EB71E990FA02E2C77603AA0713B3C3A",
+    "justification": "本轮仅改动设置窗 label 栅格（settings.html .kv），主窗口渲染路径未变；同一 viewport/DPR 下页面像素完全一致，因此 PNG 字节相同。"
+  },
+  "probeVersionSemantics": "本图来自便携副本的隔离 DSH_HOME（vendor 自带出厂后端 0.2.1-alpha.5 + Node 24.4.0），不代表用户真实环境版本。"
+}

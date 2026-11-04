@@ -1,0 +1,1101 @@
+
+##############################################################################
+# 阶段一 编译门禁  2026/11/4 01:44:39
+# 仓库根     : C:\Users\lcl\Desktop\DSH
+# node       : v24.21.0
+# 单项超时   : --check 120s / 测试 240s
+# 日志       : C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\02_编译阶段\编译日志_20261104-014439.txt
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+【第一节】node --check 语法检查（13 个文件）
+──────────────────────────────────────────────────────────────────────────────
+
+⚠ 以下文件在仓库根存在但**未列入 package.json build.files**：
+    - crash-report.js
+    - diag-log.js
+    - ladder-policy.js
+    - lifecycle-log.js
+    - main.js
+    - patch-file.js
+    - plugin-resolution.js
+    - preload.js
+    - quit-guard.js
+    - settings-preload.js
+    - settings-renderer.js
+    - startup-deadline.js
+    - updater-backend.js
+  （若它们被运行期 require 或 html 引用，打包后会缺失 → 必须在出包前补进 build.files）
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:39.942+08:00
+  label    : node --check crash-report.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\crash-report.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:40.113+08:00 exit=0 reason=exit elapsed=0.2s label=node --check crash-report.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:40.282+08:00
+  label    : node --check diag-log.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\diag-log.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:40.430+08:00 exit=0 reason=exit elapsed=0.1s label=node --check diag-log.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:40.598+08:00
+  label    : node --check ladder-policy.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\ladder-policy.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:40.749+08:00 exit=0 reason=exit elapsed=0.2s label=node --check ladder-policy.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:40.918+08:00
+  label    : node --check lifecycle-log.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\lifecycle-log.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:41.066+08:00 exit=0 reason=exit elapsed=0.1s label=node --check lifecycle-log.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:41.326+08:00
+  label    : node --check main.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\main.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:41.476+08:00 exit=0 reason=exit elapsed=0.1s label=node --check main.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:41.639+08:00
+  label    : node --check patch-file.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\patch-file.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:41.793+08:00 exit=0 reason=exit elapsed=0.2s label=node --check patch-file.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:41.964+08:00
+  label    : node --check plugin-resolution.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\plugin-resolution.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:42.127+08:00 exit=0 reason=exit elapsed=0.2s label=node --check plugin-resolution.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:42.295+08:00
+  label    : node --check preload.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\preload.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:42.444+08:00 exit=0 reason=exit elapsed=0.1s label=node --check preload.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:42.610+08:00
+  label    : node --check quit-guard.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\quit-guard.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:42.761+08:00 exit=0 reason=exit elapsed=0.2s label=node --check quit-guard.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:42.930+08:00
+  label    : node --check settings-preload.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\settings-preload.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:43.084+08:00 exit=0 reason=exit elapsed=0.2s label=node --check settings-preload.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:43.258+08:00
+  label    : node --check settings-renderer.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\settings-renderer.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:43.408+08:00 exit=0 reason=exit elapsed=0.1s label=node --check settings-renderer.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:43.568+08:00
+  label    : node --check startup-deadline.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\startup-deadline.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:43.723+08:00 exit=0 reason=exit elapsed=0.2s label=node --check startup-deadline.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:43.899+08:00
+  label    : node --check updater-backend.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\updater-backend.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:44.055+08:00 exit=0 reason=exit elapsed=0.2s label=node --check updater-backend.js
+==============================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+【第二节】验证脚本（13 个，模式 scripts/test-h*.js | scripts/test-h10-*.js | scripts/verify-h*.js | scripts/test-047-desktop-report.js）
+──────────────────────────────────────────────────────────────────────────────
+  · scripts/test-h01-rollback.js
+  · scripts/test-h02-spawn-sync.js
+  · scripts/test-h03-startup-deadline.js
+  · scripts/test-h04-h05-harness.js
+  · scripts/test-h04-quarantine-safety.js
+  · scripts/test-h05-apply-marker.js
+  · scripts/test-h06-csp-electron.js
+  · scripts/test-h06-settings-dom.js
+  · scripts/test-h08-aumid.js
+  · scripts/test-h10-durability-layering.js
+  · scripts/test-h10-electron-exit-flush.js
+  · scripts/test-h10-log-throughput.js
+  · scripts/test-047-desktop-report.js
+
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:44.224+08:00
+  label    : node scripts/test-h01-rollback.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js
+  timeout  : 240s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+0.3.48 · H-01 回归：回滚接电 + 自动回滚防死循环
+沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-h01-TMqH8o
+
+① 首次启动失败：只计数、只弹窗（不越级自动回滚）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+  ✓ 磁盘上的 dsh.previous 被识别为可用回滚目标
+  ✓ 初始台账为零
+[diag] [2026-11-03T17:44:44.541Z] 启动失败（fatal）: Error: 后端进程提前退出（code=1 signal=null）。
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:121:25
+    at Object.<anonymous> (C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:277:3)
+    at Module._compile (node:internal/modules/cjs/loader:1929:14)
+    at Object..js (node:internal/modules/cjs/loader:2060:10)
+    at Module.load (node:internal/modules/cjs/loader:1651:32)
+    at Module._load (node:internal/modules/cjs/loader:1443:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47
+[diag] [2026-11-03T17:44:44.546Z] 启动阶段打点: []
+[diag] [2026-11-03T17:44:44.547Z] 启动失败计数: {"consecutiveFailures":1,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
+[diag] [2026-11-03T17:44:44.551Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-TMqH8o\logs\crash-2026-11-03T17-44-44-549Z-host.log
+[diag] [2026-11-03T17:44:44.554Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:44:44.556Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:44:44.557Z] 启动恢复决策: {"action":"none","reason":"below-threshold","recommendRollback":false}
+  ✓ 弹了且只弹了一次恢复弹窗
+  ✓ 只有 1 次失败时不提供回滚按钮（阈值是连续 2 次）
+  ✓ 非端口占用场景仍是 6 个动作（保持既有风格）
+  ✓ 失败次数已落盘为 1
+  ✓ 这次没有任何重启（用户选了留在托盘）
+[diag] [2026-11-03T17:44:44.558Z] 启动失败（fatal）: Error: 后端进程提前退出（code=1 signal=null）。
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:131:25
+[diag] [2026-11-03T17:44:44.559Z] 启动阶段打点: []
+[diag] [2026-11-03T17:44:44.560Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-TMqH8o\logs\crash-2026-11-03T17-44-44-559Z-host.log
+[diag] [2026-11-03T17:44:44.562Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:44:44.563Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:44:44.565Z] 启动恢复决策: {"action":"none","reason":"below-threshold","recommendRollback":false}
+  ✓ 同一次启动内重复进入 showFatal 不重复计数
+
+② 连续第 2 次失败：自动回滚 + 暂存"已回滚"提示
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:44:44.568Z] 启动失败（fatal）: Error: 后端进程提前退出（code=1 signal=null）。
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:142:25
+[diag] [2026-11-03T17:44:44.570Z] 启动阶段打点: []
+[diag] [2026-11-03T17:44:44.571Z] 启动失败计数: {"consecutiveFailures":2,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
+[diag] [2026-11-03T17:44:44.573Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-TMqH8o\logs\crash-2026-11-03T17-44-44-572Z-host.log
+[diag] [2026-11-03T17:44:44.574Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:44:44.575Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:44:44.576Z] 启动恢复决策: {"action":"auto-rollback","reason":"consecutive-failures","recommendRollback":true}
+[diag] [2026-11-03T17:44:44.577Z] 触发自动回滚: {"reason":"consecutive-failures"}
+[dsh-backend] 连续启动失败，正在自动回滚到上一个版本…
+[diag] [2026-11-03T17:44:44.579Z] 后端输出 连续启动失败，正在自动回滚到上一个版本…
+
+[diag] [2026-11-03T17:44:44.580Z] 回滚（auto）：后端已停止 {"stopped":true,"forced":false,"ms":0,"how":"no-backend"}
+[diag] [2026-11-03T17:44:44.580Z] 回滚（auto）完成：1.0.0-test → 0.9.0-previous
+[dsh-backend] 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（只替换 backend 里的 dsh 程序目录，插件与数据未改动）
+[diag] [2026-11-03T17:44:44.581Z] 后端输出 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（只替换 backend 里的 dsh 程序目录，插件与数据未改动）
+
+[diag] [2026-11-03T17:44:44.583Z] restartApp：准备重启（更新应用流程）
+[diag] [2026-11-03T17:44:44.584Z] restartApp：app.relaunch + exit
+  ✓ 自动执行了一次 rollbackDsh()（此前全仓零调用点）
+  ✓ 本轮自动回滚次数已落盘为 1（防死循环的计量单元）
+  ✓ 失败计数累加到 2（保留证据，不因回滚而抹掉）
+  ✓ 台账记录了这是一次自动回滚
+  ✓ 台账记录了回滚前后版本（from → to）
+  ✓ 「已自动回滚到 vX」提示已暂存给下次启动
+  ✓ 回滚后自动重启应用
+  ✓ 自动回滚路径不弹阻塞弹窗（提示留给重启后）
+  ✓ 回滚前仍先发了一次托盘气泡（托盘入口保留）
+  ✓ 诊断日志写明回滚后的版本（0.3.48 · 回滚必须留痕）
+  ✓ 生命周期台账写了 auto-rollback 事件
+
+③ 回滚后启动成功：清零计数 + 一次性提示
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:44:45.000Z] 启动成功：清空失败计数与自动回滚链 {"wasConsecutiveFailures":2,"wasRollbacksInChain":1,"pendingNotice":{"kind":"auto-rollback","at":"2026-11-04T00:00:01.000Z","from":"1.0.0-test","to":"0.9.0-previous","reason":"consecutive-failures"}}
+[diag] [2026-11-03T17:44:45.002Z] 显示自动回滚提示（一次性）: {"kind":"auto-rollback","at":"2026-11-04T00:00:01.000Z","from":"1.0.0-test","to":"0.9.0-previous","reason":"consecutive-failures"}
+[diag] [2026-11-03T17:44:45.003Z] 托盘气泡已发出: {"title":"已自动回滚到上一个版本","content":"DSH 后端已回滚：1.0.0-test → 0.9.0-previous","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+  ✓ 启动成功 → 失败计数清零（否则几个月后偶发失败会误触发回滚）
+  ✓ 启动成功 → 自动回滚链清零（下一次真正需要时仍可自动救一次）
+  ✓ 一次性提示已消费（不会每次启动都弹）
+  ✓ 回滚后的提示弹了一次
+  ✓ 提示文案说明"已自动回滚到 vX"
+  ✓ 提示说明改了什么（不动会话/密钥/设置）
+  ✓ 提示里给出日志绝对路径
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+  ✓ 提示只显示一次（下一次启动不再打扰）
+
+④ 防死循环：本轮已回滚过就不再自动回滚
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:44:45.108Z] 启动失败（fatal）: Error: 又一次启动失败
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:208:25
+[diag] [2026-11-03T17:44:45.109Z] 启动阶段打点: []
+[diag] [2026-11-03T17:44:45.110Z] 启动失败计数: {"consecutiveFailures":2,"rollbacksInChain":1,"threshold":2,"autoRollbackLimit":1}
+[diag] [2026-11-03T17:44:45.112Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-TMqH8o\logs\crash-2026-11-03T17-44-45-111Z-host.log
+[diag] [2026-11-03T17:44:45.113Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:44:45.114Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:44:45.115Z] 启动恢复决策: {"action":"none","reason":"auto-rollback-limit-reached","recommendRollback":true}
+[diag] [2026-11-03T17:44:45.116Z] 用户请求回滚到上一个版本: fatal-dialog
+[diag] [2026-11-03T17:44:45.117Z] 回滚（manual）：后端已停止 {"stopped":true,"forced":false,"ms":0,"how":"no-backend"}
+[diag] [2026-11-03T17:44:45.118Z] 回滚（manual）完成：1.0.0-test → 0.9.0-previous
+[dsh-backend] 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（只替换 backend 里的 dsh 程序目录，插件与数据未改动）
+[diag] [2026-11-03T17:44:45.118Z] 后端输出 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（只替换 backend 里的 dsh 程序目录，插件与数据未改动）
+
+[diag] [2026-11-03T17:44:45.119Z] restartApp：准备重启（更新应用流程）
+[diag] [2026-11-03T17:44:45.119Z] restartApp：app.relaunch + exit
+  ✓ 第 2 次自动回滚被拒绝，但手动回滚按钮排在第一位
+  ✓ 弹窗解释了为什么不再自动回滚（不许无声地不回滚）
+  ✓ 用户点按钮后才执行了这一次回滚（自动侧没有越权）
+  ✓ 手动回滚不计入"本轮自动回滚"额度
+  ✓ 手动回滚后重启应用
+
+⑤ journal 未验证记录 → 提示用户 + 提供回滚
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+  ✓ journal 未验证记录可被安全读取
+[diag] [2026-11-03T17:44:45.124Z] 启动失败（fatal）: Error: 后端进程提前退出（code=9）
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:229:25
+[diag] [2026-11-03T17:44:45.125Z] 启动阶段打点: []
+[diag] [2026-11-03T17:44:45.126Z] 启动失败计数: {"consecutiveFailures":1,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
+[diag] [2026-11-03T17:44:45.127Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-TMqH8o\logs\crash-2026-11-03T17-44-45-127Z-host.log
+[diag] [2026-11-03T17:44:45.129Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:44:45.130Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:44:45.131Z] 启动恢复决策: {"action":"advisory","reason":"journal-unverified","recommendRollback":true}
+[diag] [2026-11-03T17:44:45.131Z] 用户请求回滚到上一个版本: fatal-dialog
+[diag] [2026-11-03T17:44:45.132Z] 回滚（manual）：后端已停止 {"stopped":true,"forced":false,"ms":0,"how":"no-backend"}
+[diag] [2026-11-03T17:44:45.132Z] 回滚（manual）完成：1.0.0-test → 0.9.0-previous
+[dsh-backend] 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（只替换 backend 里的 dsh 程序目录，插件与数据未改动）
+[diag] [2026-11-03T17:44:45.132Z] 后端输出 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（只替换 backend 里的 dsh 程序目录，插件与数据未改动）
+
+[diag] [2026-11-03T17:44:45.133Z] restartApp：准备重启（更新应用流程）
+[diag] [2026-11-03T17:44:45.133Z] restartApp：app.relaunch + exit
+  ✓ journal 证据存在时回滚按钮出现
+  ✓ 弹窗标题点明"上次更新未验证通过"
+  ✓ 弹窗列出 journal 证据（不是只写日志）
+
+⑥ 没有 dsh.previous：不提供回滚按钮
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+  ✓ dsh.previous 不存在时判定为不可回滚
+[diag] [2026-11-03T17:44:45.138Z] 启动失败（fatal）: Error: 启动失败（没有上一个版本）
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:245:25
+[diag] [2026-11-03T17:44:45.140Z] 启动阶段打点: []
+[diag] [2026-11-03T17:44:45.140Z] 启动失败计数: {"consecutiveFailures":2,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
+[diag] [2026-11-03T17:44:45.142Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-TMqH8o\logs\crash-2026-11-03T17-44-45-142Z-host.log
+[diag] [2026-11-03T17:44:45.143Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:44:45.144Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:44:45.145Z] 启动恢复决策: {"action":"none","reason":"no-previous-version","recommendRollback":false}
+  ✓ 没有回滚素材就不出现回滚按钮
+  ✓ 自动回滚也没有被触发（无米下锅）
+[diag] [2026-11-03T17:44:45.145Z] 回滚（manual）：后端已停止 {"stopped":true,"forced":false,"ms":0,"how":"no-backend"}
+[diag] [2026-11-03T17:44:45.145Z] 回滚（manual）未完成: 没有可用的上一个版本（dsh.previous 不完整）
+[dsh-backend] 回滚失败：没有可用的上一个版本（dsh.previous 不完整）
+[diag] [2026-11-03T17:44:45.145Z] 后端输出 回滚失败：没有可用的上一个版本（dsh.previous 不完整）
+
+  ✓ performRollback 在没有素材时返回 ok=false
+  ✓ 失败原因可读（不是一句"失败"）
+
+⑦ 端口被占（EADDRINUSE）时不回滚
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:44:45.150Z] 启动失败（fatal）: Error: listen EADDRINUSE: address already in use 127.0.0.1:1234
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:264:25
+[diag] [2026-11-03T17:44:45.152Z] 启动阶段打点: []
+[diag] [2026-11-03T17:44:45.153Z] 启动失败计数: {"consecutiveFailures":6,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
+[diag] [2026-11-03T17:44:45.156Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-TMqH8o\logs\crash-2026-11-03T17-44-45-155Z-host.log
+[diag] [2026-11-03T17:44:45.157Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:44:45.158Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:44:45.159Z] 启动恢复决策: {"action":"none","reason":"address-in-use","recommendRollback":false}
+  ✓ 端口冲突即便连续失败 5 次也不自动回滚（回滚治不了端口冲突）
+  ✓ 端口冲突仍走既有的两按钮专用路径
+  ✓ 用户选"退出"即退出
+
+────────────────────────────────────────
+断言 44 项，失败 0 项
+
+沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-h01-TMqH8o
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:45.174+08:00 exit=0 reason=exit elapsed=0.9s label=node scripts/test-h01-rollback.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:45.343+08:00
+  label    : node scripts/test-h02-spawn-sync.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-h02-spawn-sync.js
+  timeout  : 240s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+0.3.48 · H-02 回归：spawnBackend 的同步异常必须 reject 外层 Promise
+沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-h02-y83qGR
+预算：spawn=400ms health=400ms（环境变量覆盖，默认值见 startup-deadline.js）
+
+⓪ 对照实验（证明本测试能抓住这个缺陷）
+  ✓ 旧结构（new Promise(async …)）在外层确实永不 settle —— 本测试有能力发现回归
+
+① 结构断言（源码级）
+  ✓ main.js 的可执行代码中不存在 `new Promise(async …)` 反模式
+  ✓ 同步准备已抽成 prepareBackendSpawn()（可被 try/catch 包住）
+  ✓ spawnBackend 内对同步准备失败显式 reject 外层 Promise
+
+② 缺 node.exe（旧实现会永久 pending）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:44:46.389Z] 后端进程准备失败（同步阶段，已显式 reject 外层）: Error: 缺少 Node 运行时：未找到活跃 node.exe（seed 失败）。
+    at prepareBackendSpawn (C:\Users\lcl\Desktop\DSH\main.js:555:40)
+    at C:\Users\lcl\Desktop\DSH\main.js:593:18
+    at new Promise (<anonymous>)
+    at Object.spawnBackend (C:\Users\lcl\Desktop\DSH\main.js:590:10)
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h02-spawn-sync.js:136:44
+  ✓ Promise 在 3s 内落定（没有永久 pending）
+  ✓ Promise 以 reject 落定（不是静默 resolve）
+  ✓ 错误文案保留原有语义（缺少 Node 运行时…）
+
+③ buildDedicatedEnv() 同步抛错
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:44:46.398Z] 后端进程准备失败（同步阶段，已显式 reject 外层）: Error: buildDedicatedEnv 失败（测试注入：磁盘满/权限异常）
+    at Object.buildDedicatedEnv (C:\Users\lcl\Desktop\DSH\scripts\lib\stage1-main-harness.js:274:35)
+    at prepareBackendSpawn (C:\Users\lcl\Desktop\DSH\main.js:561:19)
+    at C:\Users\lcl\Desktop\DSH\main.js:593:18
+    at new Promise (<anonymous>)
+    at Object.spawnBackend (C:\Users\lcl\Desktop\DSH\main.js:590:10)
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h02-spawn-sync.js:149:44
+  ✓ Promise 在 3s 内落定（旧实现里这里就是永久 pending 的现场）
+  ✓ Promise 以 reject 落定
+  ✓ 原始异常信息原样透出（不被改写成模糊文案）
+  ✓ 基本检查通过后确实调用了 buildDedicatedEnv
+
+④ spawn() 同步抛出 EACCES
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:44:46.404Z] 后端进程准备失败（同步阶段，已显式 reject 外层）: Error: spawn EACCES
+    at Object.spawn [as onSpawn] (C:\Users\lcl\Desktop\DSH\scripts\test-h02-spawn-sync.js:164:32)
+    at spawn (C:\Users\lcl\Desktop\DSH\scripts\lib\stage1-main-harness.js:234:33)
+    at prepareBackendSpawn (C:\Users\lcl\Desktop\DSH\main.js:570:17)
+    at C:\Users\lcl\Desktop\DSH\main.js:593:18
+    at new Promise (<anonymous>)
+    at Object.spawnBackend (C:\Users\lcl\Desktop\DSH\main.js:590:10)
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h02-spawn-sync.js:166:44
+  ✓ Promise 在 3s 内落定
+  ✓ Promise 以 reject 落定
+  ✓ 错误码 EACCES 完整保留（便于归因杀软/权限）
+
+⑤ H-03 阶段一：后端不打印地址（spawn deadline）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[dsh-backend] starting backend: node=C:\Users\lcl\AppData\Local\Temp\dsh-h02-y83qGR\case5\node.exe DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-h02-y83qGR\case5\dsh-home host=127.0.0.1 port=0
+[diag] [2026-11-03T17:44:46.410Z] 后端输出 starting backend: node=C:\Users\lcl\AppData\Local\Temp\dsh-h02-y83qGR\case5\node.exe DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-h02-y83qGR\case5\dsh-home host=127.0.0.1 port=0
+
+[diag] [2026-11-03T17:44:46.411Z] 启动超时预算: {"spawn":400,"health":400,"paint":400} | 来源: {"spawn":"env","health":"env","paint":"env"}
+[dsh-backend] booting dsh web, loading plugins...
+[diag] [2026-11-03T17:44:46.486Z] 后端输出 booting dsh web, loading plugins...
+
+[diag] [2026-11-03T17:44:46.828Z] 启动超时（spawn 阶段）: 启动超时：后端进程拉起（等待 dsh web 打印监听地址）
+  超时阶段：spawn（E_STARTUP_SPAWN_NO_URL）
+  已经等过：0.41s；该阶段预算 0.40s
+  最后一条后端日志：booting dsh web, loading plugins...
+  启动阶段打点：spawn[pid=5150]@0.00s
+  完整日志（绝对路径）：C:\Users\lcl\AppData\Local\Temp\dsh-h02-y83qGR\logs\DSH-Desktop-日志.txt
+  这意味着：这一步没有在预期时间内给出结果。超时本身不代表后端一定坏了，
+  但它确实卡住了 —— 下面可以重试启动、回滚到上一个版本，或先查看日志。
+  ✓ 超时后 Promise 在 4s 内落定（旧实现会永远停在这里）
+  ✓ 超时按 reject 处理（走既有 showFatal 路径）
+  ✓ 错误码区分了"未捕获到后端地址"
+  ✓ 超时文案含超时阶段名
+  ✓ 超时文案含最后一条后端日志
+  ✓ 超时文案含日志绝对路径标签
+  ✓ 日志路径确实是绝对路径
+  ✓ 超时后清理了卡住的后端进程（避免占着端口/文件锁）
+  ✓ 阶段打点记录了 spawn（事后可回答卡在哪一步）
+
+⑥ H-03 阶段二：地址已打印但 HTTP 无响应（health deadline）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[dsh-backend] starting backend: node=C:\Users\lcl\AppData\Local\Temp\dsh-h02-y83qGR\case6\node.exe DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-h02-y83qGR\case6\dsh-home host=127.0.0.1 port=0
+[diag] [2026-11-03T17:44:46.834Z] 后端输出 starting backend: node=C:\Users\lcl\AppData\Local\Temp\dsh-h02-y83qGR\case6\node.exe DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-h02-y83qGR\case6\dsh-home host=127.0.0.1 port=0
+
+[diag] [2026-11-03T17:44:46.834Z] 启动超时预算: {"spawn":400,"health":400,"paint":400} | 来源: {"spawn":"env","health":"env","paint":"env"}
+[dsh-backend] dsh web: http://127.0.0.1:1
+[diag] [2026-11-03T17:44:46.905Z] 后端输出 dsh web: http://127.0.0.1:1
+
+[diag] [2026-11-03T17:44:47.325Z] 启动超时（health 阶段）: 启动超时：后端健康检查（地址已打印，等待 HTTP 响应）
+  超时阶段：health（E_STARTUP_HEALTH_UNRESPONSIVE）
+  已经等过：0.40s；该阶段预算 0.40s
+  最后一条后端日志：dsh web: http://127.0.0.1:1
+  启动阶段打点：spawn[pid=5151]@0.00s → url-ready[http://127.0.0.1:1]@0.07s
+  完整日志（绝对路径）：C:\Users\lcl\AppData\Local\Temp\dsh-h02-y83qGR\logs\DSH-Desktop-日志.txt
+  这意味着：这一步没有在预期时间内给出结果。超时本身不代表后端一定坏了，
+  但它确实卡住了 —— 下面可以重试启动、回滚到上一个版本，或先查看日志。
+  ✓ health 阶段超时后 Promise 落定
+  ✓ health 超时按 reject 处理
+  ✓ 错误码与"未捕获到地址"不同（H-03 要求分成两个错误码）
+  ✓ 超时文案含 health 阶段名
+  ✓ 阶段打点记录了 url-ready（说明地址确实抓到了）
+
+────────────────────────────────────────
+断言 28 项，失败 0 项
+
+沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-h02-y83qGR
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:47.344+08:00 exit=0 reason=exit elapsed=2.0s label=node scripts/test-h02-spawn-sync.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:47.582+08:00
+  label    : node scripts/test-h03-startup-deadline.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-h03-startup-deadline.js
+  timeout  : 240s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+0.3.48 · H-03 启动截止时间纯逻辑
+模块：startup-deadline.js（不 require electron，可直接在 Node 里跑）
+
+① 默认预算与书面理由
+  ✓ 阶段顺序为 spawn → health → paint
+  ✓ spawn 默认预算取 DEFAULT_BUDGETS_MS
+  ✓ health 默认预算取 DEFAULT_BUDGETS_MS
+  ✓ paint 默认预算取 DEFAULT_BUDGETS_MS
+  ✓ 干净环境下没有任何配置错误
+  ✓ 每个阶段都有面向用户的中文标签（弹窗文案只有一份来源）
+
+② 环境变量覆盖 / 倍率 / 非法值不静默容忍
+  ✓ 单个阶段预算可被环境变量覆盖
+  ✓ 来源被记为 env（日志里能看出来）
+  ✓ 未覆盖的阶段保持默认（分阶段而非一刀切）
+  ✓ 全局倍率同时作用于所有阶段
+  ✓ 非法值退回默认预算（不让应用起不来）
+  ✓ 非法值被记入 errors[]，调用方会写日志（不许静默容忍）
+  ✓ 错误信息包含原始非法值，便于用户自查
+  ✓ 0 不算合法预算（会立刻超时）
+  ✓ 0 与负倍率都被如实报告
+  ✓ spawn 预算不小于 health（含初始化，不能比"等 HTTP"更短）
+
+③ 阶段打点（回答"卡在哪一步、等了多久"）
+  ✓ 三个点都被记录
+  ✓ 时间偏移累计正确（毫秒）
+  ✓ since() 能查出某一步在什么时刻发生
+  ✓ lines() 生成可读序列（进日志/弹窗）
+  ✓ last() 返回最后一个点
+  ✓ snapshot() 是深拷贝，外部改不动内部状态
+
+④ watchdog（注入假计时器，同一段真实逻辑）
+  ✓ 构造时不启动计时器（显式 start 才开始）
+  ✓ start() 按预算毫秒摆好计时器
+  ✓ 到点触发一次 onExpire
+  ✓ onExpire 收到阶段与预算
+  ✓ isExpired() 反映已超时
+  ✓ stop() 清掉了计时器句柄（不留悬挂定时器）
+  ✓ stop() 后状态为已停止
+  ✓ stop() 之后不会再触发（阶段成功完成时就是这个路径）
+
+⑤ 超时文案：阶段名 + 最后一条日志 + 日志绝对路径
+  ✓ 报告带阶段专属错误码
+  ✓ ① 文案含超时阶段名
+  ✓ ② 文案含最后一条后端日志
+  ✓ ③ 文案含日志绝对路径
+  ✓ 日志路径确实是绝对路径（不是裸文件名）
+  ✓ 文案附上阶段打点序列
+  ✓ 文案写清已等待时长
+  ✓ 后端一行输出都没有时，文案如实说明（而不是留空）
+  ✓ createTimeoutError 的 message 就是报告文案
+  ✓ Error 携带 timeout/code/phase（上层可按类型分流）
+  ✓ Error 携带完整报告对象（落盘/弹窗复用）
+  ✓ 三个阶段的错误码互不相同
+
+⑥ lastMeaningfulLogLine：末尾空行/超长行/纯空白
+  ✓ 忽略末尾空行，取真正最后一条
+  ✓ 数组输入同样跳过空白行
+  ✓ 完全没输出时返回空字符串（上层据此显示"没有任何输出"）
+  ✓ 超长行按上限截断并带省略号
+  ✓ 折叠多余空白（弹窗里不出现锯齿）
+
+────────────────────────────────────────
+断言 47 项，失败 0 项
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:47.739+08:00 exit=0 reason=exit elapsed=0.2s label=node scripts/test-h03-startup-deadline.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:47.918+08:00
+  label    : node scripts/test-h04-h05-harness.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-h04-h05-harness.js
+  timeout  : 240s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+这是 H-04/H-05 测试脚手架模块，不单独运行。
+请运行 scripts/test-h04-*.js 或 scripts/test-h05-*.js。
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:48.078+08:00 exit=0 reason=exit elapsed=0.2s label=node scripts/test-h04-h05-harness.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:48.262+08:00
+  label    : node scripts/test-h04-quarantine-safety.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-h04-quarantine-safety.js
+  timeout  : 240s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+  · 资源监控已启动（独立进程 pid=36700）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-04-quarantine-safety_资源监控_20261104-014448.log
+
+── 场景1 rename 成功（正常隔离）+ 隔离目录保留策略
+[backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-014448.json
+[diag] [2026-11-03T17:44:48.531Z] [backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-014448.json
+[backend-mgr] quarantined broken profiles to profiles.broken-20261104-014448
+[diag] [2026-11-03T17:44:48.533Z] [backend-mgr] quarantined broken profiles to profiles.broken-20261104-014448
+[backend-mgr] pruned old quarantine directory: profiles.broken-20200102-000000
+[diag] [2026-11-03T17:44:48.544Z] [backend-mgr] pruned old quarantine directory: profiles.broken-20200102-000000
+[backend-mgr] pruned old quarantine directory: profiles.broken-20200101-000000
+[diag] [2026-11-03T17:44:48.544Z] [backend-mgr] pruned old quarantine directory: profiles.broken-20200101-000000
+  ✓ 场景1 quarantined = true
+  ✓ 场景1 fallback（未走兜底） = false
+  ✓ 场景1 copied（未走复制兜底） = false
+  ✓ 场景1 abandoned = false
+  ✓ 场景1 原 profiles 已离开原位
+  ✓ 场景1 隔离目录含 web/package.json
+  ✓ 场景1 隔离目录含 other/data.bin
+  ✓ 场景1 第三方注册快照已落盘
+  ✓ 场景1 快照至少含 1 个 profile = true
+  ✓ 场景1 我方命名隔离目录只保留 2 份（实际 ["profiles.broken-20200103-000000","profiles.broken-20261104-014448"]） = 2
+  ✓ 场景1 用户手工建的同前缀目录未被删除
+  ✓ 场景1 本次隔离目录在保留集合里
+
+── 场景2 rename 被占用（真实句柄）→ 复制+校验兜底
+  ✓ 场景2 占用已生效（rename 会失败）
+  ✓ 场景2 前置：profiles 里存在指向用户源码的 junction
+[backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-014449.json
+[diag] [2026-11-03T17:44:49.097Z] [backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-014449.json
+[backend-mgr] rename profiles to profiles.broken-20261104-014449 failed (EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home2\profiles' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home2\profiles.broken-20261104-014449'); falling back to copy-then-verify quarantine (user data is never deleted first)
+[diag] [2026-11-03T17:44:49.098Z] [backend-mgr] rename profiles to profiles.broken-20261104-014449 failed (EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home2\profiles' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home2\profiles.broken-20261104-014449'); falling back to copy-then-verify quarantine (user data is never deleted first)
+[backend-mgr] copied profiles to profiles.broken-20261104-014449 and verified (5 files / 7 dirs / 1 links / 10821 bytes)
+[diag] [2026-11-03T17:44:49.290Z] [backend-mgr] copied profiles to profiles.broken-20261104-014449 and verified (5 files / 7 dirs / 1 links / 10821 bytes)
+[backend-mgr] original profiles tree NOT fully removed (walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home2\profiles\web'); restoring it from the verified copy
+[diag] [2026-11-03T17:44:49.298Z] [backend-mgr] original profiles tree NOT fully removed (walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home2\profiles\web'); restoring it from the verified copy
+[backend-mgr] 原 profiles 已从 profiles.broken-20261104-014449 还原（补回 4 文件 / 1 链接）
+[diag] [2026-11-03T17:44:49.480Z] [backend-mgr] 原 profiles 已从 profiles.broken-20261104-014449 还原（补回 4 文件 / 1 链接）
+  ✓ 场景2 日志记录了 rename 失败根因
+  ✓ 场景2 日志声明改走「复制→校验」而不是删除
+  ✓ 场景2 fallback（走了兜底） = true
+  ✓ 场景2 copied（复制并校验成功） = true
+  ✓ 场景2 日志含复制校验口径
+  ✓ 场景2 隔离目录有 web/package.json 副本
+  ✓ 场景2 package.json 内容与源一致 = true
+  ✓ 场景2 依赖实体内容一致（旧实现会永久丢失） = true
+  ✓ 场景2 隔离目录含 other/data.bin
+  ✓ 场景2 隔离目录里的 junction 被重建成链接（未跟随复制）
+  ✓ 场景2 隔离目录里不是被展开的真实目录
+  ✓ 场景2 用户插件源码仍在原位
+  ✓ 场景2 用户源码字节数未变 = 1234
+  ✓ 场景2 quarantined=false（同一占用让删除也失败，绝不谎报隔离完成） = false
+  ✓ 场景2 返回体如实报告删除失败原因
+  ✓ 场景2 abandoned=true（本轮隔离未达成） = true
+  ✓ 场景2 返回体说明「已用副本还原」
+  ✓ 场景2 原树已从校验副本还原成功
+  ✓ 场景2 日志声明用副本还原原树
+  ✓ 场景2 还原后原树文件数回到删除前（实际 5） = 5
+  ✓ 场景2 被半删的依赖实体已补回
+  ✓ 场景2 junction 已补回为链接
+  · 场景2 源目录文件数=5 删除结果={"removed":false,"linksUnlinked":1,"reason":"walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-h04-34748-1793727888405\\userData\\home2\\profiles\\web'"} 还原={"ok":true,"reason":null,"restoredFiles":4,"restoredLinks":1}
+  ✓ 场景2 被占用文件在原树中仍然存在（复制前绝不删）
+
+── 场景3 复制失败（人为制造读取失败）→ 放弃隔离、保留原目录
+  ✓ 场景3 前置：rename 会失败
+[backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-014449.json
+[diag] [2026-11-03T17:44:49.921Z] [backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-014449.json
+[backend-mgr] rename profiles to profiles.broken-20261104-014449 failed (EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home3\profiles' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home3\profiles.broken-20261104-014449'); falling back to copy-then-verify quarantine (user data is never deleted first)
+[diag] [2026-11-03T17:44:49.922Z] [backend-mgr] rename profiles to profiles.broken-20261104-014449 failed (EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home3\profiles' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home3\profiles.broken-20261104-014449'); falling back to copy-then-verify quarantine (user data is never deleted first)
+[backend-mgr] copy-based quarantine to profiles.broken-20261104-014449 failed: EPERM: operation not permitted, scandir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home3\profiles\web'（副本清理：removed）
+[diag] [2026-11-03T17:44:49.929Z] [backend-mgr] copy-based quarantine to profiles.broken-20261104-014449 failed: EPERM: operation not permitted, scandir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home3\profiles\web'（副本清理：removed）
+[backend-mgr] 复制隔离失败，已放弃本轮隔离并保留原 profiles：EPERM: operation not permitted, scandir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home3\profiles\web'
+[diag] [2026-11-03T17:44:49.930Z] [backend-mgr] 复制隔离失败，已放弃本轮隔离并保留原 profiles：EPERM: operation not permitted, scandir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-34748-1793727888405\userData\home3\profiles\web'
+  ✓ 场景3 abandoned（放弃本轮隔离） = true
+  ✓ 场景3 quarantined=false（原目录没被移走） = false
+  ✓ 场景3 copied=false（复制未成功） = false
+  ✓ 场景3 返回体带明确失败原因（上层看得见）
+  ✓ 场景3 日志记录了复制失败根因
+  ✓ 场景3 失败后不留下半成品隔离目录 = 0
+  ✓ 场景3 原目录仍在
+  ✓ 场景3 原 package.json 内容未变 = "{\n  \"name\": \"dsh-profile-web\",\n  \"dsh\": {\n    \"profile\": {\n      \"bundles\": [\n        \"@deepseek-ai/dsh-base\",\n        \"@local/repo-push-access\"\n      ]\n    }\n  },\n  \"dependencies\": {\n    \"@local/repo-push-access\": \"^1.2.3\"\n  }\n}"
+  ✓ 场景3 其它 profile 数据未变 = 4096
+  ✓ 场景3 撤销 ACL 后仍无半成品目录 = 0
+
+── 场景4 源码结构断言：复制校验在前、删除在后
+  ✓ 场景4 兜底分支调用 quarantineProfilesByCopy
+  ✓ 场景4 删除原树发生在复制校验之后
+  ✓ 场景4 旧的 rimraf 兜底文案已消失
+  ✓ 场景4 兜底分支不再直接 rimraf(profiles)
+  ✓ 场景4 保留策略只认我方时间戳命名
+  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-04-quarantine-safety_资源监控_20261104-014448.log
+
+结果：53 通过 / 0 失败（耗时 1691ms）
+✓ H-04-quarantine-safety 全部通过
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:50.126+08:00 exit=0 reason=exit elapsed=1.9s label=node scripts/test-h04-quarantine-safety.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:51.178+08:00
+  label    : node scripts/test-h05-apply-marker.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-h05-apply-marker.js
+  timeout  : 240s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+  · 资源监控已启动（独立进程 pid=12236）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-05-apply-marker_资源监控_20261104-014451.log
+
+── 场景1 正常路径：交换前落标记（含目标版本/开始时间/步骤名）→ 成功后清除
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-h05-28040-1793727891321\ud1\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T17:44:51.443Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-h05-28040-1793727891321\ud1\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-h05-28040-1793727891321\ud1\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T17:44:51.453Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-h05-28040-1793727891321\ud1\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] applied staged dsh 0.2.2-alpha.1
+[diag] [2026-11-03T17:44:51.456Z] [backend-mgr] applied staged dsh 0.2.2-alpha.1
+  ✓ 场景1 交换瞬间标记文件确实存在
+  ✓ 场景1 标记含目标版本 = "0.2.2-alpha.1"
+  ✓ 场景1 标记含来源版本 = "0.2.1-alpha.5"
+  ✓ 场景1 标记含步骤名（窗口A：dsh 暂时不在原位） = "dsh-hidden"
+  ✓ 场景1 标记含开始时间
+  ✓ 场景1 标记含本次操作 id（清理可精确到次）
+  ✓ 场景1 applied.dsh 为新版本 = "0.2.2-alpha.1"
+  ✓ 场景1 dsh 已是新版本 = "0.2.2-alpha.1"
+  ✓ 场景1 旧版本已进 dsh.previous（回滚素材） = "0.2.1-alpha.5"
+  ✓ 场景1 校验通过后标记已清除
+  ✓ 场景1 标记读取为 null = null
+  ✓ 场景1 journal 只有 1 条 dsh 记录 = 1
+  ✓ 场景1 journal 状态 applied = "applied"
+  ✓ 场景1 journal 目标版本正确 = "0.2.2-alpha.1"
+  ✓ 场景1 成功后不误报「更新被中断」 = false
+
+── 场景2 标记写不进去 → 取消本次交换，dsh/dsh.new 原样保留
+[backend-mgr] 写入更新中断标记失败，取消本次 dsh 交换（dsh.new 保留，下次启动重试）：EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h05-28040-1793727891321\ud2\backend\apply-in-progress.json.28040.tmp' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h05-28040-1793727891321\ud2\backend\apply-in-progress.json'
+[diag] [2026-11-03T17:44:51.469Z] [backend-mgr] 写入更新中断标记失败，取消本次 dsh 交换（dsh.new 保留，下次启动重试）：EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h05-28040-1793727891321\ud2\backend\apply-in-progress.json.28040.tmp' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h05-28040-1793727891321\ud2\backend\apply-in-progress.json'
+  ✓ 场景2 未执行交换（applied.dsh 为 null） = null
+  ✓ 场景2 dsh 仍是旧版本 = "0.3.0"
+  ✓ 场景2 dsh.new 原样保留（下次启动重试）
+  ✓ 场景2 没有产生 dsh.previous（交换确实没发生）
+  ✓ 场景2 日志明确说明取消交换的原因
+  ✓ 场景2 journal 落 ERR_UPDATER_APPLY_MARKER_FAILED（不静默） = 1
+
+── 场景3 断电模拟：残留标记 → ensureSeeded 早期检测、暴露故障态、不自动恢复
+  ✓ 场景3 前置：标记已写入
+  ✓ 场景3 前置：dsh 缺失（正是 H-05 的断电现场）
+[backend-mgr] 检测到残留的更新中断标记（上次应用更新在交换阶段被打断）：步骤=dsh-hidden 目标=0.4.0 开始=2026-11-03T17:44:51.480Z；dsh=缺失 dsh.old=0.4.0 dsh.previous=0.3.9 dsh.new=无；建议恢复动作=restore-from-dsh.old（不会自动执行，交给启动链决定）
+[diag] [2026-11-03T17:44:51.482Z] [backend-mgr] 检测到残留的更新中断标记（上次应用更新在交换阶段被打断）：步骤=dsh-hidden 目标=0.4.0 开始=2026-11-03T17:44:51.480Z；dsh=缺失 dsh.old=0.4.0 dsh.previous=0.3.9 dsh.new=无；建议恢复动作=restore-from-dsh.old（不会自动执行，交给启动链决定）
+[backend-mgr] projection migration for dsh null took 1ms
+[diag] [2026-11-03T17:44:51.485Z] [backend-mgr] projection migration for dsh null took 1ms
+[backend-mgr] dropped 1 foreign PATH entry(ies) from ambient PATH
+[diag] [2026-11-03T17:44:51.496Z] [backend-mgr] dropped 1 foreign PATH entry(ies) from ambient PATH
+  ✓ 场景3 ensureSeeded 早期检测到残留标记 = true
+  ✓ 场景3 暴露步骤名 = "dsh-hidden"
+  ✓ 场景3 暴露目标版本 = "0.4.0"
+  ✓ 场景3 暴露开始时间
+  ✓ 场景3 暴露当前 dsh 缺失 = null
+  ✓ 场景3 暴露 dsh.old 版本 = "0.4.0"
+  ✓ 场景3 暴露 dsh.previous 版本 = "0.3.9"
+  ✓ 场景3 给出恢复动作（用 dsh.old 兜底） = "restore-from-dsh.old"
+  ✓ 场景3 未自动执行恢复：dsh.old 仍在
+  ✓ 场景3 未自动执行恢复：dsh 仍缺失（决策权留给启动链）
+  ✓ 场景3 诊断日志记录了中断现场
+  ✓ 场景3 journal 落 ERR_UPDATER_APPLY_INTERRUPTED = 1
+[backend-mgr] 检测到残留的更新中断标记（上次应用更新在交换阶段被打断）：步骤=dsh-hidden 目标=0.4.0 开始=2026-11-03T17:44:51.480Z；dsh=缺失 dsh.old=0.4.0 dsh.previous=0.3.9 dsh.new=无；建议恢复动作=restore-from-dsh.old（不会自动执行，交给启动链决定）
+[diag] [2026-11-03T17:44:51.499Z] [backend-mgr] 检测到残留的更新中断标记（上次应用更新在交换阶段被打断）：步骤=dsh-hidden 目标=0.4.0 开始=2026-11-03T17:44:51.480Z；dsh=缺失 dsh.old=0.4.0 dsh.previous=0.3.9 dsh.new=无；建议恢复动作=restore-from-dsh.old（不会自动执行，交给启动链决定）
+  ✓ 场景3 再次检测仍为中断态 = true
+  ✓ 场景3 同一标记不重复写 journal（不刷屏） = 1
+  ✓ 场景3 主进程确认后清除标记 = true
+  ✓ 场景3 标记文件已删除 = null
+  ✓ 场景3 清除后不再报中断 = false
+
+── 场景3b 标记文件损坏（不可解析）→ 仍按中断处理，不静默
+[backend-mgr] 检测到残留的更新中断标记（上次应用更新在交换阶段被打断）：步骤=unreadable-marker 目标=? 开始=?；dsh=0.5.0 dsh.old=无 dsh.previous=无 dsh.new=无；建议恢复动作=apply-maybe-completed（不会自动执行，交给启动链决定）；注意：标记文件内容无法解析，按中断处理
+[diag] [2026-11-03T17:44:51.505Z] [backend-mgr] 检测到残留的更新中断标记（上次应用更新在交换阶段被打断）：步骤=unreadable-marker 目标=? 开始=?；dsh=0.5.0 dsh.old=无 dsh.previous=无 dsh.new=无；建议恢复动作=apply-maybe-completed（不会自动执行，交给启动链决定）；注意：标记文件内容无法解析，按中断处理
+  ✓ 场景3b 损坏的标记仍判为中断态 = true
+  ✓ 场景3b 显式标记 unreadable = true
+  ✓ 场景3b 步骤名如实标注 = "unreadable-marker"
+  ✓ 场景3b 仍给出恢复动作（dsh 在位） = "apply-maybe-completed"
+  ✓ 场景3b 诊断日志明确说明无法解析
+  ✓ 场景3b 损坏标记也能被确认清除 = true
+  ✓ 场景3b 清除后不再报中断 = false
+
+── 场景4 源码结构断言：标记 → 交换 → 校验 → 清标记
+  ✓ 场景4 applyStaged 把 dsh 交换交给独立函数
+  ✓ 场景4 找到标记写入点
+  ✓ 场景4 交换发生在标记写入之后
+  ✓ 场景4 校验发生在交换之后
+  ✓ 场景4 清标记发生在校验之后
+  ✓ 场景4 ensureSeeded 在 seed 决定之前调用检测
+  ✓ 场景4 检测发生在创建/写入活跃目录之前（真实时序）
+  ✓ 场景4 没有另起一套 journal 状态（标记文件即信封，journal 仍是唯一台账）
+  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-05-apply-marker_资源监控_20261104-014451.log
+
+结果：55 通过 / 0 失败（耗时 235ms）
+✓ H-05-apply-marker 全部通过
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:51.578+08:00 exit=0 reason=exit elapsed=0.4s label=node scripts/test-h05-apply-marker.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:51.750+08:00
+  label    : electron scripts/test-h06-csp-electron.js
+  command  : C:\Users\lcl\Desktop\DSH\node_modules\electron\dist\electron.exe C:\Users\lcl\Desktop\DSH\scripts\test-h06-csp-electron.js
+  timeout  : 240s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+
+[37012:1104/014451.940:ERROR:net\base\network_change_notifier_win.cc:213] WSALookupServiceBegin failed with: 10108
+[PASS] 真机：外提脚本在 file:// + script-src self 下执行 — 实际：1
+[PASS] 真机：preload 桥可用 — 实际：true
+[PASS] 真机：style 仍生效（style-src 允许内联样式块） — 实际：rgb(11, 16, 32)
+[PASS] CSP 阳性对照：内联 <script> 被拦截 — 实际 inlineRan=false
+[PASS] CSP 阳性对照：eval 被拦截 — 实际：EvalError: Evaluating a string as JavaScript violates the following Content Secu
+[PASS] 首屏：payload 只以文本出现（无 img 元素） — 实际：{"imgs":0,"text":"<img src=x onerror=\"window.__xss='shell'\">（可升级 0.3.48）"}
+[PASS] 兼容表：无 img/script/svg 元素注入 — 实际：{"imgs":0,"scripts":0,"svgs":0}
+[PASS] 兼容表：window.__xss 未被置位 — 实际：null
+[PASS] 兼容表：payload 以纯文本呈现 — 实际文本片段：目标 0.1.9（当前 <img src=x onerror="window.__xss='compat-current'">）：插件共 2 个 — 不可用 1 · 未验证 0 · 兼容 1目标后端 Node 要求 ≥ >=20（当前 24.21.0，满足）插件判定原因<img src=x onerror="windo
+[PASS] 兼容表：表格行数与数据一致（表头 + 2 行） — 实际：3
+[PASS] 旧 Home 表：无 img/script/svg 元素注入 — 实际：{"imgs":0,"scripts":0,"svgs":0}
+[PASS] 旧 Home 表：window.__xss 未被置位 — 实际：null
+[PASS] 旧 Home 表：payload 以纯文本呈现 — 实际文本片段：旧 Home <img src=x onerror="window.__xss='legacy-home'"> 中有 1 个插件桌面版看不到：插件版本形态<img src=x onerror="window.__xss='legacy-name'"><b>1.0</b>npm 包（可导入）
+[PASS] 旧 Home 表：勾选框按 installable 生成（data-i 索引正确） — 实际：{"checked":true,"disabled":false,"index":"0"}
+[PASS] 选择器注入：伪造 registry 值不抛异常且不选中任何单选 — 实际：{"ok":true,"afterBogus":{"routeMirror":false,"ndistOfficial":false},"afterValid":{"routeOfficial":true,"ndistMirror":true}}
+[PASS] 选择器注入正向对照：合法值仍正常选中 — 实际：{"routeOfficial":true,"ndistMirror":true}
+[PASS] CSP 违规控制台输出（应只来自本测试的阳性对照） — 捕获 1 条：["Executing inline script violates the following Content Security Policy directive 'script-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-UwYTgd2DL2VSvb2lK6wO/b4I03bZjGCTyEkh5D7kH3c='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked."]
+
+[test-h06-electron] 共 17 项，通过 17，失败 0
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:54.097+08:00 exit=0 reason=exit elapsed=2.3s label=electron scripts/test-h06-csp-electron.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:54.267+08:00
+  label    : node scripts/test-h06-settings-dom.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-h06-settings-dom.js
+  timeout  : 240s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+[PASS] A1 CSP meta 存在且串完全一致 — 实际：default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:
+[PASS] A2 无内联 <script> — 实际命中：[]
+[PASS] A3 引用外提脚本 settings-renderer.js — 实际命中：1
+[PASS] A4 无 on* 内联事件属性 — 实际命中：[]
+[PASS] A5 settings.html 内无 innerHTML — 实际命中：0
+[PASS] A6 无 script-src unsafe-inline / unsafe-eval — 实际：default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:
+[PASS] A7 注入路径汇点 id 全部存在于 settings.html
+[PASS] B1 可执行代码里无 innerHTML — 实际命中：0
+[PASS] B1 可执行代码里无 outerHTML — 实际命中：0
+[PASS] B1 可执行代码里无 insertAdjacentHTML — 实际命中：0
+[PASS] B1 可执行代码里无 document.write — 实际命中：0
+[PASS] B1 可执行代码里无 eval( — 实际命中：0
+[PASS] B1 可执行代码里无 new Function — 实际命中：0
+[PASS] B2 无选择器拼接变量 — 实际命中：[]
+[PASS] B3 白名单查表存在：ROUTE_RADIO_IDS
+[PASS] B3 白名单查表存在：NDIST_RADIO_IDS
+[PASS] B3 白名单查表存在：pickRadio
+[PASS] B4 渲染脚本引用的 DOM id 全部存在（共 46 个）
+[PASS] B5 使用 textContent 写外部字符串
+[PASS] B6 plugins:install 前有 window.confirm 确认
+[PASS] C1 白名单 ALLOWED_CHANNELS 存在且有内容 — 实际条目数：22
+[PASS] C2 所有 invoke 通道都在白名单内（共 22 个通道）
+[PASS] C3 仅 helper 内出现 ipcRenderer.invoke — 实际：1
+[PASS] C4 不暴露通用 invoke/send
+[PASS] C5 主进程 handleIpc 内置 assertOwnedSender 校验
+[PASS] C6 白名单通道均在主进程用 handleIpc 注册
+[PASS] C7 裸 ipcMain.handle 仅 handleIpc 包装器内 1 处（无旁路注册） — 实际裸注册处数：1
+[PASS] D1 自检清单逐个点名全部 28 个汇点
+[PASS] D2 自检清单写明 CSP 目标串
+
+[test-h06] 共 29 项，通过 29，失败 0
+[test-h06] 全部通过
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:44:54.425+08:00 exit=0 reason=exit elapsed=0.2s label=node scripts/test-h06-settings-dom.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:44:54.585+08:00
+  label    : node scripts/test-h08-aumid.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-h08-aumid.js
+  timeout  : 240s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+0.3.48 · H-08 回归：AppUserModelID + 通知通道取证
+沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-h08-bKCPT7
+
+① AppUserModelID 与 package.json 的 build.appId 一致
+  ✓ package.json 里存在 build.appId（安装器身份来源）
+  ✓ main.js 调用了 app.setAppUserModelId()
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+  ✓ 进程启动时调用了一次 setAppUserModelId（不是 0 次）
+  ✓ 传入的 AUMID 与 package.json build.appId 完全相同
+  ✓ 与当前安装器一致：com.deepseek.dshdesktop
+  ✓ main.js 没有硬编码 appId 字面量（从 package.json 读取，避免两处分叉）
+  ✓ AUMID 的来源是 require(package.json).build.appId
+
+② 设置时机（必须早于 whenReady / 早于任何气泡）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+  ✓ 模块加载阶段即完成设置（whenReady 未执行）
+  ✓ 源码顺序上 setAppUserModelId 在 whenReady 之前
+
+③ 通知统一出口：气泡发出即留证
+  ✓ main.js 里只有 notifyUser 内部一处 displayBalloon（三处调用点已收口）
+  ✓ 启动失败/后端更新/外壳更新都走 notifyUser
+  ✓ 启动期有通知通道自检日志（托盘/AUMID/Notification 能力一次写清）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:44:54.819Z] 托盘气泡已发出: {"title":"DSH 有可用更新","content":"dsh → 1.2.3","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+  ✓ 气泡确实发给了托盘（保留原有通道）
+  ✓ 标题原样透传
+  ✓ 诊断日志记录了"气泡已发出"
+  ✓ 日志里带上了 AUMID（事后可判定是否身份不一致）
+  ✓ 日志里带上了"被系统静默丢弃"的风险判定
+  ✓ （balloon-show 确认在 1.5s 后异步记录，见下一个用例）
+
+④ 收到 balloon-show：认定已显示，不重复打扰
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:44:55.431Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[diag] [2026-11-03T17:44:56.325Z] 托盘气泡已由系统确认显示（balloon-show 已触发）: {"title":"DSH 有可用更新","content":"dsh → 1.2.3","aumid":"com.deepseek.dshdesktop","platform":"win32"}
+[diag] [2026-11-03T17:44:56.943Z] 托盘气泡已由系统确认显示（balloon-show 已触发）: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志。","aumid":"com.deepseek.dshdesktop","platform":"win32"}
+  ✓ 日志记录了"系统确认显示"（这是可观测的成功证据）
+  ✓ 已确认显示时不再补发 Notification（不重复打扰）
+
+⑤ 等不到 balloon-show：如实记录 + 改走可验证通道
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:44:57.646Z] 托盘气泡已发出: {"title":"DSH 有可用更新","content":"dsh → 1.2.3","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+  ✓ 1.5s 观察窗内不抢跑（先等确认）
+[diag] [2026-11-03T17:44:59.146Z] 托盘气泡未收到 balloon-show 确认（已设置 AUMID 的前提下仍疑似被系统丢弃）: {"title":"DSH 有可用更新","content":"dsh → 1.2.3","aumid":"com.deepseek.dshdesktop","platform":"win32"}
+[diag] [2026-11-03T17:44:59.147Z] 已改用 Notification 通道发送通知: {"title":"DSH 有可用更新","why":"balloon-unconfirmed"}
+  ✓ 日志如实记录"未收到显示确认（疑似被系统丢弃）"
+  ✓ 改用 Notification 通道补发一次（同语义、无二次确认）
+  ✓ Notification 确实调用了 show()
+  ✓ 替代通道的使用被写进日志（不许静默换通道）
+  ✓ 托盘入口保留（没有被通知改造拆掉）
+
+⑥ 通道不可用时不假装发过
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:44:59.861Z] 托盘气泡发送抛错（通道不可用）: {"title":"测试","content":"气泡抛错场景","aumid":"com.deepseek.dshdesktop","platform":"win32","error":"displayBalloon 不可用（测试注入）"}
+[diag] [2026-11-03T17:44:59.863Z] 已改用 Notification 通道发送通知: {"title":"测试","why":"balloon-threw"}
+  ✓ 抛错时立刻补发 Notification
+  ✓ 气泡抛错时记录"通道不可用"（不是静默失败）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:45:00.480Z] 托盘气泡未发出（托盘不存在），改用替代通道: {"title":"测试","content":"没有托盘场景","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":false}
+[diag] [2026-11-03T17:45:00.480Z] 已改用 Notification 通道发送通知: {"title":"测试","why":"no-tray"}
+  ✓ 没有托盘时直接走替代通道
+  ✓ 日志说明"没有托盘"，而不是假装发过
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:45:01.086Z] 替代通知通道不可用（Notification.isSupported=false），本条通知仅落日志: {"title":"测试","why":"unit"}
+  ✓ Notification 不可用时返回 false（调用方能知道没发出去）
+  ✓ notificationSupported() 如实反映能力
+  ✓ 不可用的事实被写进日志
+
+────────────────────────────────────────
+断言 33 项，失败 0 项
+
+沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-h08-bKCPT7
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:45:01.704+08:00 exit=0 reason=exit elapsed=7.1s label=node scripts/test-h08-aumid.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:45:01.874+08:00
+  label    : node scripts/test-h10-durability-layering.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-h10-durability-layering.js
+  timeout  : 240s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+[PASS] A1 50 条高频行期间零同步文件系统调用（H-10 收益保持） — 实际：{"appendFileSync":0,"statSync":0,"renameSync":0,"writeFileSync":0}
+[PASS] A2 高频行全部留在队列（51 = 会话头 + 50 行） — 实际：51
+[PASS] A3 返回后主日志尚未创建（批量语义） — 实际存在：false
+[PASS] A4 高频行不产生错误清单/桌面报告 — 实际：错误清单 false / 桌面报告 false
+[PASS] B1 错误行返回后主日志已落盘（含普通行，共 3 行：头 + 2） — 实际：3
+[PASS] B2 错误行返回后错误清单已落盘 1 行 — 实际：1
+[PASS] B3 错误行返回后桌面报告已落盘 2 行（头 + 1） — 实际：2
+[PASS] B4 三个产物内容都含错误文本 — 实际：{"log":true,"err":true,"report":true}
+[PASS] B5 错误行不入队列（durable 直写，队列清零） — 实际：0
+[PASS] C1 writeDurable 返回后主日志已落盘（含 1 条记录 + 会话头） — 实际：2
+[PASS] C2 writeDurable 不会把普通文本伪造进错误清单 — 实际：false
+[PASS] C3 writeDurable 返回后队列为空 — 实际：0
+[PASS] D1 屏障后 201 条记录全部落盘（头 + 200 高频 + 1 关键） — 实际：202
+[PASS] D2 关键记录排在最后（未插队到更早的行前面） — 实际末行：[2026-11-03T17:45:02.032Z] 关键产物：更新决策已记录
+[PASS] D3 高频行顺序保持（第 2 行是 queued-0） — 实际：第2行=[2026-11-03T17:45:02.031Z] 后端输出 queued-0 第201行=[2026-11-03T17:45:02.032Z] 后端输出 queued-199
+[PASS] E1 判定函数 feedsCriticalSink 存在且以 isError（去向）为判据
+[PASS] E2 durable 判定是「显式声明 ∨ 去向判定」，不含测试名或文本匹配（机制化，不是名单） — 实际判据：if (forceDurable || feedsCriticalSink(record))
+[PASS] E3 关键产物走 durability 层、高频行走批量层（两条路径均存在）
+
+[test-h10-durability] 共 18 项，通过 18，失败 0
+[test-h10-durability] 全部通过
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:45:02.057+08:00 exit=0 reason=exit elapsed=0.2s label=node scripts/test-h10-durability-layering.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:45:02.314+08:00
+  label    : node scripts/test-h10-electron-exit-flush.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-h10-electron-exit-flush.js
+  timeout  : 240s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+[PASS] ① Electron 子进程正常退出（批量层） — 实际 status=0 signal=null
+[PASS] ① 退出前队列确有 4 条未落盘行（会话头 + 3 条，证明被测的是退出 flush） — 实际：4
+[PASS] ① 高频行在退出前**不在**磁盘上（批量语义未被 durable 破坏） — 实际 logLines=0
+[PASS] ① app.exit 后主日志落盘 4 行（会话头 + 3 条） — 实际：4
+[PASS] ① 高频行不产生错误清单/桌面报告 — 实际：错误清单 0 行 / 桌面报告 0 行
+[PASS] ① 未触发「退出刷盘超预算」
+[PASS] ② Electron 子进程正常退出（durability 层） — 实际 status=0 signal=null
+[PASS] ② 错误行不在队列里（durable 记录直写，不排队） — 实际 queuedBeforeExit=0
+[PASS] ② 退出前主日志已落盘 4 行（会话头 + 3 条，含 durable 屏障刷出的高频行） — 实际 logLines=4
+[PASS] ② 退出前错误清单已落盘 1 行 — 实际 errorLines=1
+[PASS] ② 退出前桌面报告（固定名）已落盘 2 行（头 + 1 条） — 实际 reportLines=2
+[PASS] ② 主日志含 electron 真实版本号（electron.app.getVersion 路径可用） — 实际：版本=44.3.0
+
+[test-h10-electron] 共 12 项，通过 12，失败 0
+[test-h10-electron] 全部通过
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:45:02.997+08:00 exit=0 reason=exit elapsed=0.7s label=node scripts/test-h10-electron-exit-flush.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:45:03.230+08:00
+  label    : node scripts/test-h10-log-throughput.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-h10-log-throughput.js
+  timeout  : 240s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+[PASS] 阶段1：注入 50000 行期间**零文件系统调用** — 实际：{"appendFileSync":0,"statSync":0,"renameSync":0,"writeFileSync":0,"existsSync":0}
+[PASS] 阶段1：队列完整收下 50002 条记录（无丢弃） — 实际：{"queuedLines":50002,"droppedTotal":0}
+[PASS] 阶段1：单行入队耗时 < 200µs — 实际：1.69µs/行，总 84.6ms
+[INFO] 同步基线（老路径形态）单行 209.12µs；本次入队 1.69µs（提速 123.6×）
+[PASS] 阶段1：flush 后队列清空 — 实际：0
+[PASS] 阶段1：flush 后零丢弃 — 实际：0
+[PASS] 阶段1：全部 50002 行落盘（header + 预热 + 50000） — 实际：50002
+[PASS] 阶段1：刷盘系统调用数远小于行数（批量证据） — 实际：78 次调用处理 50002 行，耗时 23.6ms
+[PASS] 阶段1：日志正文无「队列触顶」记录 — 正文干净
+[PASS] 阶段2：滚动确实发生过（产生存档） — 存档数：6，文件：["DSH-Desktop-日志-2026-11-03-174507-1.txt","DSH-Desktop-日志-2026-11-03-174507-2.txt","DSH-Desktop-日志-2026-11-03-174507-3.txt","DSH-Desktop-日志-2026-11-03-174507-4.txt","DSH-Desktop-日志-2026-11-03-174507-5.txt","DSH-Desktop-日志-2026-11-03-174507.txt","DSH-Desktop-日志.txt"]
+[PASS] 阶段2：滚动 + 交错写入后行数守恒（3001 行） — 实际：3001，明细 [{"name":"DSH-Desktop-日志-2026-11-03-174507-1.txt","lines":455,"bytes":67795},{"name":"DSH-Desktop-日志-2026-11-03-174507-2.txt","lines":455,"bytes":68161},{"name":"DSH-Desktop-日志-2026-11-03-174507-3.txt","lines":490,"bytes":73500},{"name":"DSH-Desktop-日志-2026-11-03-174507-4.txt","lines":455,"bytes":68250},{"name":"DSH-Desktop-日志-2026-11-03-174507-5.txt","lines":455,"bytes":68250},{"name":"DSH-Desktop-日志-2026-11-03-174507.txt","lines":457,"bytes":67986},{"name":"DSH-Desktop-日志.txt","lines":234,"bytes":35100}]
+[PASS] 阶段2：零丢弃 — 实际：{"mid":0,"final":0}
+[PASS] 阶段2：单文件不显著超阈值（块粒度 ≤ 块字节 + 阈值） — 实际：[67795,68161,73500,68250,68250,67986,35100]
+[PASS] 阶段3：触顶丢弃计数准确且未被静默吞掉 — 实际：{"droppedTotal":901,"queuedLines":100,"expectedDropped":901}
+[diag] [2026-11-03T17:45:07.744Z] ⚠ 诊断日志队列触顶（上限 100 行 / 33554432 字节）：本次丢弃 901 行，累计丢弃 901 行；被丢弃的行仍完整打印在 [dsh-backend] 标准输出，可用控制台日志补齐
+[PASS] 阶段3：丢弃计数写进了日志正文 — 正文片段：队列触顶（上限 100 行 / 33554432 字节）：本次丢弃 901 行，累计丢弃 901 行；被丢弃的行仍完整打印在 [dsh-backend] 标准输出，可用控制台日志补齐
+[PASS] 阶段3：正文里记的丢弃数 == 实际丢弃数 — 正文含「本次丢弃 901 行」
+[PASS] 阶段3：正文里的丢弃数之后不再重复计数（状态归零） — 实际：0
+[PASS] 阶段3：写入行数 = 队列上限（100 行）+ 1 条丢弃说明 — 实际：101
+[PASS] 阶段4：子进程正常退出 — 实际 status=0 signal=null
+[PASS] 阶段4：退出钩子把队列清空（501 行） — 实际：501
+[PASS] 阶段4：未触发「退出刷盘超预算」 — 正文干净
+
+[test-h10] 共 20 项，通过 20，失败 0
+[test-h10] 数据：{"phase1":{"perLineUs":1.691256,"baselinePerLineUs":209.12154999999998,"flushMs":23.5928,"io":{"appendFileSync":26,"statSync":26,"renameSync":0,"writeFileSync":26,"existsSync":2}},"phase2":{"archives":6,"files":7},"phase3":{"expectedDropped":901,"lines":101},"phase4":{"lines":501}}
+[test-h10] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-h10-test-36492
+[test-h10] 全部通过
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:45:07.882+08:00 exit=0 reason=exit elapsed=4.7s label=node scripts/test-h10-log-throughput.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:45:08.047+08:00
+  label    : node scripts/test-047-desktop-report.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-047-desktop-report.js
+  timeout  : 240s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+0.3.47 桌面报告纪律回归
+沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-047-Tv5Wsh
+
+① 启动即归档：桌面只留当前这一份
+  ✓ 启动归档前：桌面上有两份历史报告（复现现场）
+[diag] [2026-11-03T17:45:08.197Z] 启动：桌面报告纪律测试
+  ✓ 本次启动的第一次写日志即完成归档（桌面先清空）
+[diag] [2026-11-03T17:45:08.213Z] 模拟错误：error something failed
+  ✓ 本次启动后：桌面只剩一份报告
+  ✓ 桌面报告改为固定名（不带时间戳）
+  ✓ 两份历史报告已归档到安装目录 logs
+  ✓ 桌面上的历史报告已移走
+
+② 下一次启动：上一轮的报告被归档
+[diag] [2026-11-03T17:45:08.218Z] 第二次启动
+  ✓ 第二次启动时桌面先清空（上一轮的报告已被归档）
+  ✓ 上一轮的固定名报告已归档（带时间戳）
+[diag] [2026-11-03T17:45:08.220Z] 模拟错误：error again
+  ✓ 第二次启动出错后：桌面又只有一份
+
+③ 归档定期清除（份数 + 天数）
+  ✓ housekeep 清掉了多余归档（24 → 3）
+  ✓ 归档份数不超过上限 10
+  ✓ 超过 30 天的旧归档被清除
+  ✓ （主日志不受影响）
+
+④ 不误伤桌面上的其它文件
+[diag] [2026-11-03T17:45:08.238Z] 第三次启动
+  ✓ 桌面上的非 DSH 文件没有被归档/删除
+  ✓ 归档里没有混入非 DSH 文件
+
+────────────────────────────────────────
+断言 15 项，失败 0 项
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:45:08.260+08:00 exit=0 reason=exit elapsed=0.2s label=node scripts/test-047-desktop-report.js
+==============================================================================
+
+══════════════════════════════════════════════════════════════════════════════
+【门禁汇总】
+  版本(package.json) : 0.3.48
+  检查项             : 26（语法 13 / 测试 13）
+  通过               : 26
+  失败               : 0
+  结论               : ✅ 全部通过
+══════════════════════════════════════════════════════════════════════════════

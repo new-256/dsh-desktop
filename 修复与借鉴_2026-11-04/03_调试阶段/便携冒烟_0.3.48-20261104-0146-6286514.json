@@ -1,0 +1,57 @@
+{
+  "runId": "0.3.48-20261104-0146-6286514",
+  "mode": "portable-smoke",
+  "expectedVersion": "0.3.48",
+  "unpackedDir": "C:\\Users\\lcl\\Desktop\\DSH\\release\\win-unpacked",
+  "startedAt": "2026-11-04T01:47:36.1096145+08:00",
+  "steps": {
+    "copy": {
+      "detail": "robocopy exit=3",
+      "status": "PASS"
+    },
+    "lifecycleStart": {
+      "detail": "version=0.3.48 reason=boot",
+      "status": "PASS"
+    },
+    "singleInstance": {
+      "detail": "便携副本未被子实例锁拦截（隔离 userData 生效）",
+      "status": "PASS"
+    },
+    "window": {
+      "detail": "DSH Desktop",
+      "status": "PASS"
+    },
+    "webui": {
+      "detail": "端口 50700 的 HTTP 探测未拿到 200",
+      "status": "FAIL"
+    },
+    "hostIntact": {
+      "detail": "启动前 4 个，仍存活 4 个",
+      "status": "PASS"
+    },
+    "cleanup": {
+      "detail": "定向 taskkill pid=24060",
+      "status": "PASS"
+    }
+  },
+  "note": "不执行 NSIS 安装；以隔离 userData + DSH_DIAG_BASE 启动 win-unpacked 同一组二进制",
+  "hostPidsBefore": [
+    1192,
+    8912,
+    19360,
+    30540
+  ],
+  "smokeRoot": "C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-smoke-0.3.48-20261104-0146-6286514",
+  "lifecycleLog": "C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-smoke-0.3.48-20261104-0146-6286514\\diag\\logs\\DSH-Desktop-生命周期.log",
+  "pid": 24060,
+  "windowTitle": "DSH Desktop",
+  "shot": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\便携冒烟_首帧_0.3.48-20261104-0146-6286514.png",
+  "savedLogs": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\便携冒烟日志_0.3.48-20261104-0146-6286514",
+  "counts": {
+    "pass": 6,
+    "fail": 1,
+    "skip": 0
+  },
+  "passed": false,
+  "finishedAt": "2026-11-04T01:51:19.7954491+08:00"
+}

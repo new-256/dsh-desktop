@@ -1,0 +1,25 @@
+{
+  "label": "B-05/B-01/B-11 阶段二验证",
+  "startedAt": "2026-11-03T19:07:53.587Z",
+  "durationSec": 30.4,
+  "samples": 29,
+  "intervalSec": 1,
+  "reason": "检测到停止文件 C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\B-05_阶段二_监控.stop",
+  "filters": [
+    "node.exe",
+    "pwsh.exe",
+    "electron.exe"
+  ],
+  "pids": [],
+  "peaks": {
+    "cpu": 16.040849367955666,
+    "ws": 2060,
+    "pb": 1758,
+    "sysUsedPct": 84.37525269944402,
+    "gpuUtil": 98,
+    "gpuMem": 8341,
+    "gpuTemp": 68,
+    "gpu": "NVIDIA GeForce RTX 5060 Ti"
+  },
+  "csv": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\B-05_B-01_B-11_资源监控.csv"
+}

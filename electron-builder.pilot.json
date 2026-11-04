@@ -1,0 +1,68 @@
+{
+  "appId": "com.deepseek.dshdesktop.pilot",
+  "productName": "DSH Desktop Pilot",
+  "copyright": "MIT",
+  "asar": true,
+  "extraMetadata": {
+    "name": "dsh-desktop-pilot",
+    "productName": "DSH Desktop Pilot"
+  },
+  "directories": {
+    "output": "release/pilot",
+    "buildResources": "build"
+  },
+  "files": [
+    "package.json",
+    "*.js",
+    "*.html",
+    "assets/**/*",
+    "!vendor/**/*",
+    "!release/**/*",
+    "!scripts/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "build/payload",
+      "to": "payload",
+      "filter": [
+        "*.7z",
+        "vendor-manifest.json"
+      ]
+    },
+    {
+      "from": "build/tools/7za.exe",
+      "to": "payload/7za.exe"
+    }
+  ],
+  "asarUnpack": [
+    "**/*.{node,dll,exe}"
+  ],
+  "compression": "maximum",
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "build/icon.ico"
+  },
+  "nsis": {
+    "include": "build/installer.pilot.nsh",
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "allowElevation": false,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "DSH Desktop Pilot",
+    "installerIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico",
+    "installerHeaderIcon": "build/icon.ico",
+    "deleteAppDataOnUninstall": false,
+    "artifactName": "DSH Desktop Pilot Setup ${version}.exe",
+    "warningsAsErrors": false
+  }
+}

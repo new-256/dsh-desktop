@@ -1,0 +1,46 @@
+{
+  "generatedAt": "2026-11-03T18:19:43.855Z",
+  "version": "0.3.48",
+  "entryPoints": [
+    "main.js",
+    "settings.html",
+    "splash.html"
+  ],
+  "includePatterns": [
+    "package.json",
+    "*.js",
+    "*.html",
+    "assets/**/*"
+  ],
+  "excludePatterns": [
+    "!vendor/**/*",
+    "!release/**/*",
+    "!scripts/**/*"
+  ],
+  "closureFiles": [
+    "app-identity.js",
+    "assets/icon.png",
+    "crash-report.js",
+    "diag-log.js",
+    "ladder-policy.js",
+    "lifecycle-log.js",
+    "main.js",
+    "package.json",
+    "patch-file.js",
+    "plugin-resolution.js",
+    "preload.js",
+    "quit-guard.js",
+    "settings-preload.js",
+    "settings-renderer.js",
+    "settings.html",
+    "splash.html",
+    "startup-deadline.js",
+    "updater-backend.js"
+  ],
+  "missing": [],
+  "dangling": [],
+  "barePackages": [
+    "electron-updater"
+  ],
+  "passed": true
+}

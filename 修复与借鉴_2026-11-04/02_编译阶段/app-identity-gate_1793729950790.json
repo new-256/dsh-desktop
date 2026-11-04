@@ -1,0 +1,85 @@
+{
+  "generatedAt": "2026-11-03T18:19:10.960Z",
+  "version": "0.3.48",
+  "expectedAppId": "com.deepseek.dshdesktop",
+  "candidates": [
+    {
+      "file": "app-identity.js",
+      "name": "DSH_APP_ID",
+      "value": "com.deepseek.dshdesktop"
+    }
+  ],
+  "selfTest": [
+    {
+      "sample": "APP_ID",
+      "code": "const APP_ID = 'com.example.app';",
+      "matched": true,
+      "hits": [
+        {
+          "name": "APP_ID",
+          "value": "com.example.app"
+        }
+      ]
+    },
+    {
+      "sample": "APP_USER_MODEL_ID",
+      "code": "const APP_USER_MODEL_ID = 'com.example.app';",
+      "matched": true,
+      "hits": [
+        {
+          "name": "APP_USER_MODEL_ID",
+          "value": "com.example.app"
+        }
+      ]
+    },
+    {
+      "sample": "DSH_APP_ID",
+      "code": "const DSH_APP_ID = 'com.example.app';",
+      "matched": true,
+      "hits": [
+        {
+          "name": "DSH_APP_ID",
+          "value": "com.example.app"
+        }
+      ]
+    },
+    {
+      "sample": "myAppId",
+      "code": "const myAppId = 'com.example.app';",
+      "matched": true,
+      "hits": [
+        {
+          "name": "myAppId",
+          "value": "com.example.app"
+        }
+      ]
+    },
+    {
+      "sample": "module.exports.APP_ID",
+      "code": "module.exports = { APP_ID: 'com.example.app' };",
+      "matched": true,
+      "hits": [
+        {
+          "name": "APP_ID",
+          "value": "com.example.app"
+        }
+      ]
+    },
+    {
+      "sample": "exports.APP_USER_MODEL_ID",
+      "code": "exports.APP_USER_MODEL_ID = 'com.example.app';",
+      "matched": true,
+      "hits": [
+        {
+          "name": "APP_USER_MODEL_ID",
+          "value": "com.example.app"
+        }
+      ]
+    }
+  ],
+  "selfTestNegativeOk": true,
+  "selfTestFailures": 0,
+  "strippedFieldHits": 0,
+  "passed": true,
+  "failures": []
+}

@@ -13,6 +13,12 @@
  *   - 头部：应用版本、平台/架构、Electron/Node 版本、后端是否已就绪
  *   - 正文：完整错误（inspect depth 6、单串 64KiB、总量 256KiB）、
  *           后端日志尾部（64KiB）、渲染层 error 级 console 尾部（64KiB）
+ *   - 0.3.49 · B-04：**基础报告写完之后**再追加一段「最近 N 条插件操作」
+ *     （`plugin-journal.js`），标题照抄官方：
+ *         recent plugin operations (context, not proof of cause)
+ *     即：它只是**上下文**，不是根因证据 —— 不得据此宣称某个插件导致了崩溃，
+ *     也不得喂给自愈阶梯的 needs-proof 判定。附加段是 best-effort：失败时基础
+ *     报告仍然完整可用，且基础报告的字节**从不重写**（只追加）。
  *   - 清理：只删匹配 crash-*.log 命名模式的文件，保留最新 10 份，
  *           目录里其他文件永不触碰（P2-2 纪律）
  *   - 写入失败/超时（1s）不影响弹窗 —— 弹窗无路径也照常出
@@ -34,11 +40,24 @@ const DETAIL_BUDGET = 1200;
 const DETAIL_TAIL_LINES = 8;
 /** 0.3.42 · 崩溃报告落盘等待上限（对齐官方 fatal-recovery.ts:20）：超时照常弹窗。 */
 const CRASH_REPORT_WAIT_MS = 1000;
+/**
+ * 0.3.49 · B-04：插件操作段标题 —— 逐字照抄官方（`operation-report.ts`）。
+ * 这句话是这个段的**契约**：它是上下文，不是因果证据。
+ */
+const PLUGIN_OP_SECTION_TITLE = 'recent plugin operations (context, not proof of cause)';
+/** 附进崩溃报告的插件操作条数上限（再多也不值当，报告要给人读）。 */
+const PLUGIN_OP_MAX = 40;
+/** 取台账快照前的排空预算（基础报告写入 + 台账排空 + 追加，总预算仍 ≤ 1s）。 */
+const PLUGIN_OP_FLUSH_DEADLINE_MS = 300;
 
 let electronApp = null;
 try { electronApp = require('electron').app; } catch (_) { /* 单测环境 */ }
 
 function crashDir() {
+  // 测试/运维覆盖（与 diag-log 的 DSH_DIAG_BASE 同思路）：显式指定报告目录，
+  // 避免单测把报告写进真实安装目录/仓库根。
+  const override = process.env.DSH_CRASH_DIR;
+  if (override) return override;
   // 与 diag-log 同目录策略：优先安装目录 logs，回退 userData logs。
   try { return path.join(electronApp.getAppPath(), 'logs'); } catch (_) {}
   try { return path.join(electronApp.getPath('userData'), 'logs'); } catch (_) {}
@@ -98,6 +117,85 @@ function renderErrorSection(error) {
 }
 
 /**
+ * 组装基础报告的段（**不含**插件操作段）。
+ * 单独抽出来是为了让「基础报告字节从不重写」这条纪律可被测试直接验证：
+ * `buildBaseReport()` 的输出必须与磁盘上基础部分的字节完全一致。
+ */
+function buildBaseSections(input) {
+  const time = new Date();
+  const header = [
+    `===== DSH Desktop 崩溃报告 ${time.toISOString()} =====`,
+    `source: ${input.source}   phase: ${input.phase}`,
+    `backendReady: ${!!input.backendReady}`,
+    `version: ${appVersion()}`,
+    `platform: ${process.platform} ${process.arch}`,
+    `electron: ${process.versions.electron}   node: ${process.versions.node}`,
+    `pid: ${process.pid}`
+  ].join('\n');
+  return {
+    time,
+    sections: [
+      header,
+      '\n----- error -----',
+      renderErrorSection(input.error),
+      '\n----- backend log tail -----',
+      boundedTail(input.backendLogTail || ''),
+      '\n----- renderer console (error level, oldest first) -----',
+      (input.rendererConsole || []).join('\n')
+    ]
+  };
+}
+
+/** 基础报告全文（写盘用的就是这份字节；插件操作段在其后**追加**）。 */
+function buildBaseReport(input) {
+  return buildBaseSections(input).sections.join('\n') + '\n';
+}
+
+/**
+ * 0.3.49 · B-04：崩溃报告附加段 —— 最近 N 条插件操作。
+ *
+ * 为什么追加而不是并列进正文：基础报告是"错误现场"（不可变的证据），插件操作是
+ * **上下文**（官方标题里就写着 context, not proof of cause）。分开写有三个好处：
+ *   ① 基础报告字节可被独立校验（sha256 不变 = 证据没被改动）；
+ *   ② 台账不可用时基础报告完全不受伤（best-effort）；
+ *   ③ 读者一眼看出"这不是因果证明"。
+ *
+ * 台账取快照前先 `flush(300ms)` 把排队记录同步落盘（崩溃路径是同步的，必须能等），
+ * 再把内存环渲染成可读行；即使磁盘已停用，内存环照样能给出上下文。
+ */
+function buildPluginOpsSection() {
+  const lines = [`\n----- ${PLUGIN_OP_SECTION_TITLE} -----`];
+  let journal = null;
+  try {
+    journal = require('./plugin-journal');
+  } catch (err) {
+    lines.push(`（插件台账不可用：${(err && err.message) || err}）`);
+    lines.push('[collection failed]');
+    return lines.join('\n') + '\n';
+  }
+  try {
+    const flushed = journal.flush(PLUGIN_OP_FLUSH_DEADLINE_MS);
+    const snap = journal.renderRecent(PLUGIN_OP_MAX);
+    if (snap.lines.length === 0) {
+      lines.push('（本次进程内没有插件操作记录）');
+    } else {
+      for (const line of snap.lines) lines.push(line);
+      if (snap.omitted > 0) lines.push(`…（省略 ${snap.omitted} 条更早记录，完整台账见 ${journal.journalDir()}）`);
+    }
+    const deferred = flushed && flushed.deferred ? ` deferred=${flushed.deferred}` : '';
+    const st = journal.status();
+    // 收集完成标记：永远出现（0 条也标），否则读报告的人无法区分"没有操作"与"没收集到"
+    lines.push(`[collection complete] records=${snap.total} dropped=${st.dropped}${deferred} ledger=${journal.journalDir()}`);
+    // 磁盘停用/写失败要在报告里如实说明，不能让读者以为台账是全的
+    if (st.disabled) lines.push(`[ledger degraded] 台账落盘已停用：${st.lastError || 'unknown'}（以上内容来自内存环形缓冲）`);
+  } catch (err) {
+    lines.push(`（插件台账快照失败：${(err && err.message) || err}）`);
+    lines.push('[collection failed]');
+  }
+  return lines.join('\n') + '\n';
+}
+
+/**
  * 写一份崩溃报告。返回文件路径；失败返回 null（弹窗照常出，只是不带路径）。
  * @param {object} input
  *   { source: 'host'|'renderer'|'main', phase: 'startup'|'running',
@@ -106,37 +204,25 @@ function renderErrorSection(error) {
  */
 function writeCrashReport(input) {
   try {
-    const time = new Date();
     const dir = crashDir();
     try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
-    const header = [
-      `===== DSH Desktop 崩溃报告 ${time.toISOString()} =====`,
-      `source: ${input.source}   phase: ${input.phase}`,
-      `backendReady: ${!!input.backendReady}`,
-      `version: ${appVersion()}`,
-      `platform: ${process.platform} ${process.arch}`,
-      `electron: ${process.versions.electron}   node: ${process.versions.node}`,
-      `pid: ${process.pid}`
-    ].join('\n');
-    const sections = [
-      header,
-      '\n----- error -----',
-      renderErrorSection(input.error),
-      '\n----- backend log tail -----',
-      boundedTail(input.backendLogTail || ''),
-      '\n----- renderer console (error level, oldest first) -----',
-      (input.rendererConsole || []).join('\n')
-    ];
-    const file = path.join(dir, crashFileName(time, input.source));
+    const base = buildBaseSections(input);
+    const file = path.join(dir, crashFileName(base.time, input.source));
     // 0.3.42 · flag:'wx'（对齐官方 crash-report.ts:151）：绝不覆盖已存在的报告。
     // 同一秒内两次崩溃、或时间戳碰撞时，宁可这次不写，也不毁掉前一份证据。
     try {
-      fs.writeFileSync(file, sections.join('\n') + '\n', { encoding: 'utf8', flag: 'wx' });
+      fs.writeFileSync(file, base.sections.join('\n') + '\n', { encoding: 'utf8', flag: 'wx' });
     } catch (writeErr) {
       // 0.3.42 · 写入失败不再静默吞掉（对齐官方 :153-156）：留一行诊断，
       // 否则"没有崩溃报告"与"崩溃报告写失败"对用户和排查者无法区分。
       try { console.error('crash report write failed:', writeErr && writeErr.message, file); } catch (_) {}
       return null;
+    }
+    // 0.3.49 · B-04：基础报告已落盘 → 再追加插件操作段（best-effort，绝不重写基础字节）
+    try {
+      fs.appendFileSync(file, buildPluginOpsSection(), 'utf8');
+    } catch (appendErr) {
+      try { console.error('crash report: plugin operations section failed:', appendErr && appendErr.message); } catch (_) {}
     }
     return file;
   } catch (err) {
@@ -223,6 +309,18 @@ module.exports = {
   CRASH_REPORTS_RETAINED,
   CRASH_REPORT_WAIT_MS,
   DETAIL_BUDGET,
+  // 0.3.49 · B-04：插件操作段（契约字符串 + 条数上限，测试与文档共用）
+  PLUGIN_OP_SECTION_TITLE,
+  PLUGIN_OP_MAX,
   // 测试钩子
-  _internal: { renderErrorSection, boundedTail, crashFileName, CRASH_REPORT_NAME, DETAIL_TAIL_LINES }
+  _internal: {
+    renderErrorSection,
+    boundedTail,
+    crashFileName,
+    CRASH_REPORT_NAME,
+    DETAIL_TAIL_LINES,
+    buildBaseSections,
+    buildBaseReport,
+    buildPluginOpsSection
+  }
 };

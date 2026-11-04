@@ -1,0 +1,402 @@
+{
+  "startedAt": "2026-11-03T20:02:01.008Z",
+  "version": "0.3.50",
+  "log": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\02_编译阶段\\编译日志_0.3.50_20261104-035306.txt",
+  "total": 57,
+  "failed": 0,
+  "timedOut": 1,
+  "passWithHang": [
+    "scripts/test-043.js"
+  ],
+  "results": [
+    {
+      "kind": "gate",
+      "target": "scripts/build-files-gate.js",
+      "exit": 0,
+      "label": "build-files-gate"
+    },
+    {
+      "kind": "gate",
+      "target": "scripts/app-identity-gate.js",
+      "exit": 0,
+      "label": "app-identity-gate"
+    },
+    {
+      "kind": "check",
+      "target": "app-identity.js",
+      "exit": 0,
+      "label": "node --check app-identity.js"
+    },
+    {
+      "kind": "check",
+      "target": "crash-report.js",
+      "exit": 0,
+      "label": "node --check crash-report.js"
+    },
+    {
+      "kind": "check",
+      "target": "diag-log.js",
+      "exit": 0,
+      "label": "node --check diag-log.js"
+    },
+    {
+      "kind": "check",
+      "target": "ladder-policy.js",
+      "exit": 0,
+      "label": "node --check ladder-policy.js"
+    },
+    {
+      "kind": "check",
+      "target": "lifecycle-log.js",
+      "exit": 0,
+      "label": "node --check lifecycle-log.js"
+    },
+    {
+      "kind": "check",
+      "target": "main.js",
+      "exit": 0,
+      "label": "node --check main.js"
+    },
+    {
+      "kind": "check",
+      "target": "patch-file.js",
+      "exit": 0,
+      "label": "node --check patch-file.js"
+    },
+    {
+      "kind": "check",
+      "target": "plugin-journal.js",
+      "exit": 0,
+      "label": "node --check plugin-journal.js"
+    },
+    {
+      "kind": "check",
+      "target": "plugin-resolution.js",
+      "exit": 0,
+      "label": "node --check plugin-resolution.js"
+    },
+    {
+      "kind": "check",
+      "target": "preload.js",
+      "exit": 0,
+      "label": "node --check preload.js"
+    },
+    {
+      "kind": "check",
+      "target": "quit-guard.js",
+      "exit": 0,
+      "label": "node --check quit-guard.js"
+    },
+    {
+      "kind": "check",
+      "target": "session-hygiene.js",
+      "exit": 0,
+      "label": "node --check session-hygiene.js"
+    },
+    {
+      "kind": "check",
+      "target": "settings-preload.js",
+      "exit": 0,
+      "label": "node --check settings-preload.js"
+    },
+    {
+      "kind": "check",
+      "target": "settings-renderer.js",
+      "exit": 0,
+      "label": "node --check settings-renderer.js"
+    },
+    {
+      "kind": "check",
+      "target": "startup-deadline.js",
+      "exit": 0,
+      "label": "node --check startup-deadline.js"
+    },
+    {
+      "kind": "check",
+      "target": "update-schedule.js",
+      "exit": 0,
+      "label": "node --check update-schedule.js"
+    },
+    {
+      "kind": "check",
+      "target": "updater-backend.js",
+      "exit": 0,
+      "label": "node --check updater-backend.js"
+    },
+    {
+      "kind": "check",
+      "target": "url-policy.js",
+      "exit": 0,
+      "label": "node --check url-policy.js"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-038.js",
+      "exit": 0,
+      "label": "node scripts/test-038.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-039.js",
+      "exit": 0,
+      "label": "node scripts/test-039.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-040.js",
+      "exit": 0,
+      "label": "node scripts/test-040.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-041.js",
+      "exit": 0,
+      "label": "node scripts/test-041.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-042.js",
+      "exit": 0,
+      "label": "node scripts/test-042.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-043-ladder.js",
+      "exit": 0,
+      "label": "node scripts/test-043-ladder.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-043.js",
+      "exit": 124,
+      "label": "electron scripts/test-043.js",
+      "runner": "C:\\Users\\lcl\\Desktop\\DSH\\node_modules\\electron\\dist\\electron.exe",
+      "passWithHang": true,
+      "knownHang": {
+        "script": "scripts/test-043.js",
+        "reason": "0.3.43 时代的 Electron 测试脚本，跑完 27 项断言后没有调用 app.quit()，进程常驻导致超时。断言本身全绿（超时快照里 27 项 ✓、0 项 ✗），属测试脚手架未收尾，不是产品回归。",
+        "evidence": "修复与借鉴_2026-11-04/02_编译阶段/全量历史测试扫描_20261104-015548.txt（[TIMEOUT] 段：进程树只剩 Electron 子进程，最后 43 行输出全是 ✓）",
+        "owner": "历史脚本（0.3.43，已无 owner）",
+        "reviewedAt": "2026-11-04",
+        "reviewedBy": "出包验收团队（task-8）",
+        "outOfAuthoritativeGate": true
+      }
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-044.js",
+      "exit": 0,
+      "label": "node scripts/test-044.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-045.js",
+      "exit": 0,
+      "label": "node scripts/test-045.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-045b-copy-e2e.js",
+      "exit": 0,
+      "label": "electron scripts/test-045b-copy-e2e.js",
+      "runner": "C:\\Users\\lcl\\Desktop\\DSH\\node_modules\\electron\\dist\\electron.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-046-preflight-resolution.js",
+      "exit": 0,
+      "label": "node scripts/test-046-preflight-resolution.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-047-desktop-report.js",
+      "exit": 0,
+      "label": "node scripts/test-047-desktop-report.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-b01-cookie-hygiene.js",
+      "exit": 0,
+      "label": "node scripts/test-b01-cookie-hygiene.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-b03-update-schedule.js",
+      "exit": 0,
+      "label": "node scripts/test-b03-update-schedule.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-b04-crash-report-electron.js",
+      "exit": 0,
+      "label": "electron scripts/test-b04-crash-report-electron.js",
+      "runner": "C:\\Users\\lcl\\Desktop\\DSH\\node_modules\\electron\\dist\\electron.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-b04-plugin-journal.js",
+      "exit": 0,
+      "label": "node scripts/test-b04-plugin-journal.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-b05-b01-wiring.js",
+      "exit": 0,
+      "label": "node scripts/test-b05-b01-wiring.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-b05-url-policy.js",
+      "exit": 0,
+      "label": "node scripts/test-b05-url-policy.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-b08-b06-revision.js",
+      "exit": 0,
+      "label": "node scripts/test-b08-b06-revision.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-b12-plugin-journal-wiring.js",
+      "exit": 0,
+      "label": "node scripts/test-b12-plugin-journal-wiring.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-b17-integrity.js",
+      "exit": 0,
+      "label": "node scripts/test-b17-integrity.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-h01-rollback.js",
+      "exit": 0,
+      "label": "node scripts/test-h01-rollback.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-h02-spawn-sync.js",
+      "exit": 0,
+      "label": "node scripts/test-h02-spawn-sync.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-h03-startup-deadline.js",
+      "exit": 0,
+      "label": "node scripts/test-h03-startup-deadline.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-h04-h05-harness.js",
+      "exit": 0,
+      "label": "node scripts/test-h04-h05-harness.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-h04-quarantine-safety.js",
+      "exit": 0,
+      "label": "node scripts/test-h04-quarantine-safety.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-h05-apply-marker.js",
+      "exit": 0,
+      "label": "node scripts/test-h05-apply-marker.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-h06-csp-electron.js",
+      "exit": 0,
+      "label": "electron scripts/test-h06-csp-electron.js",
+      "runner": "C:\\Users\\lcl\\Desktop\\DSH\\node_modules\\electron\\dist\\electron.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-h06-settings-dom.js",
+      "exit": 0,
+      "label": "node scripts/test-h06-settings-dom.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-h08-aumid.js",
+      "exit": 0,
+      "label": "node scripts/test-h08-aumid.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-h10-durability-layering.js",
+      "exit": 0,
+      "label": "node scripts/test-h10-durability-layering.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-h10-electron-exit-flush.js",
+      "exit": 0,
+      "label": "node scripts/test-h10-electron-exit-flush.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-h10-log-throughput.js",
+      "exit": 0,
+      "label": "node scripts/test-h10-log-throughput.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/test-manifest-verify.js",
+      "exit": 0,
+      "label": "node scripts/test-manifest-verify.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/verify-041-real.js",
+      "exit": 0,
+      "label": "node scripts/verify-041-real.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/verify-043-incident.js",
+      "exit": 0,
+      "label": "node scripts/verify-043-incident.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    },
+    {
+      "kind": "test",
+      "target": "scripts/verify-043-real.js",
+      "exit": 0,
+      "label": "node scripts/verify-043-real.js",
+      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+    }
+  ]
+}

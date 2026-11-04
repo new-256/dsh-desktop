@@ -1,0 +1,122 @@
+{
+  "checkedAt": "2026-11-03T19:51:20.812Z",
+  "rows": [
+    {
+      "image": "修复与借鉴_2026-11-04\\03_调试阶段\\便携冒烟_首帧_0.3.48-20261104-0146-6286514_无效证据_全桌面截屏.png",
+      "status": "RETIRED",
+      "reasons": [
+        "文件名已标注为无效证据（历史全桌面截屏），仅作教训留存"
+      ],
+      "meta": null
+    },
+    {
+      "image": "修复与借鉴_2026-11-04\\03_调试阶段\\便携冒烟_首帧_0.3.48-20261104-0208-6286514_无效证据_全桌面截屏.png",
+      "status": "RETIRED",
+      "reasons": [
+        "文件名已标注为无效证据（历史全桌面截屏），仅作教训留存"
+      ],
+      "meta": null
+    },
+    {
+      "image": "修复与借鉴_2026-11-04\\03_调试阶段\\便携冒烟_首帧_0.3.48-20261104-0213-6286514_无效证据_全桌面截屏.png",
+      "status": "RETIRED",
+      "reasons": [
+        "文件名已标注为无效证据（历史全桌面截屏），仅作教训留存"
+      ],
+      "meta": null
+    },
+    {
+      "image": "修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.49_设置窗.png",
+      "status": "VALID",
+      "reasons": [],
+      "meta": {
+        "capturedAt": "2026-11-03T19:44:31.590Z",
+        "captureMethod": "electron-webContents-capturePage",
+        "windowTitle": "DSH Desktop 设置",
+        "targetUrl": "file:///C:/Users/lcl/Desktop/DSH/release/win-unpacked/resources/app.asar/settings.html",
+        "viewport": {
+          "width": 1179,
+          "height": 807
+        },
+        "assertions": {
+          "titleOk": true,
+          "domNodes": 154,
+          "nodesOk": true,
+          "interactivePresent": true,
+          "anchorsHit": [
+            "更新",
+            "设置"
+          ],
+          "anchorsOk": true,
+          "errorishEmpty": true
+        },
+        "domProbe": {
+          "inputs": 8,
+          "selects": 3,
+          "buttons": 13,
+          "bodyTextLen": 1275,
+          "bodyTextHead": "DSH Desktop 设置\n更新设置\n更新路线（后端组件下载源）\n镜像站（npmmirror） — 国内访问快；镜像同步可能滞后几小时到一天\n官方站（npmjs） — 版本与依赖始终最新；国内网络可能较慢\n桌面版\n未知\n当前版本\n未知\n最新版本\n未检查\n更新状态\n—\n后端 Node 要求\n检查更新后显示\n检查更新\n下"
+        },
+        "bytes": 55540,
+        "note": "本图由 Electron webContents.capturePage() 采集（窗口自身页面），不可能是其它程序；无本 .json 的截图不得作为验收证据。"
+      }
+    },
+    {
+      "image": "修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.49_首帧.png",
+      "status": "VALID",
+      "reasons": [],
+      "meta": {
+        "capturedAt": "2026-11-03T19:49:40.233Z",
+        "captureMethod": "cdp-page-captureScreenshot",
+        "targetUrl": "http://127.0.0.1:61589/",
+        "targetTitle": "DeepSeek Harness",
+        "viewport": {
+          "width": 1426,
+          "height": 884
+        },
+        "devicePixelRatio": 1.5,
+        "imagePixelSize": {
+          "width": 2139,
+          "height": 1326
+        },
+        "pngBytes": 49621,
+        "pngMagicOk": true,
+        "assertions": {
+          "readyState": "complete",
+          "readyStateOk": true,
+          "urlIsLocalBackend": true,
+          "nodes": 390,
+          "nodesOk": true,
+          "bodyTextLen": 71,
+          "anchorsHit": [
+            "新会话",
+            "插件",
+            "工作区",
+            "自动化任务",
+            "选择工作区",
+            "探索未至之境",
+            "标准模式",
+            "预览版"
+          ],
+          "anchorsOk": true,
+          "errorishEmpty": true,
+          "interactivePresent": true
+        },
+        "failedAssertions": [],
+        "domProbe": {
+          "inputs": 1,
+          "buttons": 13,
+          "svgIcons": 18,
+          "bodyTextHead": "新会话\nCtrl\n+\nAlt\n+\nN\n插件\n自动化任务\n工作区\n暂无会话\n更多\n探索未至之境\n预览版\n选择工作区\n标准模式\n选择一个工作区开始",
+          "errorish": []
+        },
+        "consoleErrors": [],
+        "note": "本图由 CDP Page.captureScreenshot 采集（target 级），不可能是其它程序的窗口；无本 .json 的截图不得作为验收证据。"
+      }
+    }
+  ],
+  "valid": 2,
+  "invalid": 0,
+  "retired": 3,
+  "passed": true
+}

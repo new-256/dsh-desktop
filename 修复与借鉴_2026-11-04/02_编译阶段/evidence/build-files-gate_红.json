@@ -1,0 +1,63 @@
+{
+  "generatedAt": "2026-11-03T17:11:25.926Z",
+  "version": "0.3.47",
+  "entryPoints": [
+    "main.js",
+    "settings.html",
+    "splash.html"
+  ],
+  "includePatterns": [
+    "main.js",
+    "preload.js",
+    "settings-preload.js",
+    "updater-backend.js",
+    "quit-guard.js",
+    "ladder-policy.js",
+    "diag-log.js",
+    "crash-report.js",
+    "lifecycle-log.js",
+    "plugin-resolution.js",
+    "patch-file.js",
+    "splash.html",
+    "settings.html",
+    "assets/**/*"
+  ],
+  "excludePatterns": [
+    "!vendor/**/*",
+    "!release/**/*",
+    "!scripts/**/*"
+  ],
+  "closureFiles": [
+    "package.json",
+    "assets/icon.png",
+    "crash-report.js",
+    "diag-log.js",
+    "ladder-policy.js",
+    "lifecycle-log.js",
+    "main.js",
+    "patch-file.js",
+    "plugin-resolution.js",
+    "preload.js",
+    "quit-guard.js",
+    "settings-preload.js",
+    "settings-renderer.js",
+    "settings.html",
+    "splash.html",
+    "updater-backend.js"
+  ],
+  "missing": [
+    {
+      "file": "package.json",
+      "why": null
+    },
+    {
+      "file": "settings-renderer.js",
+      "why": null
+    }
+  ],
+  "dangling": [],
+  "barePackages": [
+    "electron-updater"
+  ],
+  "passed": false
+}

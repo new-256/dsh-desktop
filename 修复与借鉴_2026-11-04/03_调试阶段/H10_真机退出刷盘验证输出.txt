@@ -1,0 +1,15 @@
+[PASS] ① Electron 子进程正常退出（批量层） — 实际 status=0 signal=null
+[PASS] ① 退出前队列确有 4 条未落盘行（会话头 + 3 条，证明被测的是退出 flush） — 实际：4
+[PASS] ① 高频行在退出前**不在**磁盘上（批量语义未被 durable 破坏） — 实际 logLines=0
+[PASS] ① app.exit 后主日志落盘 4 行（会话头 + 3 条） — 实际：4
+[PASS] ① 高频行不产生错误清单/桌面报告 — 实际：错误清单 0 行 / 桌面报告 0 行
+[PASS] ① 未触发「退出刷盘超预算」
+[PASS] ② Electron 子进程正常退出（durability 层） — 实际 status=0 signal=null
+[PASS] ② 错误行不在队列里（durable 记录直写，不排队） — 实际 queuedBeforeExit=0
+[PASS] ② 退出前主日志已落盘 4 行（会话头 + 3 条，含 durable 屏障刷出的高频行） — 实际 logLines=4
+[PASS] ② 退出前错误清单已落盘 1 行 — 实际 errorLines=1
+[PASS] ② 退出前桌面报告（固定名）已落盘 2 行（头 + 1 条） — 实际 reportLines=2
+[PASS] ② 主日志含 electron 真实版本号（electron.app.getVersion 路径可用） — 实际：版本=44.3.0
+
+[test-h10-electron] 共 12 项，通过 12，失败 0
+[test-h10-electron] 全部通过

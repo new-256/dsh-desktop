@@ -1,0 +1,63 @@
+{
+  "checkedAt": "2026-11-03T19:51:20.657Z",
+  "png": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.49_设置窗.png",
+  "width": 1179,
+  "height": 807,
+  "bytes": 55540,
+  "stats": {
+    "channels": 3,
+    "sampled": 237864,
+    "uniqueColors": 784,
+    "mean": 22.088903154680548,
+    "stddev": 27.75970009978829,
+    "topColorShare": 0.9339454478189217
+  },
+  "checks": [
+    {
+      "name": "文件存在",
+      "ok": true,
+      "detail": "null"
+    },
+    {
+      "name": "字节数 > 10240",
+      "ok": true,
+      "detail": "55540 字节"
+    },
+    {
+      "name": "PNG magic 正确",
+      "ok": true,
+      "detail": "89 50 4E 47 0D 0A 1A 0A"
+    },
+    {
+      "name": "IHDR 可解析",
+      "ok": true,
+      "detail": "1179×807 bitDepth=8 colorType=2 interlace=0"
+    },
+    {
+      "name": "尺寸与元数据 viewport 成等比缩放（DPR）",
+      "ok": true,
+      "detail": "图 1179×807 vs viewport 1179×807 → 缩放 1.000×/1.000×"
+    },
+    {
+      "name": "像素可解码（非隔行 8 位）",
+      "ok": true,
+      "detail": "3 通道，采样 237864 像素"
+    },
+    {
+      "name": "唯一颜色数 >= 50（排除白板/黑板）",
+      "ok": true,
+      "detail": "784 种"
+    },
+    {
+      "name": "灰度标准差 > 3（有实际内容）",
+      "ok": true,
+      "detail": "stddev=27.76，均值=22.1"
+    },
+    {
+      "name": "非近纯色背景（最频色占比 < 99%）",
+      "ok": true,
+      "detail": "最频色占比 93.4%"
+    }
+  ],
+  "passed": true
+}

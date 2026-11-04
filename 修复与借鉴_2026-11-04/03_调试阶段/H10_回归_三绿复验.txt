@@ -1,0 +1,118 @@
+===== 0) node --check（3 个产品文件 + 4 个测试脚本）=====
+node --check diag-log.js -> exit code 0
+node --check settings-preload.js -> exit code 0
+node --check settings-renderer.js -> exit code 0
+node --check scripts/test-047-desktop-report.js -> exit code 0
+node --check scripts/test-h10-log-throughput.js -> exit code 0
+node --check scripts/test-h10-durability-layering.js -> exit code 0
+node --check scripts/test-h10-electron-exit-flush.js -> exit code 0
+
+===== 1) node scripts/test-047-desktop-report.js（lead 退回的门禁）=====
+0.3.47 桌面报告纪律回归
+沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-047-HCkVIY
+
+① 启动即归档：桌面只留当前这一份
+  ✓ 启动归档前：桌面上有两份历史报告（复现现场）
+[diag] [2026-11-03T17:53:15.832Z] 启动：桌面报告纪律测试
+  ✓ 本次启动的第一次写日志即完成归档（桌面先清空）
+[diag] [2026-11-03T17:53:15.844Z] 模拟错误：error something failed
+  ✓ 本次启动后：桌面只剩一份报告
+  ✓ 桌面报告改为固定名（不带时间戳）
+  ✓ 两份历史报告已归档到安装目录 logs
+  ✓ 桌面上的历史报告已移走
+
+② 下一次启动：上一轮的报告被归档
+[diag] [2026-11-03T17:53:15.849Z] 第二次启动
+  ✓ 第二次启动时桌面先清空（上一轮的报告已被归档）
+  ✓ 上一轮的固定名报告已归档（带时间戳）
+[diag] [2026-11-03T17:53:15.851Z] 模拟错误：error again
+  ✓ 第二次启动出错后：桌面又只有一份
+
+③ 归档定期清除（份数 + 天数）
+  ✓ housekeep 清掉了多余归档（24 → 3）
+  ✓ 归档份数不超过上限 10
+  ✓ 超过 30 天的旧归档被清除
+  ✓ （主日志不受影响）
+
+④ 不误伤桌面上的其它文件
+[diag] [2026-11-03T17:53:15.867Z] 第三次启动
+  ✓ 桌面上的非 DSH 文件没有被归档/删除
+  ✓ 归档里没有混入非 DSH 文件
+
+────────────────────────────────────────
+断言 15 项，失败 0 项
+[exit code: 0]
+
+===== 2) node scripts/test-h10-log-throughput.js（高频路径零同步 IO）=====
+[PASS] 阶段1：注入 50000 行期间**零文件系统调用** — 实际：{"appendFileSync":0,"statSync":0,"renameSync":0,"writeFileSync":0,"existsSync":0}
+[PASS] 阶段1：队列完整收下 50002 条记录（无丢弃） — 实际：{"queuedLines":50002,"droppedTotal":0}
+[PASS] 阶段1：单行入队耗时 < 200µs — 实际：1.85µs/行，总 92.4ms
+[INFO] 同步基线（老路径形态）单行 228.08µs；本次入队 1.85µs（提速 123.4×）
+[PASS] 阶段1：flush 后队列清空 — 实际：0
+[PASS] 阶段1：flush 后零丢弃 — 实际：0
+[PASS] 阶段1：全部 50002 行落盘（header + 预热 + 50000） — 实际：50002
+[PASS] 阶段1：刷盘系统调用数远小于行数（批量证据） — 实际：78 次调用处理 50002 行，耗时 42.8ms
+[PASS] 阶段1：日志正文无「队列触顶」记录 — 正文干净
+[PASS] 阶段2：滚动确实发生过（产生存档） — 存档数：6，文件：["DSH-Desktop-日志-2026-11-03-175320-1.txt","DSH-Desktop-日志-2026-11-03-175320-2.txt","DSH-Desktop-日志-2026-11-03-175320-3.txt","DSH-Desktop-日志-2026-11-03-175320-4.txt","DSH-Desktop-日志-2026-11-03-175320-5.txt","DSH-Desktop-日志-2026-11-03-175320.txt","DSH-Desktop-日志.txt"]
+[PASS] 阶段2：滚动 + 交错写入后行数守恒（3001 行） — 实际：3001，明细 [{"name":"DSH-Desktop-日志-2026-11-03-175320-1.txt","lines":455,"bytes":67795},{"name":"DSH-Desktop-日志-2026-11-03-175320-2.txt","lines":455,"bytes":68161},{"name":"DSH-Desktop-日志-2026-11-03-175320-3.txt","lines":490,"bytes":73500},{"name":"DSH-Desktop-日志-2026-11-03-175320-4.txt","lines":455,"bytes":68250},{"name":"DSH-Desktop-日志-2026-11-03-175320-5.txt","lines":455,"bytes":68250},{"name":"DSH-Desktop-日志-2026-11-03-175320.txt","lines":457,"bytes":67986},{"name":"DSH-Desktop-日志.txt","lines":234,"bytes":35100}]
+[PASS] 阶段2：零丢弃 — 实际：{"mid":0,"final":0}
+[PASS] 阶段2：单文件不显著超阈值（块粒度 ≤ 块字节 + 阈值） — 实际：[67795,68161,73500,68250,68250,67986,35100]
+[PASS] 阶段3：触顶丢弃计数准确且未被静默吞掉 — 实际：{"droppedTotal":901,"queuedLines":100,"expectedDropped":901}
+[diag] [2026-11-03T17:53:20.789Z] ⚠ 诊断日志队列触顶（上限 100 行 / 33554432 字节）：本次丢弃 901 行，累计丢弃 901 行；被丢弃的行仍完整打印在 [dsh-backend] 标准输出，可用控制台日志补齐
+[PASS] 阶段3：丢弃计数写进了日志正文 — 正文片段：队列触顶（上限 100 行 / 33554432 字节）：本次丢弃 901 行，累计丢弃 901 行；被丢弃的行仍完整打印在 [dsh-backend] 标准输出，可用控制台日志补齐
+[PASS] 阶段3：正文里记的丢弃数 == 实际丢弃数 — 正文含「本次丢弃 901 行」
+[PASS] 阶段3：正文里的丢弃数之后不再重复计数（状态归零） — 实际：0
+[PASS] 阶段3：写入行数 = 队列上限（100 行）+ 1 条丢弃说明 — 实际：101
+[PASS] 阶段4：子进程正常退出 — 实际 status=0 signal=null
+[PASS] 阶段4：退出钩子把队列清空（501 行） — 实际：501
+[PASS] 阶段4：未触发「退出刷盘超预算」 — 正文干净
+
+[test-h10] 共 20 项，通过 20，失败 0
+[test-h10] 数据：{"phase1":{"perLineUs":1.84801,"baselinePerLineUs":228.075445,"flushMs":42.7828,"io":{"appendFileSync":26,"statSync":26,"renameSync":0,"writeFileSync":26,"existsSync":2}},"phase2":{"archives":6,"files":7},"phase3":{"expectedDropped":901,"lines":101},"phase4":{"lines":501}}
+[test-h10] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-h10-test-32996
+[test-h10] 全部通过
+[exit code: 0]
+
+===== 3) node scripts/test-h10-electron-exit-flush.js（真机退出 + durability）=====
+[PASS] ① Electron 子进程正常退出（批量层） — 实际 status=0 signal=null
+[PASS] ① 退出前队列确有 4 条未落盘行（会话头 + 3 条，证明被测的是退出 flush） — 实际：4
+[PASS] ① 高频行在退出前**不在**磁盘上（批量语义未被 durable 破坏） — 实际 logLines=0
+[PASS] ① app.exit 后主日志落盘 4 行（会话头 + 3 条） — 实际：4
+[PASS] ① 高频行不产生错误清单/桌面报告 — 实际：错误清单 0 行 / 桌面报告 0 行
+[PASS] ① 未触发「退出刷盘超预算」
+[PASS] ② Electron 子进程正常退出（durability 层） — 实际 status=0 signal=null
+[PASS] ② 错误行不在队列里（durable 记录直写，不排队） — 实际 queuedBeforeExit=0
+[PASS] ② 退出前主日志已落盘 4 行（会话头 + 3 条，含 durable 屏障刷出的高频行） — 实际 logLines=4
+[PASS] ② 退出前错误清单已落盘 1 行 — 实际 errorLines=1
+[PASS] ② 退出前桌面报告（固定名）已落盘 2 行（头 + 1 条） — 实际 reportLines=2
+[PASS] ② 主日志含 electron 真实版本号（electron.app.getVersion 路径可用） — 实际：版本=44.3.0
+
+[test-h10-electron] 共 12 项，通过 12，失败 0
+[test-h10-electron] 全部通过
+[exit code: 0]
+
+===== 4) node scripts/test-h10-durability-layering.js（分层门禁）=====
+[PASS] A1 50 条高频行期间零同步文件系统调用（H-10 收益保持） — 实际：{"appendFileSync":0,"statSync":0,"renameSync":0,"writeFileSync":0}
+[PASS] A2 高频行全部留在队列（51 = 会话头 + 50 行） — 实际：51
+[PASS] A3 返回后主日志尚未创建（批量语义） — 实际存在：false
+[PASS] A4 高频行不产生错误清单/桌面报告 — 实际：错误清单 false / 桌面报告 false
+[PASS] B1 错误行返回后主日志已落盘（含普通行，共 3 行：头 + 2） — 实际：3
+[PASS] B2 错误行返回后错误清单已落盘 1 行 — 实际：1
+[PASS] B3 错误行返回后桌面报告已落盘 2 行（头 + 1） — 实际：2
+[PASS] B4 三个产物内容都含错误文本 — 实际：{"log":true,"err":true,"report":true}
+[PASS] B5 错误行不入队列（durable 直写，队列清零） — 实际：0
+[PASS] C1 writeDurable 返回后主日志已落盘（含 1 条记录 + 会话头） — 实际：2
+[PASS] C2 writeDurable 不会把普通文本伪造进错误清单 — 实际：false
+[PASS] C3 writeDurable 返回后队列为空 — 实际：0
+[PASS] D1 屏障后 201 条记录全部落盘（头 + 200 高频 + 1 关键） — 实际：202
+[PASS] D2 关键记录排在最后（未插队到更早的行前面） — 实际末行：[2026-11-03T17:53:21.927Z] 关键产物：更新决策已记录
+[PASS] D3 高频行顺序保持（第 2 行是 queued-0） — 实际：第2行=[2026-11-03T17:53:21.925Z] 后端输出 queued-0 第201行=[2026-11-03T17:53:21.927Z] 后端输出 queued-199
+[PASS] E1 判定函数 feedsCriticalSink 存在且以 isError（去向）为判据
+[PASS] E2 durable 判定是「显式声明 ∨ 去向判定」，不含测试名或文本匹配（机制化，不是名单） — 实际判据：if (forceDurable || feedsCriticalSink(record))
+[PASS] E3 关键产物走 durability 层、高频行走批量层（两条路径均存在）
+
+[test-h10-durability] 共 18 项，通过 18，失败 0
+[test-h10-durability] 全部通过
+[exit code: 0]
+
+===== 汇总：失败项 0 =====

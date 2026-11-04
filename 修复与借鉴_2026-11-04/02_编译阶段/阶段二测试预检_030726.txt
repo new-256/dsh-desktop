@@ -1,0 +1,1147 @@
+
+##############################################################################
+# 阶段一 编译门禁  2026/11/4 03:07:26
+# 仓库根     : C:\Users\lcl\Desktop\DSH
+# node       : v24.21.0
+# 单项超时   : --check 120s / 测试 300s
+# 日志       : C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\02_编译阶段\阶段二测试预检_030726.txt
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+【第零节】打包白名单门禁（scripts/build-files-gate.js）
+──────────────────────────────────────────────────────────────────────────────
+
+
+══════════════════════════════════════════════════════════════════════════════
+  build.files 出包清单闭包门禁
+  仓库根 : C:\Users\lcl\Desktop\DSH
+  版本   : 0.3.48
+  入口   : main.js + settings.html + splash.html
+  白名单 : 4 条  黑名单 : 3 条
+══════════════════════════════════════════════════════════════════════════════
+
+【1】引用闭包 → build.files 覆盖检查
+  闭包文件数 : 22
+  ✔ 闭包内全部文件都被 build.files 覆盖
+
+【2】引用目标存在性（悬空引用）
+  ✔ 无悬空引用
+
+【3】反向体检（只告警，不阻断出包）
+  ✔ 未发现「列了却不存在」或「列了却没人用」的条目
+
+【3b】运行期读取「打包后会被剥离的字段」检查
+  ✔ 未发现运行期依赖被剥离字段
+
+【4】运行期裸包依赖（node_modules）
+  ✔ 已安装  electron-updater  (require 自: main.js；已在 dependencies）
+
+══════════════════════════════════════════════════════════════════════════════
+  结论：✔ 门禁通过 —— 引用闭包与 build.files 一致，可以出包。
+══════════════════════════════════════════════════════════════════════════════
+
+
+
+──────────────────────────────────────────────────────────────────────────────
+【第零·二节】随包 appId 常量一致性门禁（scripts/app-identity-gate.js）
+──────────────────────────────────────────────────────────────────────────────
+
+
+══════════════════════════════════════════════════════════════════════════════
+  随包 appId 常量一致性门禁（H-08 / AUMID）
+  仓库根 : C:\Users\lcl\Desktop\DSH
+  版本   : 0.3.48
+  期望 appId（package.json build.appId）: com.deepseek.dshdesktop
+══════════════════════════════════════════════════════════════════════════════
+
+【0】门禁自测：四种 appId 命名形状必须都被识别
+  ✔ 自测样本 APP_ID                   → MATCH（命中 1）
+  ✔ 自测样本 APP_USER_MODEL_ID        → MATCH（命中 1）
+  ✔ 自测样本 DSH_APP_ID               → MATCH（命中 1）
+  ✔ 自测样本 myAppId                  → MATCH（命中 1）
+  ✔ 自测样本 module.exports.APP_ID    → MATCH（命中 1）
+  ✔ 自测样本 exports.APP_USER_MODEL_ID → MATCH（命中 1）
+  ✔ 自测反向样本（无点号/非 appId 名）→ 未误判
+  ✔ 自测全部通过（6 个正向样本 + 反向样本未误判）
+
+【1】main.js 是否仍在读会被打包剥离的字段
+  ✔ main.js 不再依赖 package.json 的 build/scripts/devDependencies
+
+【2】随包 appId 常量模块
+  · app-identity.js → DSH_APP_ID = 'com.deepseek.dshdesktop'
+
+【3】常量值 vs build.appId 一致性
+  ✔ 1 个常量与 build.appId 完全一致：'com.deepseek.dshdesktop'
+
+【4】main.js 是否真的使用该常量设置 AUMID
+  main.js 有本地 require                : 是
+  main.js 调用 app.setAppUserModelId(…)  : 是
+  main.js 引用了候选常量名               : 是
+
+══════════════════════════════════════════════════════════════════════════════
+  �� 门禁通过 —— appId 常量与 build.appId 一致，且已被 main.js 用于设置 AUMID。
+══════════════════════════════════════════════════════════════════════════════
+
+
+
+──────────────────────────────────────────────────────────────────────────────
+【第一节】node --check 语法检查（18 个文件）
+──────────────────────────────────────────────────────────────────────────────
+
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:27.363+08:00
+  label    : node --check app-identity.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\app-identity.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:27.622+08:00 exit=0 reason=exit elapsed=0.3s label=node --check app-identity.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:27.838+08:00
+  label    : node --check crash-report.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\crash-report.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:28.024+08:00 exit=0 reason=exit elapsed=0.2s label=node --check crash-report.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:28.243+08:00
+  label    : node --check diag-log.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\diag-log.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:28.451+08:00 exit=0 reason=exit elapsed=0.2s label=node --check diag-log.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:28.678+08:00
+  label    : node --check ladder-policy.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\ladder-policy.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:28.863+08:00 exit=0 reason=exit elapsed=0.2s label=node --check ladder-policy.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:29.080+08:00
+  label    : node --check lifecycle-log.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\lifecycle-log.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:29.266+08:00 exit=0 reason=exit elapsed=0.2s label=node --check lifecycle-log.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:29.498+08:00
+  label    : node --check main.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\main.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:29.683+08:00 exit=0 reason=exit elapsed=0.2s label=node --check main.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:29.914+08:00
+  label    : node --check patch-file.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\patch-file.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:30.101+08:00 exit=0 reason=exit elapsed=0.2s label=node --check patch-file.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:30.324+08:00
+  label    : node --check plugin-journal.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\plugin-journal.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:30.508+08:00 exit=0 reason=exit elapsed=0.2s label=node --check plugin-journal.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:30.798+08:00
+  label    : node --check plugin-resolution.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\plugin-resolution.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:31.022+08:00 exit=0 reason=exit elapsed=0.2s label=node --check plugin-resolution.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:31.274+08:00
+  label    : node --check preload.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\preload.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:31.482+08:00 exit=0 reason=exit elapsed=0.2s label=node --check preload.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:31.733+08:00
+  label    : node --check quit-guard.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\quit-guard.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:31.925+08:00 exit=0 reason=exit elapsed=0.2s label=node --check quit-guard.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:32.198+08:00
+  label    : node --check session-hygiene.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\session-hygiene.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:32.475+08:00 exit=0 reason=exit elapsed=0.3s label=node --check session-hygiene.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:32.975+08:00
+  label    : node --check settings-preload.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\settings-preload.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:33.330+08:00 exit=0 reason=exit elapsed=0.4s label=node --check settings-preload.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:33.587+08:00
+  label    : node --check settings-renderer.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\settings-renderer.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:33.944+08:00 exit=0 reason=exit elapsed=0.4s label=node --check settings-renderer.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:34.245+08:00
+  label    : node --check startup-deadline.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\startup-deadline.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:34.465+08:00 exit=0 reason=exit elapsed=0.2s label=node --check startup-deadline.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:34.702+08:00
+  label    : node --check update-schedule.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\update-schedule.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:34.906+08:00 exit=0 reason=exit elapsed=0.2s label=node --check update-schedule.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:35.156+08:00
+  label    : node --check updater-backend.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\updater-backend.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:35.353+08:00 exit=0 reason=exit elapsed=0.2s label=node --check updater-backend.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:35.600+08:00
+  label    : node --check url-policy.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\url-policy.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:35.793+08:00 exit=0 reason=exit elapsed=0.2s label=node --check url-policy.js
+==============================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+【第二节】验证脚本（自定义：9 个）
+  模式 scripts/test-b*.js                         命中 9
+
+  · scripts/test-b01-cookie-hygiene.js
+  · scripts/test-b03-update-schedule.js
+  · scripts/test-b04-crash-report-electron.js
+  · scripts/test-b04-plugin-journal.js
+  · scripts/test-b05-b01-wiring.js
+  · scripts/test-b05-url-policy.js
+  · scripts/test-b08-b06-revision.js
+  · scripts/test-b12-plugin-journal-wiring.js
+  · scripts/test-b17-integrity.js
+──────────────────────────────────────────────────────────────────────────────
+
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:36.032+08:00
+  label    : node scripts/test-b01-cookie-hygiene.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b01-cookie-hygiene.js
+  timeout  : 300s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+0.3.49 · B-01 旧后端 cookie 清理（session-hygiene.js）
+
+① planCleanup：多源场景下"只清目标源"
+  ✓ 回环 + dsh 前缀 → 清除
+  ✓ 前缀匹配大小写不敏感（DSH-Token）
+  ✓ 下划线分隔也算本产品前缀（dsh_pref）
+  ✓ https/secure 的 cookie 同样清除
+  ✓ IPv6 回环 [::1] 上的本产品 cookie 清除
+  ✓ **其它本地工具的登录态（other-tool）必须保留**
+  ✓ **其它本地服务（grafana_session）必须保留**
+  ✓ 名字相似但不是前缀匹配（not-dsh-but-similar）保留
+  ✓ **外网站点上的同前缀 cookie（github.com）必须保留**
+  ✓ 用户外网登录态（npmjs/google）保留
+  ✓ 保留 6 条（3 回环他人 + 3 外网）
+  ✓ 外网站点被标记为 not-our-host（原因可追溯）
+  ✓ 回环上他人 cookie 被标记为 name-prefix-mismatch
+  ✓ 按主机汇总：127.0.0.1 三条（dsh-auth-session/dsh-session-id/DSH-Token）
+  ✓ 每条删除都带原因
+
+② cookieRemovalUrl
+  ✓ 非 secure → http://
+  ✓ secure + 点前缀 domain → https://（点前缀被去掉）
+  ✓ 极端缺字段不抛错（返回空 host 的 URL，由 remove 决定失败）
+
+③ 策略开关（配置驱动，不写死）
+  ✓ 默认前缀清单可读
+  ✓ 环境变量可覆盖前缀（去空格/小写）
+  ✓ 默认**不**全量清回环（避免误伤）
+  ✓ 显式开关可打开全量清回环
+  ✓ 全量模式下回环他人 cookie 也在清理范围（显式选择）
+  ✓ 即使全量模式也不碰外网站点
+  ✓ 自定义前缀只命中对应项
+
+④ createCookieHygiene：用假 session 跑真实执行路径
+  ✓ 扫描到全部 12 条 cookie
+  ✓ 清除 6 条目标 cookie
+  ✓ **其它本地工具的 cookie 仍在**
+  ✓ **用户外网站点登录态仍在**
+  ✓ 本产品旧后端 cookie 已清空
+  ✓ 清理前后各读一次 store（后一次用于复核）
+  ✓ 复核确认没有残留
+  ✓ 清理结果写进日志（清了几条/按源分组）
+  ✓ 一行式摘要含条数与按源分组（供后端日志）
+
+⑤ 失败与"假成功"都不静默
+  ✓ remove 抛错 → 记入 failed（不吞）
+  ✓ 失败原因原文保留（可归因）
+  ✓ 其它 5 条照常清理（一条失败不妨碍其余）
+  ✓ remove 报成功但实际还在 → 复核抓出来（stillThere）
+  ✓ 复核失败的项不计入 removed（不虚报成功）
+
+⑥ 幂等与边界
+  ✓ 第一轮清掉 3 条（localhost/::1/[::1]）
+  ✓ 第二轮（新端口启动）已无目标 → 幂等，不再删任何东西
+  ✓ 第二轮仍保留 4 条他人/外网 cookie（grafana/github/npmjs/google）
+  ✓ 没有 session 时明确抛错（不假装"本来就没 cookie"）
+  ✓ 空 store 不报错（首启动）
+
+────────────────────────────────────────
+断言 44 项，失败 0 项
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:36.232+08:00 exit=0 reason=exit elapsed=0.2s label=node scripts/test-b01-cookie-hygiene.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:36.495+08:00
+  label    : node scripts/test-b03-update-schedule.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b03-update-schedule.js
+  timeout  : 300s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+  · 资源监控已启动（独立进程 pid=41448）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-03-update-schedule_资源监控_20261104-030736.log
+
+── 场景1 配置校验：非法值必须抛错（不静默修正）
+  ✓ 拒绝非法配置 baseMs=0
+  ✓ 拒绝非法配置 baseMs=-1
+  ✓ 拒绝非法配置 baseMs=1.5
+  ✓ 拒绝非法配置 baseMs=abc
+  ✓ 拒绝非法配置 maxBackoffMs < baseMs
+  ✓ 拒绝非法配置 jitter=1
+  ✓ 拒绝非法配置 jitter=1.5
+  ✓ 拒绝非法配置 jitter=-0.1
+  ✓ 默认配置 = 官方默认（600s / 3600s / 0.2） = {"baseMs":600000,"maxBackoffMs":3600000,"jitter":0.2}
+
+── 场景1b 环境变量覆盖：合法生效、非法显式报错
+  ✓ DSH_UPDATE_BASE_MS 生效 = 5000
+  ✓ 两个变量同时生效 = {"baseMs":60000,"maxBackoffMs":120000,"jitter":0.2}
+  ✓ DSH_UPDATE_BASE_MS=60s 显式报错
+  ✓ max < base 显式报错
+
+── 场景2 指数退避：失败序列 1200s → 2400s → 3600s（封顶）→ 成功后回 600s
+  ✓ 初始延迟 = base 600s = 600000
+  ✓ 第 1 次失败（ok=false） = false
+  ✓ 第 2 次失败（ok=false） = false
+  ✓ 第 3 次失败（ok=false） = false
+  ✓ 第 4 次失败（ok=false） = false
+  ✓ 退避序列精确值（1200s→2400s→3600s→封顶 3600s） = [1200000,2400000,3600000,3600000]
+  ✓ 连续失败计数 = 4 = 4
+  ✓ 成功后立刻回到 base 600s = 600000
+  ✓ 成功后失败计数清零 = 0
+  ✓ 实际检查调用次数 = 5（无重复） = 5
+
+── 场景3 抖动：±20% 上下界 + 封顶处单边 + 不是常数
+  ✓ random=0 → 下界 1200s*0.8=960s = 960000
+  ✓ random→1 → 上界 1200s*1.2=1440s = 1440000
+  ✓ 封顶处上界被 maxBackoff 夹住（单边抖动，官方语义） = 3600000
+  ✓ 封顶处下界 3600s*0.8=2880s = 2880000
+  ✓ 默认随机源下 100 次采样不是常数（实得 100 个不同值）
+  ✓ 500 次采样全部落在 [960s, 1440s] 内 = 0
+
+── 场景4 单飞：检查进行中再次触发只产生 1 次实际调用
+  ✓ 并发两次触发 → 实际检查调用 1 次 = 1
+  ✓ 进行中标记 inFlight=true = true
+  ✓ 首个调用 joined=false（它是发起方） = false
+  ✓ 第二个调用 joined=true（并入在途请求） = true
+  ✓ joined 计数 = 1 = 1
+  ✓ 实际完成 1 次 = 1
+
+── 场景5 完成起算：慢请求不导致连发（下一次从"结束时刻"计时）
+  ✓ 到期时刻 = 完成时刻 + 600s（不是"发起时刻 + 600s"） = 600000
+  ✓ 完成时刻确实比发起晚 30s（慢请求已发生） = 30000
+  ✓ 完成瞬间尚未到期（慢请求不会立刻再查）
+
+── 场景6 时间回拨：不读墙钟，且单调时钟倒退也不立即重查
+  ✓ 墙钟不可用时节拍器仍能正常运行 = true
+  ✓ 节拍器从未调用 Date.now() = 0
+  ✓ 时钟倒退后不得判定为"已到期" = false
+  ✓ 时钟倒退时剩余时间仍为正（不做立即重查）
+  ✓ 回到正常时刻仍未到期（距完成不足 600s） = false
+
+── 场景7 start/stop：注入定时器，到期才触发且完成后再排下一次
+  ✓ start() 立刻排了一次 = 1
+  ✓ 首次排程等待落在 (0, 600s]（实际 1ms）
+  ✓ 到期触发了一次检查 = 1
+  ✓ 检查完成后重新排程（第二次） = 2
+  ✓ 第二次排程等待同样有界（实际 600000ms）
+  ✓ stop() 后 started=false = false
+
+── 场景8 status 快照不含墙钟语义
+  ✓ lastCompletedTick 为单调 tick 字符串（不是 ISO 时间）
+  ✓ status 中没有墙钟时间戳
+  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-03-update-schedule_资源监控_20261104-030736.log
+
+结果：51 通过 / 0 失败（耗时 121ms）
+✓ B-03-update-schedule 全部通过
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:36.889+08:00 exit=0 reason=exit elapsed=0.4s label=node scripts/test-b03-update-schedule.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:37.151+08:00
+  label    : electron scripts/test-b04-crash-report-electron.js
+  command  : C:\Users\lcl\Desktop\DSH\node_modules\electron\dist\electron.exe C:\Users\lcl\Desktop\DSH\scripts\test-b04-crash-report-electron.js
+  timeout  : 300s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+
+[36756:1104/030737.626:ERROR:net\base\network_change_notifier_win.cc:213] WSALookupServiceBegin failed with: 10108
+[diag] [2026-11-03T19:07:37.657Z] 插件台账 关键操作失败 isolate plugin=bad-plugin version=9.9.9 reason=EISOLATE phase=startup
+[PASS] 真机：crash-report 在真实 Electron 里落盘成功 — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756\crash\crash-2026-11-03T19-07-37-664Z-main.log
+[PASS] 真机：报告目录来自 crashDir()（真实路径契约） — 实际目录=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756\crash
+[PASS] 真机：含 context, not proof of cause 标题（官方原话） — 实际：----- recent plugin operations (context, not proof of cause) -----
+[PASS] 真机：四个动作都出现在报告里 — 实际：[]
+[PASS] 真机：失败原因码可见（可归因） — 实际：有
+[PASS] 真机：含收集完成标记 — 实际：[collection complete] records=4 dropped=0 ledger=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756\diag\logs\plugin-operations
+[PASS] 真机：基础报告段完好（error / backend tail / renderer console 都在） — 实际：{"error":true,"tail":true,"renderer":true}
+[PASS] 真机：附加段在基础报告之后（追加而非插入） — 实际：error@185 ops@452
+[PASS] 真机：报告里没有凭据样式内容 — 实际：干净
+[PASS] 真机：台账段文件已落盘（≤2 段） — 实际：["plugin-operations-1.log"] dir=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756\diag\logs\plugin-operations
+[PASS] 真机：台账目录与诊断日志同域（logs/plugin-operations） — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756\diag\logs\plugin-operations
+[PASS] 真机：writeCrashReportBounded 在 1s 预算内返回路径 — 实际：7ms file=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756\crash\crash-2026-11-03T19-07-37-674Z-main.log
+[PASS] 真机：bounded 路径写出的报告同样带插件操作段 — 实际：有
+
+[test-b04-electron] 共 13 项，通过 13，失败 0
+[test-b04-electron] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756
+[test-b04-electron] 全部通过
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:37.843+08:00 exit=0 reason=exit elapsed=0.7s label=electron scripts/test-b04-crash-report-electron.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:38.087+08:00
+  label    : node scripts/test-b04-plugin-journal.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b04-plugin-journal.js
+  timeout  : 300s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+[PASS] ① 入队 120 条（行级零 fs：队列里确实攒住了） — 实际 queued=120
+[PASS] ① flush 报告排空条数与入队一致 — 实际：{"flushed":120,"deferred":0}
+[PASS] ① 磁盘上仍然只有 2 段（环形，不无限增段） — 实际：["plugin-operations-1.log","plugin-operations-2.log"]
+[PASS] ① 总字节 ≤ 2×段预算 + 一个块余量 — 实际 8740 ≤ 9216
+[PASS] ① 无解析错误（每行都是完整 JSON） — 实际：[]
+[PASS] ① 保留记录序号连续无洞（装得下的一条不丢） — 实际：48 条，首=73 末=120，连续=true
+[PASS] ① 最后一条就是最后写入的那条 — 实际最后 seq=120
+[PASS] ① 记录字段齐全（墙钟+单调+动作+名+版本+来源+结果+阶段） — 实际样例：{"seq":120,"wall":"2026-11-03T19:07:38.263Z","monoMs":2.237,"action":"install","plugin":"plug-119","version":"1.0.119","source":"registry","result":"ok","reason":"","phase":"running"}
+[PASS] ② 超长记录被截断并标 truncated:true — 实际 truncated=true
+[PASS] ② 记录了截断前字节数 originalBytes > 4096 — 实际 originalBytes=20180
+[PASS] ② 单条（不含换行）≤ 4096 字节 — 实际=421
+[PASS] ② 截断后仍保留归因要点（动作/结果/原因码/阶段） — 实际：["seq","wall","monoMs","action","plugin","version","source","result","reason","phase","originalBytes","truncated"]
+[PASS] ② 正常记录不被误标 truncated — 实际：{"seq":2,"wall":"2026-11-03T19:07:38.311Z","monoMs":6.399,"action":"install","plugin":"normal-plugin","version":"1.0.0",
+[PASS] ③ 触顶后 record() 返回 false 且计数一致 — 实际 dropped=55 rejected=55
+[diag] [2026-11-03T19:07:38.316Z] 插件台账：排队触顶丢弃 55 条（已写入台账正文，丢弃时排队字节= 878 ）
+[PASS] ③ 台账正文有丢弃说明记录（含精确条数） — 实际：{"seq":61,"wall":"2026-11-03T19:07:38.315Z","monoMs":1.651,"action":"journal-drop","reason":"queue-overflow","dropped":55,"queuedBytes":878,"phase":"unknown"}
+[PASS] ③ 丢弃说明也写进了诊断日志正文（主日志可搜到） — 实际主日志片段：[2026-11-03T19:07:38.316Z] 插件台账：排队触顶丢弃 55 条（已写入台账正文，丢弃时排队字节= 878 ）
+[PASS] ③ 状态里 droppedWritten 已追上 dropped（不重复写说明） — 实际：{"dropped":55,"droppedWritten":55}
+[PASS] ③ 内存环仍保留被丢弃的记录（崩溃报告可用） — 实际：未被丢弃标记的条数=55
+[plugin-journal] EEXIST: file already exists, mkdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b04-16772\fail\blocked-as-file'
+[PASS] ④ 写失败后 status().disabled = true — 实际：{"disabled":true,"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b04-16772\\fail\\blocked-as-file'"}
+[PASS] ④ 失败计数与错误信息都曝光（不静默） — 实际：{"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b04-16772\\fail\\blocked-as-file'"}
+[PASS] ④ 停用后不再尝试写入（调用计数 = 0） — 实际 attempts=0
+[PASS] ④ 停用后仍然能给出内存环快照（崩溃报告用它） — 实际 recent=1
+[PASS] ④ 停用后 flush 返回 disabled 且不假装成功 — 实际：{"flushed":0,"dropped":0,"failed":1,"remaining":1,"deferred":1,"disabled":true,"ms":0}
+[PASS] ④ 首次 flush 也未抛出（本模块对外永不抛错） — 实际：{"flushed":0,"dropped":0,"failed":1,"remaining":1,"deferred":1,"disabled":true,"ms":0}
+[PASS] ⑤ recent(0) = [] — 实际：[]
+[PASS] ⑤ recent(-5) = [] — 实际：0
+[PASS] ⑤ recent() 缺省 20 条 — 实际：20
+[PASS] ⑤ recent(5) 返回最新 5 条且按时间升序 — 实际：r-25,r-26,r-27,r-28,r-29
+[PASS] ⑤ recent(1e6) 返回全部（30 条） — 实际：30
+[PASS] ⑤ renderRecent(10) 给出省略计数（30-10=20） — 实际：{"omitted":20,"lines":10}
+[PASS] ⑤ 渲染行包含动作/插件/结果/阶段 — 实际末行：#30 2026-11-03T19:07:38.324Z +0.364ms enable r-29 source=profile ok phase=running
+[PASS] ⑥ 崩溃报告已落盘 — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-16772\crash\logs\crash-2026-11-03T19-07-38-335Z-main.log
+[PASS] ⑥ 附加段标题逐字含 context, not proof of cause — 实际标题行：----- recent plugin operations (context, not proof of cause) -----
+[PASS] ⑥ 基础报告字节未被重写（除时间戳外与原文逐字节一致，附加段只追加） — 实际：基础=904B 前缀=904B 完全一致=true 归一后一致=true
+[PASS] ⑥ 附加段含我们的插件操作行 — 实际：#16 2026-11-03T19:07:38.329Z +4.058ms install crashplug-15@2.0.15 source=registry ok phase=startup
+[PASS] ⑥ 超过 40 条时有省略计数 — 实际：省略 15 条更早记录
+[PASS] ⑥ 有收集完成标记（含 records/dropped/ledger） — 实际：[collection complete] records=55 dropped=0 ledger=C:\Users\lcl\AppData\Local\Temp\dsh-b04-16772\crash\logs\plugin-operations
+[PASS] ⑥ 基础报告字节未被重写（时间戳归一后 sha256 完全一致 = 逐字节只追加） — 实际：前缀 sha256=c340309a04809f1a82afb78674d615abbd5928f61abd621298ce23fe240bbe69 期望=c340309a04809f1a82afb78674d615abbd5928f61abd621298ce23fe240bbe69
+[PASS] ⑥ 非白名单字段未被持久化（token 值不出现） — 实际：已丢弃
+[PASS] ⑥ 附加段不含凭据类键名（token/password/secret/authorization） — 实际命中：[]
+[PASS] ⑥ 凭据样式已脱敏（abc123supersecret 不出现） — 实际：已脱敏
+[PASS] ⑥ 失败记录原因码在报告里可见（结果可归因） — 实际：有
+[PASS] ⑥ 凭据被打码的记录带 redacted 标记（读者能看出内容被改写） — 实际台账里 redacted 标记数=47
+[PASS] ⑥ 基础报告里仍保留错误与尾部（附加段没有挤掉原有内容） — 实际：{"error":true,"tail":true}
+[PASS] ⑦ 退出预算内可同步排空（≤500ms 预算可被崩溃/退出路径等待） — 实际：{"flushed":1,"ms":2}
+[PASS] ⑦ 排空后磁盘上确实有这条记录 — 实际条数=1
+[PASS] ⑧ 边写边刷：9000 条全部记入（已落盘 + 排队 = 9000，零丢弃） — 实际：{"written":8801,"queued":199,"dropped":0}
+[PASS] ⑧ 磁盘仍只有 2 段文件 — 实际：["plugin-operations-1.log","plugin-operations-2.log"]
+[PASS] ⑧ 总字节 ≤ 512KiB + 一个块余量 — 实际 303340 ≤ 557056
+[PASS] ⑧ 排空后无积压、无丢弃、落盘总数 = 9000 — 实际：{"flushed":199,"deferred":0,"dropped":0,"queued":0,"written":9000}
+[PASS] ⑧ 保留的是最近一段且有界（序号连续、末条是最新） — 实际保留 1623 条，首=7378 末=9000
+[PASS] ⑨ 慢磁盘（每次 append 阻塞 30ms）下 500ms 预算不被拖爆 — 实际：{"ms":515,"flushed":85,"deferred":115}
+[PASS] ⑨ 未排完的记录留在队列（不丢）+ 可继续排空 — 实际：{"deferred":115,"remaining":115}
+[PASS] ⑨ 继承预算后最终全部落盘（两次调用合计 = 200 条） — 实际：{"first":85,"second":115,"queued":0}
+
+[test-b04] 共 54 项，通过 54，失败 0
+[test-b04] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-b04-16772
+[test-b04] 全部通过
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:39.047+08:00 exit=0 reason=exit elapsed=1.0s label=node scripts/test-b04-plugin-journal.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:39.364+08:00
+  label    : node scripts/test-b05-b01-wiring.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b05-b01-wiring.js
+  timeout  : 300s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+0.3.49 · B-05/B-01 接线回归（真实 main.js + 桩 Electron）
+沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-b05w-vXYDXH
+
+① 窗口安全配置
+  ✓ main.js 里不再有任何 sandbox:false
+  ✓ 主窗/设置窗/splash 三处都显式 sandbox:true
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:39.697Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+[diag] [2026-11-03T19:07:39.700Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"main","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+[diag] [2026-11-03T19:07:39.700Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+  ✓ 构造了三个窗口（主窗 + splash + 设置窗）
+  ✓ 三个窗口的 webPreferences.sandbox 均为 true
+  ✓ 三个窗口都保持 contextIsolation:true
+  ✓ 没有任何窗口打开 nodeIntegration
+  ✓ 两个窗口各有自己的 preload（主窗/设置窗）
+  ✓ 落盘了"读回实际生效值"的自证日志（真机证据来源）
+  ✓ 自证日志里 sandbox 为 true（读回值，不是我们写的字面量）
+
+② 导航白名单与开窗处理器
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:40.325Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+[diag] [2026-11-03T19:07:40.325Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"main","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+[diag] [2026-11-03T19:07:40.325Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+  ✓ **两个**窗口都注册了 will-navigate（0.3.48 只有主窗，且没有导航处理器）
+  ✓ **两个**窗口都装了 setWindowOpenHandler
+  ✓ main.js 通过 url-policy 模块判定（不在原地写正则）
+  ✓ 设置窗确实调用了 applyWindowHandlers
+
+③ 导航拦截行为
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:40.329Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+[diag] [2026-11-03T19:07:40.329Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"main","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+[diag] [2026-11-03T19:07:40.329Z] [url-policy] will-navigate(main) allow=false kind=denied reason=cross-origin-navigation target=https://evil.example/phish
+  ✓ 跨源导航被 preventDefault（不是只记日志）
+[diag] [2026-11-03T19:07:40.333Z] [url-policy] will-navigate(main) allow=false kind=denied reason=cross-origin-navigation target=http://127.0.0.1:59999/admin
+  ✓ 同机不同端口的导航也被拦（避免跳到别的本地服务继续带我们的 preload）
+  ✓ 同源页面内跳转放行
+[diag] [2026-11-03T19:07:40.335Z] [url-policy] will-navigate(main) allow=false kind=denied reason=file-outside-app target=file:///C:/Windows/System32/calc.exe
+  ✓ 应用目录外的 file:// 导航被拦
+  ✓ 被拦的导航写进诊断日志（含 reason，可归因）
+
+④ 开窗策略行为
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:40.949Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+[diag] [2026-11-03T19:07:40.949Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"main","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+[diag] [2026-11-03T19:07:40.950Z] [url-policy] window-open(main) action=open-external reason=external-http target=https://github.com/deepseek-ai/deepseek-harness
+  ✓ 外链也只 deny（不在应用内开窗）
+  ✓ 外链交给系统浏览器打开
+[diag] [2026-11-03T19:07:41.365Z] [url-policy] window-open(main) action=deny reason=protocol-not-allowlisted target=file:///C:/Windows/System32/calc.exe
+  ✓ 拒绝开窗：file:///C:/Windows/System32/calc.exe
+  ✓ 拒绝 file:///C:/Windows/System32/calc.exe 时没有偷偷 openExternal
+[diag] [2026-11-03T19:07:41.365Z] [url-policy] window-open(main) action=deny reason=protocol-not-allowlisted target=javascript:alert(1)
+  ✓ 拒绝开窗：javascript:alert(1)
+  ✓ 拒绝 javascript:alert(1) 时没有偷偷 openExternal
+[diag] [2026-11-03T19:07:41.369Z] [url-policy] window-open(main) action=deny reason=protocol-not-allowlisted target=vscode://x
+  ✓ 拒绝开窗：vscode://x
+  ✓ 拒绝 vscode://x 时没有偷偷 openExternal
+[diag] [2026-11-03T19:07:41.369Z] [url-policy] window-open(main) action=deny reason=protocol-not-allowlisted target=data:text/html,x
+  ✓ 拒绝开窗：data:text/html,x
+  ✓ 拒绝 data:text/html,x 时没有偷偷 openExternal
+[diag] [2026-11-03T19:07:41.370Z] [url-policy] window-open(main) action=deny reason=loopback-not-external target=http://127.0.0.1:59999/x
+  ✓ 回环地址不作为外链打开
+
+⑤ IPC 通道按窗口身份分权
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:41.372Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+  ✓ settings-preload 白名单解析出 22 个通道（与 task-7 收敛结果一致）
+  ✓ main.js 的设置窗清单与 settings-preload.js **逐项一致**
+  ✓ 解析出全部已注册通道
+  ✓ 每个已注册通道都被某个窗口认领（没有"注册了但谁也调不到"的通道）
+  ✓ 主窗与设置窗的通道清单没有交集
+  ✓ plugins:install 仅设置窗可调（主窗里的插件前端代码碰不到）
+  ✓ plugins:set-path-entry 仅设置窗可调（主窗里的插件前端代码碰不到）
+  ✓ backend:rollback-to 仅设置窗可调（主窗里的插件前端代码碰不到）
+  ✓ plugins:import-legacy 仅设置窗可调（主窗里的插件前端代码碰不到）
+
+⑥ assertOwnedSender 按窗口身份拒绝越权
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:41.375Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+[dsh-backend] renderer=Chromium (Electron); system WebView2 present=true v140.0.3485.54
+[diag] [2026-11-03T19:07:41.375Z] 后端输出 renderer=Chromium (Electron); system WebView2 present=true v140.0.3485.54
+
+[diag] [2026-11-03T19:07:41.375Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"main","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+[diag] [2026-11-03T19:07:41.376Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+[diag] [2026-11-03T19:07:41.376Z] 已拒绝越权 IPC：main 窗不得调用 plugins:install
+  ✓ 主窗调用 plugins:install → 拒绝（越权 IPC）
+[diag] [2026-11-03T19:07:41.378Z] 已拒绝越权 IPC：settings 窗不得调用 app:device-info
+  ✓ 设置窗调用 app:device-info → 拒绝
+  ✓ 主窗调用自己的通道放行
+  ✓ 设置窗调用自己的通道放行
+  ✓ 非本应用窗口的 IPC 仍被拒（原校验未退化）
+  ✓ 越权尝试写进诊断日志（可归因到注入链）
+
+⑦ B-01 cookie 清理接线
+  ✓ main.js 调用了 cleanLegacyBackendCookies()
+  ✓ 清理发生在「启动后端」之前（否则旧 cookie 已随首个请求发出）
+  ✓ main.js 通过 session-hygiene 模块清理（不在原地写逻辑）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:41.989Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+[diag] [2026-11-03T19:07:41.990Z] session-hygiene：旧后端 cookie 清理完成 {"scanned":3,"removed":1,"kept":2,"byHost":{"127.0.0.1":1},"failed":0,"stillThere":0}
+[dsh-backend] 旧后端 cookie 清理：扫描 3 条，清除 1 条（127.0.0.1×1），保留 2 条（cookie 忽略端口：旧端口的 cookie 会串到本次新端口）
+[diag] [2026-11-03T19:07:41.992Z] 后端输出 旧后端 cookie 清理：扫描 3 条，清除 1 条（127.0.0.1×1），保留 2 条（cookie 忽略端口：旧端口的 cookie 会串到本次新端口）
+
+  ✓ 真实清理只删本产品旧 cookie
+  ✓ **回环上其它工具的 cookie 未被误删**
+  ✓ **外网站点登录态未被误删**
+[diag] [2026-11-03T19:07:42.201Z] ready-to-show 超时，执行保底显示主窗口
+[dsh-backend] 主窗口已显示并获取焦点
+[diag] [2026-11-03T19:07:42.202Z] 后端输出 主窗口已显示并获取焦点
+
+  ✓ 清理结果写进后端日志（条数 + 按源）
+
+⑧ 延后通知队列（阶段一审计遗留接线）
+  ✓ profile 隔离结果接入 recordIsolationOutcome（不再只写日志）
+  ✓ 隔离/更新中断使用延后队列（启动早期不阻塞）
+  ✓ 主窗口就绪后统一展示延后通知
+  ✓ H-05 中断态在启动早期读取（mgr.interruptedApplyState）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:42.607Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+[diag] [2026-11-03T19:07:42.608Z] 展示启动提示（isolation-abandoned）: {"title":"插件隔离已放弃","message":"已放弃，数据原样"}
+[diag] [2026-11-03T19:07:42.608Z] 托盘气泡未发出（托盘不存在），改用替代通道: {"title":"插件隔离已放弃","content":"已放弃，数据原样","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":false}
+[diag] [2026-11-03T19:07:42.608Z] 替代通知通道不可用（Notification.isSupported=false），本条通知仅落日志: {"title":"插件隔离已放弃","why":"no-tray"}
+[diag] [2026-11-03T19:07:42.835Z] ready-to-show 超时，执行保底显示主窗口
+[dsh-backend] 主窗口已显示并获取焦点
+[diag] [2026-11-03T19:07:42.837Z] 后端输出 主窗口已显示并获取焦点
+
+[diag] [2026-11-03T19:07:42.837Z] ready-to-show 超时，执行保底显示主窗口
+[dsh-backend] 主窗口已显示并获取焦点
+[diag] [2026-11-03T19:07:42.838Z] 后端输出 主窗口已显示并获取焦点
+
+  ✓ 同 kind 通知幂等（只保留一条，避免阶梯重试刷屏）
+  ✓ 只有一条提示弹窗
+  ✓ 提示标题点明"隔离已放弃"
+  ✓ 非阻塞单按钮提示（不需要用户操作）
+
+────────────────────────────────────────
+断言 59 项，失败 0 项
+
+沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-b05w-vXYDXH
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:43.058+08:00 exit=0 reason=exit elapsed=3.7s label=node scripts/test-b05-b01-wiring.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:43.323+08:00
+  label    : node scripts/test-b05-url-policy.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b05-url-policy.js
+  timeout  : 300s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+0.3.49 · B-05/B-11 导航与开窗判定（url-policy.js，纯函数）
+
+① 导航白名单（will-navigate）
+  ✓ 同源（随机端口）内的页面跳转放行
+  ✓ 放行原因为 same-origin
+  ✓ 回环但**不同端口**也拒绝（不能用"是否回环"判定，否则可跳到别的本地服务并继续带我们的 preload）
+  ✓ 跨源导航拒绝
+  ✓ localhost 与 127.0.0.1 属不同 origin，跨源拒绝
+  ✓ 换一次启动（端口 51001）同样放行自身 origin
+  ✓ 纯 hash 路由不触发拒绝
+
+② 导航白名单（file:// 自身页面）
+  ✓ 应用目录内的 settings.html 放行
+  ✓ 应用目录内的 splash.html 放行
+  ✓ 应用目录外的 file:// 拒绝（挡住"用导航打开本机程序"）
+  ✓ 用 .. 逃出应用目录同样拒绝
+
+③ 导航：其它协议一律拒
+  ✓ about:blank 拒绝
+  ✓ javascript: 拒绝
+  ✓ data: 拒绝
+  ✓ blob: 拒绝
+  ✓ mailto 不作为导航放行（只走开窗通道）
+  ✓ 自定义协议拒绝
+  ✓ 空串拒绝
+  ✓ 不可解析字符串拒绝
+  ✓ null 拒绝（不让 undefined 漏过去）
+
+④ 开窗判定（setWindowOpenHandler，默认拒绝）
+  ✓ 受信外链（GitHub）交给系统浏览器打开
+  ✓ 外链原因 external-http
+  ✓ mailto 交给邮件客户端
+  ✓ 拒绝 "file:///C:/Windows/System32/calc.exe"
+  ✓ 拒绝 "javascript:alert(1)"
+  ✓ 拒绝 "data:text/html,x"
+  ✓ 拒绝 "ftp://x/y"
+  ✓ 拒绝 "vscode://x"
+  ✓ 拒绝 ""
+  ✓ file:// 的拒绝理由是协议不在白名单（B-11 的显式理由）
+  ✓ 带用户名/密码的 URL 拒绝（经典钓鱼形态）
+  ✓ punycode 形态（已是 ASCII）按普通外链处理
+  ✓ 含非 ASCII 字符的主机拒绝（Unicode 同形字钓鱼）
+  ✓ 同源弹窗也拒绝（我们不需要任何子窗口）
+  ✓ 回环地址不交给系统浏览器（那是我们自己的 UI/本地服务）
+  ✓ about:blank 开窗拒绝
+
+⑤ 外链主机允许清单（可选收紧）
+  ✓ 环境变量解析为主机清单
+  ✓ 未设置 → 空清单（不限制主机）
+  ✓ 全空 → 空清单
+  ✓ 清单内主机放行
+  ✓ 子域按后缀匹配放行
+  ✓ 清单外主机拒绝
+
+⑥ 辅助函数
+  ✓ originOf 丢掉路径与查询
+  ✓ originOf 对 file: 返回统一标记
+  ✓ 不可解析返回 null
+  ✓ 回环主机识别（大小写/IPv6 括号）
+  ✓ 近似域名不算回环
+  ✓ normalizeHost 去掉 cookies 常见的点前缀
+  ✓ sameOrigin 忽略路径
+  ✓ sameOrigin 区分端口
+  ✓ describeDecision 生成统一日志行（main.js 不再自己拼）
+  ✓ 导航允许协议清单显式可读
+  ✓ 外链白名单**不含** file:（B-11 的核心）
+
+────────────────────────────────────────
+断言 53 项，失败 0 项
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:43.538+08:00 exit=0 reason=exit elapsed=0.2s label=node scripts/test-b05-url-policy.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:43.775+08:00
+  label    : node scripts/test-b08-b06-revision.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b08-b06-revision.js
+  timeout  : 300s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+  · 资源监控已启动（独立进程 pid=36448）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-08-B-06-revision_资源监控_20261104-030743.log
+
+── B-06-1 代次：切路线自增，重复写同值不自增
+  ✓ 初始 revision = 0
+[backend-mgr] 更新代次 revision → 1（原因：设置变更：npmRegistry）；此前的确认一律作废
+[diag] [2026-11-03T19:07:44.086Z] [backend-mgr] 更新代次 revision → 1（原因：设置变更：npmRegistry）；此前的确认一律作废
+  ✓ 切更新路线 → 代次自增（实际 1）
+  ✓ 重复写入相同设置 → 代次不变（不做无意义作废） = 1
+  ✓ 写与目标无关的设置 → 代次不变 = 1
+
+── B-06-2 令牌绑定：版本 + 代次 + 内容摘要
+[backend-mgr] 记录更新候选（供确认绑定） {"version":"1.2.3","digest":"e27d8bc337b3f40cae2fff129bde386a96ff070e931daa9ea03acfa935ac101d","revision":1,"at":"2026-11-03T19:07:44.116Z","source":"test"}
+[diag] [2026-11-03T19:07:44.116Z] [backend-mgr] 记录更新候选（供确认绑定） {"version":"1.2.3","digest":"e27d8bc337b3f40cae2fff129bde386a96ff070e931daa9ea03acfa935ac101d","revision":1,"at":"2026-11-03T19:07:44.116Z","source":"test"}
+  ✓ 快照版本 = "1.2.3"
+  ✓ 快照代次 = 当前代次 = 1
+  ✓ 内容摘要为 sha256 十六进制
+  ✓ 令牌内容来自快照 = {"revision":1,"version":"1.2.3","digest":"e27d8bc337b3f40cae2fff129bde386a96ff070e931daa9ea03acfa935ac101d"}
+  ✓ 新鲜令牌通过 = {"ok":true,"stale":false,"unbound":false}
+  ✓ 内容摘要一致 → 通过 = true
+
+── B-06-3 上游重发同版本（内容变了）→ 旧确认作废
+  ✓ 内容摘要不一致 → 拒绝 = false
+  ✓ 文案指明"上游重发"这一真实原因
+  ✓ 摘要确实随内容变化
+
+── B-06-4 切渠道 → 旧确认作废（revision 变化）
+[backend-mgr] 更新代次 revision → 2（原因：channel-switch-test）；此前的确认一律作废
+[diag] [2026-11-03T19:07:44.119Z] [backend-mgr] 更新代次 revision → 2（原因：channel-switch-test）；此前的确认一律作废
+  ✓ 代次变化后旧令牌作废 = {"ok":false,"stale":true}
+  ✓ 文案说明代次变化
+  ✓ 代次变化后快照被清（旧令牌无法再被重新签发） = null
+
+── B-06-5 目标版本不一致 / 未携带令牌
+[backend-mgr] 记录更新候选（供确认绑定） {"version":"1.2.3","digest":"e27d8bc337b3f40cae2fff129bde386a96ff070e931daa9ea03acfa935ac101d","revision":2,"at":"2026-11-03T19:07:44.120Z","source":"test"}
+[diag] [2026-11-03T19:07:44.121Z] [backend-mgr] 记录更新候选（供确认绑定） {"version":"1.2.3","digest":"e27d8bc337b3f40cae2fff129bde386a96ff070e931daa9ea03acfa935ac101d","revision":2,"at":"2026-11-03T19:07:44.120Z","source":"test"}
+  ✓ 令牌版本 ≠ 本次目标 → 作废 = true
+  ✓ 文案提示重新确认
+  ✓ 未携带令牌：标记 unbound（不假装校验过） = {"ok":true,"unbound":true}
+  ✓ 摘要校验在无令牌时显式标 unchecked = true
+
+── B-06-6 端到端：过期确认在网络请求之前被拒绝（registry 不可达也不影响判定）
+[backend-mgr] 更新代次 revision → 3（原因：设置变更：npmRegistry）；此前的确认一律作废
+[diag] [2026-11-03T19:07:44.126Z] [backend-mgr] 更新代次 revision → 3（原因：设置变更：npmRegistry）；此前的确认一律作废
+[backend-mgr] 记录更新候选（供确认绑定） {"version":"2.0.0","digest":"b839242762caf6d7579ed1b1d52a93a9dad746c467bf8c0a36c8ea77a363d7e1","revision":3,"at":"2026-11-03T19:07:44.128Z","source":"test"}
+[diag] [2026-11-03T19:07:44.128Z] [backend-mgr] 记录更新候选（供确认绑定） {"version":"2.0.0","digest":"b839242762caf6d7579ed1b1d52a93a9dad746c467bf8c0a36c8ea77a363d7e1","revision":3,"at":"2026-11-03T19:07:44.128Z","source":"test"}
+[backend-mgr] 更新代次 revision → 4（原因：switch-before-download）；此前的确认一律作废
+[diag] [2026-11-03T19:07:44.128Z] [backend-mgr] 更新代次 revision → 4（原因：switch-before-download）；此前的确认一律作废
+[backend-mgr] 拒绝执行过期的更新确认（网络请求之前）：确认后更新路线/版本已变更（确认代次 3，当前 4）—— 目标可能已换，请重新确认。
+[diag] [2026-11-03T19:07:44.133Z] [backend-mgr] 拒绝执行过期的更新确认（网络请求之前）：确认后更新路线/版本已变更（确认代次 3，当前 4）—— 目标可能已换，请重新确认。
+  ✓ 过期确认被拒绝（抛错）
+  ✓ 错误文案指向"目标已变更，请重新确认"
+  ✓ 不是网络错误（说明没起网络请求）
+  ✓ 拒绝在毫秒级完成（实际 8ms，未等网络超时）
+  ✓ journal 落 ERR_UPDATER_CONFIRMATION_STALE
+
+── B-08-1 没有暂存内容 → 不探测、不阻拦（启动常态零开销）
+[backend-mgr] apply 闸门探针已注册: true
+[diag] [2026-11-03T19:07:44.140Z] [backend-mgr] apply 闸门探针已注册: true
+  ✓ 无暂存时原样返回（不触发闸门探针） = {"dsh":null,"node":null}
+  ✓ 没有 blocked 字段 = undefined
+
+── B-08-2 后端仍在运行 → 阻止应用并保留暂存
+[backend-mgr] apply 闸门探针已注册: true
+[diag] [2026-11-03T19:07:44.149Z] [backend-mgr] apply 闸门探针已注册: true
+[backend-mgr] 已阻止本次应用更新（后端未干净退出）：后端进程仍在运行
+[diag] [2026-11-03T19:07:44.150Z] [backend-mgr] 已阻止本次应用更新（后端未干净退出）：后端进程仍在运行
+  ✓ 被阻止（blocked=true） = true
+  ✓ 没有应用任何 dsh 版本 = null
+  ✓ 原因写明"后端进程仍在运行"
+  ✓ 给出"正在收尾，稍后自动重试"提示
+  ✓ 活跃版本未被改动 = "0.3.0"
+  ✓ dsh.new 原样保留（下次可重试）
+  ✓ journal 落 ERR_UPDATER_BACKEND_NOT_STOPPED = 1
+
+── B-08-3 仍有会话写入未落盘 → 同样阻止
+[backend-mgr] apply 闸门探针已注册: true
+[diag] [2026-11-03T19:07:44.159Z] [backend-mgr] apply 闸门探针已注册: true
+[backend-mgr] 已阻止本次应用更新（后端未干净退出）：仍有 3 项会话写入未落盘
+[diag] [2026-11-03T19:07:44.160Z] [backend-mgr] 已阻止本次应用更新（后端未干净退出）：仍有 3 项会话写入未落盘
+  ✓ 被阻止 = true
+  ✓ 原因写明未落盘的写入数量
+
+── B-08-4 探针干净时闸门放行（状态可判定）
+[backend-mgr] apply 闸门探针已注册: true
+[diag] [2026-11-03T19:07:44.164Z] [backend-mgr] apply 闸门探针已注册: true
+  ✓ clean=true = true
+  ✓ 没有阻止原因 = []
+[backend-mgr] apply 闸门探针已注册: false
+[diag] [2026-11-03T19:07:44.164Z] [backend-mgr] apply 闸门探针已注册: false
+  ✓ 未注册探针时用自带进程探针，结果仍是可判定的布尔 = "boolean"
+
+── B-08-5 副本兜底路径：rename 被占用时也要产出 dsh.previous
+[backend-mgr] apply 闸门探针已注册: true
+[diag] [2026-11-03T19:07:45.063Z] [backend-mgr] apply 闸门探针已注册: true
+  ✓ 前置：dsh.new 已被占用（rename 会失败）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:45.452Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] apply staged dsh attempt 1 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[diag] [2026-11-03T19:07:45.458Z] [backend-mgr] apply staged dsh attempt 1 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:46.363Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] apply staged dsh attempt 2 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[diag] [2026-11-03T19:07:46.367Z] [backend-mgr] apply staged dsh attempt 2 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:47.278Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] apply staged dsh attempt 3 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[diag] [2026-11-03T19:07:47.281Z] [backend-mgr] apply staged dsh attempt 3 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.191Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] apply staged dsh attempt 4 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[diag] [2026-11-03T19:07:48.194Z] [backend-mgr] apply staged dsh attempt 4 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.197Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.197Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.414Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.416Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.419Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
+[backend-mgr] 已把 dsh.new 标记为不可应用（copy fallback 后暂存目录未删净（被占用））：下次启动不会拿它去交换
+[diag] [2026-11-03T19:07:48.423Z] [backend-mgr] 已把 dsh.new 标记为不可应用（copy fallback 后暂存目录未删净（被占用））：下次启动不会拿它去交换
+[backend-mgr] applied staged dsh via copy fallback (version 0.4.1, previous retained)
+[diag] [2026-11-03T19:07:48.425Z] [backend-mgr] applied staged dsh via copy fallback (version 0.4.1, previous retained)
+[backend-mgr] applied staged dsh 0.4.1
+[diag] [2026-11-03T19:07:48.426Z] [backend-mgr] applied staged dsh 0.4.1
+  ✓ 副本兜底把新版本装上了 = "0.4.1"
+  ✓ 活跃 dsh 是新版本 = "0.4.1"
+  ✓ ★ dsh.previous 已产出旧版本（H-01 回滚素材） = "0.4.0"
+  ✓ 没有残留 dsh.old
+  ✓ 没有残留 dsh.copy
+  ✓ 删不净的暂存树已被标记为不可应用（dsh.new.invalid.json）
+  ✓ stagedVersions 不再报告这个坏暂存版本 = null
+  ✓ stagedVersions 显式标记 dshInvalidated = true
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.431Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
+[backend-mgr] dsh.new 已被标记为不可应用：本次跳过（文件仍被占用，稍后再清）
+[diag] [2026-11-03T19:07:48.433Z] [backend-mgr] dsh.new 已被标记为不可应用：本次跳过（文件仍被占用，稍后再清）
+  ✓ ★ 再次应用不会拿坏暂存去交换（dsh 保持 0.4.1） = null
+  ✓ 活跃版本未被二次交换破坏 = "0.4.1"
+  ✓ 回滚素材没有被二次交换覆盖 = "0.4.0"
+
+── B-08-6 回滚台账：applied → rolled-back，versions.json 重写，中断标记清掉
+  ✓ 前置：journal 有 1 条 applied（坏版本未验证） = 1
+  ✓ 前置：存在 H-05 中断标记
+[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-rollback\backend\dsh.failed: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.465Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-rollback\backend\dsh.failed: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rolled back dsh: 0.5.0 → 0.4.9（journal 修正 1 条 applied 记录）
+[diag] [2026-11-03T19:07:48.495Z] [backend-mgr] rolled back dsh: 0.5.0 → 0.4.9（journal 修正 1 条 applied 记录）
+  ✓ 回滚执行成功（返回 true，main.js 契约不变） = true
+  ✓ 活跃版本已回到 dsh.previous = "0.4.9"
+  ✓ dsh.previous 已被消费（不存在二次回滚素材）
+  ✓ versions.json 已按新树重写 = "0.4.9"
+  ✓ ★ 坏版本的 applied 不再算"未验证"（防止回滚回坏版本） = 0
+  ✓ journal 里既有被改写的记录也有一条 rolled-back 结论
+  ✓ 回滚记录写明 0.5.0 → 0.4.9 = true
+  ✓ H-05 中断标记已清除（回滚是最终处置） = null
+  ✓ 回滚后不再报"更新被中断" = false
+
+── B-08-7 没有可回滚目标时如实拒绝
+[backend-mgr] 回滚被拒绝：dsh.previous 里没有可用的后端（缺 lib/bin.js）
+[diag] [2026-11-03T19:07:48.499Z] [backend-mgr] 回滚被拒绝：dsh.previous 里没有可用的后端（缺 lib/bin.js）
+  ✓ dsh.previous 缺失 → 返回 false（不假装成功） = false
+  ✓ 活跃版本原样保留 = "0.6.0"
+  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-08-B-06-revision_资源监控_20261104-030743.log
+
+结果：64 通过 / 0 失败（耗时 4574ms）
+✓ B-08-B-06-revision 全部通过
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:48.555+08:00 exit=0 reason=exit elapsed=4.8s label=node scripts/test-b08-b06-revision.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:48.844+08:00
+  label    : node scripts/test-b12-plugin-journal-wiring.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b12-plugin-journal-wiring.js
+  timeout  : 300s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+0.3.49 · plugin-journal 接线端到端（真实 main.js 处理器 + 真实台账模块）
+沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe
+台账目录：C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\plugin-ops
+
+① spec → 台账字段（不泄漏本地路径）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:49.121Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+[diag] [2026-11-03T19:07:49.123Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+  ✓ 带版本号的 registry spec → 只留包名
+  ✓ 本地绝对路径 → 只留目录名（不写用户名/路径）
+  ✓ registry spec → source=registry
+  ✓ 相对路径 → source=local
+
+② plugins:install → install 记录
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:49.126Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+[diag] [2026-11-03T19:07:49.126Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+[dsh-backend] [plugin] 开始安装 dsh-plugin-ok@2.0.0（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
+[diag] [2026-11-03T19:07:49.126Z] 后端输出 [plugin] 开始安装 dsh-plugin-ok@2.0.0（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
+
+[diag] [2026-11-03T19:07:49.126Z] 插件安装结果: {"spec":"dsh-plugin-ok@2.0.0","profile":"web","ok":true,"code":"OK"}
+[diag] [2026-11-03T19:07:49.127Z] restartApp：准备重启（更新应用流程）
+[diag] [2026-11-03T19:07:49.128Z] restartApp：app.relaunch + exit
+  ✓ 安装处理器返回成功
+  ✓ 成功安装写进台账（plugin=包名）
+  ✓ 台账字段：action=install / result=ok / source=registry
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:49.131Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+[diag] [2026-11-03T19:07:49.131Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+[dsh-backend] [plugin] 开始安装 dsh-plugin-bad（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
+[diag] [2026-11-03T19:07:49.131Z] 后端输出 [plugin] 开始安装 dsh-plugin-bad（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
+
+[diag] [2026-11-03T19:07:49.131Z] 插件安装结果: {"spec":"dsh-plugin-bad","profile":"web","ok":false,"code":"EBADSPEC"}
+  ✓ 失败安装如实返回 ok=false
+  ✓ 失败安装写进台账且 result=fail
+  ✓ reason=EINSTALL（非超时）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:49.134Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+[diag] [2026-11-03T19:07:49.134Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+[dsh-backend] [plugin] 开始安装 dsh-plugin-slow（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
+[diag] [2026-11-03T19:07:49.134Z] 后端输出 [plugin] 开始安装 dsh-plugin-slow（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
+
+[diag] [2026-11-03T19:07:49.134Z] 插件安装结果: {"spec":"dsh-plugin-slow","profile":"web","ok":false,"code":"ETIMEDOUT"}
+  ✓ 超时安装的 reason=ETIMEDOUT（与普通失败区分）
+
+③ plugins:import-legacy → 逐条 install（source=legacy）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:49.141Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+[diag] [2026-11-03T19:07:49.141Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+[dsh-backend] [plugin] 开始导入 1 个插件到桌面 Home…
+[diag] [2026-11-03T19:07:49.141Z] 后端输出 [plugin] 开始导入 1 个插件到桌面 Home…
+
+[diag] [2026-11-03T19:07:49.141Z] 旧 Home 导入结果: {"total":3,"ok":1,"failed":1,"skipped":1}
+[diag] [2026-11-03T19:07:49.143Z] restartApp：准备重启（更新应用流程）
+[diag] [2026-11-03T19:07:49.143Z] restartApp：app.relaunch + exit
+  ✓ 三条导入结果各一条台账（成功/失败/跳过都在）
+  ✓ 成功项 result=ok
+  ✓ 失败项 result=fail
+  ✓ 跳过项记 ok + ESKIP（"它去哪了"可查）
+
+④ 隔离动作 → isolate 记录
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T19:07:49.145Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
+[diag] [2026-11-03T19:07:49.145Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
+  ✓ 隔离成功 → isolate/ok，plugin=(profiles)
+[diag] [2026-11-03T19:07:49.145Z] 插件台账 关键操作失败 isolate plugin=(profiles) version=- reason=EQUARANTINE phase=startup
+  ✓ 隔离放弃 → isolate/fail + EQUARANTINE
+[diag] [2026-11-03T19:07:49.147Z] 插件台账 关键操作失败 isolate plugin=(profiles) version=- reason=EGUARD phase=startup
+  ✓ 未执行（护栏拦下）→ EGUARD
+
+⑤ 落盘与崩溃报告
+  ✓ 台账目录里有段文件
+  ✓ 段文件里能读到成功安装记录（持久化生效）
+  ✓ 段文件里能读到失败安装记录
+  ✓ 行内是结构化 JSON（可被工具消费）
+  ✓ 崩溃报告已写出
+  ✓ 崩溃报告包含插件台账片段标题
+  ✓ 崩溃报告带出了具体插件名（端到端证据）
+  ✓ 台账片段有"collection complete"收尾行（说明不是被截断的假象）
+
+────────────────────────────────────────
+断言 26 项，失败 0 项
+
+沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:50.593+08:00 exit=0 reason=exit elapsed=1.7s label=node scripts/test-b12-plugin-journal-wiring.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T03:07:50.854+08:00
+  label    : node scripts/test-b17-integrity.js
+  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b17-integrity.js
+  timeout  : 300s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+  · 资源监控已启动（独立进程 pid=13400）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-17-integrity_资源监控_20261104-030751.log
+
+── 路径1 正常：sha512(SRI) 匹配 → 通过，报告算法与来源
+  ✓ sha512 一致 → ok = true
+  ✓ 优先使用 sha512（而不是 shasum/sha1） = "sha512"
+  ✓ 校验来源标记为 dist.integrity = "dist.integrity"
+  ✓ 回报文件字节数 = 3403
+  ✓ 策略动作 = accept = "accept"
+
+── 路径1b sha1(shasum) 退路 + 最强算法优先
+  ✓ 只有 shasum 时退到 sha1 且校验通过 = true
+  ✓ 退回 sha1（来自 dist.shasum） = "sha1"
+  ✓ 来源标记为 dist.shasum = "dist.shasum"
+  ✓ sha1 写在前面也选 sha512（不降级） = {"algo":"sha512","digestBase64":"Skw8wXVHGti1I075POjYrobFhz/dKb4TqPd2LD2/UrDMSzZ54jdJf6IBAjHeNIaht//DoPh5iOiOdaxlx7tyKA=="}
+  ✓ 多条目 SRI 校验通过 = true
+
+── 路径2 篡改：改 1 字节 → 拒绝（且归因是"校验不匹配"而不是"下载失败"）
+  ✓ 篡改 1 字节 → 校验失败 = false
+  ✓ 不是"缺元数据"（元数据是齐的） = undefined
+  ✓ 失败原因明确写"校验不匹配"
+  ✓ 给出期望摘要（便于事后核对） = "Skw8wXVHGti1I075POjYrobFhz/dKb4TqPd2LD2/UrDMSzZ54jdJf6IBAjHeNIaht//DoPh5iOiOdaxlx7tyKA=="
+  ✓ 实际摘要与期望不同
+  ✓ 策略动作 = reject（拒绝安装） = "reject"
+  ✓ 错误码进入 journal 白名单（对齐官方） = "ERR_UPDATER_CHECKSUM_MISMATCH"
+
+── 路径3 截断：短 1 字节 → 拒绝；有 content-length 时先报"大小不符"
+  ✓ 截断后摘要不匹配 → 拒绝 = false
+  ✓ 无大小信息时按摘要不匹配归因
+  ✓ 带期望大小时同样拒绝 = false
+  ✓ 能明确识别为"截断/大小不符" = true
+  ✓ 失败原因写"大小不符（可能被截断）"
+  ✓ 截断同样归入校验不匹配错误码 = "ERR_UPDATER_CHECKSUM_MISMATCH"
+
+── 路径4 缺元数据：明确告知无法校验（绝不假装通过）
+  ✓ 缺元数据时 ok=false（不是"通过"） = false
+  ✓ 显式标记 missingMetadata = true
+  ✓ 失败原因说明缺什么
+  ✓ 默认策略：记账后继续（不把用户卡死） = "accept-unverified"
+  ✓ 缺元数据有专属错误码（可归因） = "ERR_UPDATER_INTEGRITY_METADATA_MISSING"
+  ✓ DSH_REQUIRE_INTEGRITY=1 → 拒绝安装 = "reject"
+  ✓ 严格模式下错误码一致 = "ERR_UPDATER_INTEGRITY_METADATA_MISSING"
+  ✓ 有哈希且一致时严格模式也放行 = "accept"
+
+── 补充：sha256 清单口径（Node 侧 verifyNodeZip 用同一把尺）
+  ✓ sha256 SRI 也能校验 = true
+  ✓ 识别为 sha256 = "sha256"
+  ✓ digestFileSync 与 crypto 直算一致 = "abacef9baf4f207ce8b7d188f86a74f90838ed14253525b9a480aa7cd90f3f65"
+  ✓ digestFileSync base64 口径正确 = "Skw8wXVHGti1I075POjYrobFhz/dKb4TqPd2LD2/UrDMSzZ54jdJf6IBAjHeNIaht//DoPh5iOiOdaxlx7tyKA=="
+  ✓ 不支持的算法解析为 null（不猜） = null
+
+── 补充：错误码确实落进 journal 白名单
+  ✓ journalAdd 可用
+  ✓ journal 新增 1 条 = 1
+  ✓ journal 只落分类码（不落原文/URL） = "ERR_UPDATER_CHECKSUM_MISMATCH"
+  ✓ journal 记录目标版本 = "9.9.9"
+  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-17-integrity_资源监控_20261104-030751.log
+
+结果：40 通过 / 0 失败（耗时 156ms）
+✓ B-17-integrity 全部通过
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T03:07:51.268+08:00 exit=0 reason=exit elapsed=0.4s label=node scripts/test-b17-integrity.js
+==============================================================================
+══════════════════════════════════════════════════════════════════════════════
+【门禁汇总】
+  版本(package.json) : 0.3.48
+  检查项             : 29（语法 18 / 门禁 2 / 测试 9）
+  通过               : 29
+  通过但进程未退出    : 0
+  失败               : 0
+  结论               : ✅ 全部通过
+══════════════════════════════════════════════════════════════════════════════

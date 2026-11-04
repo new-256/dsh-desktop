@@ -1,0 +1,21 @@
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:38:58.418+08:00
+  label    : pack-vendor 预热
+  command  : npm run pack-vendor
+  timeout  : 1800s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+npm warn Unknown project config "electron_mirror". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "electron_builder_binaries_mirror". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> dsh-desktop@0.3.48 pack-vendor
+> node scripts/pack-vendor.js
+
+[vendor-manifest] dsh=0.2.1-alpha.5 node=24.4.0 parts=8
+[vendor-manifest] files: runtime=2315 dsh=63581（合计 65896）
+[vendor-manifest] written: C:\Users\lcl\Desktop\DSH\build\payload\vendor-manifest.json (2644 bytes)
+[pack-vendor] 已是最新的 8 个分卷（均比所有输入文件新），跳过重打包。合计=121.1 MB
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:39:08.298+08:00 exit=0 reason=exit elapsed=9.9s label=pack-vendor 预热
+==============================================================================

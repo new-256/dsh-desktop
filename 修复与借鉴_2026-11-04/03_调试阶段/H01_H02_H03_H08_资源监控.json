@@ -1,0 +1,24 @@
+{
+  "label": "阶段一 H-01/H-02/H-03/H-08 验证",
+  "startedAt": "2026-11-03T17:26:02.419Z",
+  "durationSec": 29.1,
+  "samples": 28,
+  "intervalSec": 1,
+  "reason": "检测到停止文件 C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\H01_H02_H03_H08_监控.stop",
+  "filters": [
+    "node.exe",
+    "pwsh.exe"
+  ],
+  "pids": [],
+  "peaks": {
+    "cpu": 49.71105449574349,
+    "ws": 2788,
+    "pb": 2181,
+    "sysUsedPct": 83.01537478824162,
+    "gpuUtil": 24,
+    "gpuMem": 3498,
+    "gpuTemp": 41,
+    "gpu": "NVIDIA GeForce RTX 5060 Ti"
+  },
+  "csv": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\H01_H02_H03_H08_资源监控.csv"
+}

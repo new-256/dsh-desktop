@@ -1,0 +1,215 @@
+{
+  "checkedAt": "2026-11-03T20:07:11.928Z",
+  "minBytes": 45000,
+  "results": [
+    {
+      "png": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_首帧.png",
+      "json": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_首帧.json",
+      "checks": [
+        {
+          "name": "PNG 存在",
+          "ok": true,
+          "detail": "null"
+        },
+        {
+          "name": "同名 .json 元数据存在",
+          "ok": true,
+          "detail": "修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_首帧.json"
+        },
+        {
+          "name": "字节数 > 45000",
+          "ok": true,
+          "detail": "49621 字节"
+        },
+        {
+          "name": "PNG magic 正确",
+          "ok": true,
+          "detail": "89 50 4E 47 0D 0A 1A 0A"
+        },
+        {
+          "name": "尺寸与 json.viewport 成等比缩放（DPR 容差）",
+          "ok": true,
+          "detail": "图 2139×1326 vs viewport 1426×884 → 1.500×/1.500×"
+        },
+        {
+          "name": "json.consoleErrors 为空",
+          "ok": true,
+          "detail": "空"
+        },
+        {
+          "name": "json.failedAssertions 为空",
+          "ok": true,
+          "detail": "空"
+        },
+        {
+          "name": "captureMethod 为 target 级（非全桌面截屏）",
+          "ok": true,
+          "detail": "cdp-page-captureScreenshot"
+        },
+        {
+          "name": "像素非空白（唯一色数/标准差/最频色占比）",
+          "ok": true,
+          "detail": "唯一颜色数 >= 50=255 种；灰度标准差 > 3=stddev=13.79，均值=252.9；非近纯色背景=最频色占比 79.5%"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "png": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗.png",
+      "json": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗.json",
+      "checks": [
+        {
+          "name": "PNG 存在",
+          "ok": true,
+          "detail": "null"
+        },
+        {
+          "name": "同名 .json 元数据存在",
+          "ok": true,
+          "detail": "修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗.json"
+        },
+        {
+          "name": "字节数 > 45000",
+          "ok": true,
+          "detail": "88206 字节"
+        },
+        {
+          "name": "PNG magic 正确",
+          "ok": true,
+          "detail": "89 50 4E 47 0D 0A 1A 0A"
+        },
+        {
+          "name": "尺寸与 json.viewport 成等比缩放（DPR 容差）",
+          "ok": true,
+          "detail": "图 1749×1107 vs viewport 1749×1107 → 1.000×/1.000×"
+        },
+        {
+          "name": "json.consoleErrors 为空",
+          "ok": true,
+          "detail": "空"
+        },
+        {
+          "name": "json.failedAssertions 为空",
+          "ok": true,
+          "detail": "空"
+        },
+        {
+          "name": "captureMethod 为 target 级（非全桌面截屏）",
+          "ok": true,
+          "detail": "electron-webContents-capturePage"
+        },
+        {
+          "name": "像素非空白（唯一色数/标准差/最频色占比）",
+          "ok": true,
+          "detail": "唯一颜色数 >= 50=626 种；灰度标准差 > 3=stddev=24.75，均值=21.0；非近纯色背景=最频色占比 94.6%"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "png": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗_900px.png",
+      "json": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗_900px.json",
+      "checks": [
+        {
+          "name": "PNG 存在",
+          "ok": true,
+          "detail": "null"
+        },
+        {
+          "name": "同名 .json 元数据存在",
+          "ok": true,
+          "detail": "修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗_900px.json"
+        },
+        {
+          "name": "字节数 > 45000",
+          "ok": true,
+          "detail": "76808 字节"
+        },
+        {
+          "name": "PNG magic 正确",
+          "ok": true,
+          "detail": "89 50 4E 47 0D 0A 1A 0A"
+        },
+        {
+          "name": "尺寸与 json.viewport 成等比缩放（DPR 容差）",
+          "ok": true,
+          "detail": "图 1329×1047 vs viewport 1329×1047 → 1.000×/1.000×"
+        },
+        {
+          "name": "json.consoleErrors 为空",
+          "ok": true,
+          "detail": "空"
+        },
+        {
+          "name": "json.failedAssertions 为空",
+          "ok": true,
+          "detail": "空"
+        },
+        {
+          "name": "captureMethod 为 target 级（非全桌面截屏）",
+          "ok": true,
+          "detail": "electron-webContents-capturePage"
+        },
+        {
+          "name": "像素非空白（唯一色数/标准差/最频色占比）",
+          "ok": true,
+          "detail": "唯一颜色数 >= 50=681 种；灰度标准差 > 3=stddev=26.58，均值=21.6；非近纯色背景=最频色占比 93.9%"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "png": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.49_设置窗.png",
+      "json": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.49_设置窗.json",
+      "checks": [
+        {
+          "name": "PNG 存在",
+          "ok": true,
+          "detail": "null"
+        },
+        {
+          "name": "同名 .json 元数据存在",
+          "ok": true,
+          "detail": "修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.49_设置窗.json"
+        },
+        {
+          "name": "字节数 > 45000",
+          "ok": true,
+          "detail": "55540 字节"
+        },
+        {
+          "name": "PNG magic 正确",
+          "ok": true,
+          "detail": "89 50 4E 47 0D 0A 1A 0A"
+        },
+        {
+          "name": "尺寸与 json.viewport 成等比缩放（DPR 容差）",
+          "ok": true,
+          "detail": "图 1179×807 vs viewport 1179×807 → 1.000×/1.000×"
+        },
+        {
+          "name": "json.consoleErrors 为空",
+          "ok": true,
+          "detail": "空"
+        },
+        {
+          "name": "json.failedAssertions 为空",
+          "ok": true,
+          "detail": "空"
+        },
+        {
+          "name": "captureMethod 为 target 级（非全桌面截屏）",
+          "ok": true,
+          "detail": "electron-webContents-capturePage"
+        },
+        {
+          "name": "像素非空白（唯一色数/标准差/最频色占比）",
+          "ok": true,
+          "detail": "唯一颜色数 >= 50=784 种；灰度标准差 > 3=stddev=27.76，均值=22.1；非近纯色背景=最频色占比 93.4%"
+        }
+      ],
+      "passed": true
+    }
+  ],
+  "passed": true
+}

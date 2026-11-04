@@ -1,0 +1,27 @@
+
+
+══════════════════════════════════════════════════════════════════
+  sandbox:true 下的设置窗探针（成品 asar + 真 Electron）
+  asar      : C:\Users\lcl\Desktop\DSH\release\win-unpacked\resources\app.asar
+  electron  : 44.3.0
+══════════════════════════════════════════════════════════════════
+[info] 已为 22 条白名单通道注册桩 handler
+[PASS] 设置窗在 sandbox:true 下可加载（did-finish-load）
+[info] 渲染侧探针输出: {"hasRequire":"undefined","hasProcess":"undefined","hasModule":"undefined","hasBridge":"object","bridgeKeys":["checkNode","checkUpdates","compatPlan","copyText","downloadNode","downloadUpdates","get","importLegacy","installPlugin","listBackendVersions","onPluginLog","openLog","openSettings","restart","rollbackTo","scanLegacy","setAutostart","setDshHomeEnv","setNodeDist","setPathEntry","setRoute","terminalStatus","writeWrappers"],"domNodes":154,"title":"DSH Desktop 设置","getBefore":{"mock":true,"settings":{"npmRegistry":"official","nodeDist":"official"},"versions":{"shell":"0.3.50","dsh":"0.2.1-alpha.5","node":"24.4.0"},"shellVersion":"0.3.50","shellUpdateVersion":null,"updateStatus":{"latest":null},"registry":null,"nodeDist":null,"autoStart":false,"safeMode":false},"setResult":{"ok":true,"route":"mirror"},"getAfter":{"mock":true,"settings":{"npmRegistry":"official","nodeDist":"official"},"versions":{"shell":"0.3.50","dsh":"0.2.1-alpha.5","node":"24.4.0"},"shellVersion":"0.3.50","shellUpdateVersion":null,"updateStatus":{"latest":null},"registry":null,"nodeDist":null,"autoStart":false,"safeMode":false,"route":"mirror"}}
+[PASS] 页面无 Node 全局（require 不可见） — typeof require=undefined
+[PASS] 页面无 Node 全局（process 不可见） — typeof process=undefined
+[PASS] 桥 window.dshSettings 存在 — typeof window.dshSettings=object
+[PASS] 桥方法数量 > 20 — 实际 23 个
+[PASS] DOM 已渲染（节点数 > 100） — 实际 154
+[PASS] 读：settings:get 往返成功 — 实际 {"mock":true,"settings":{"npmRegistry":"official","nodeDist":"official"},"versions":{"shell":"0.3.50","dsh":"0.2.1-alpha.5","node":"24.4.0"},"shellVersion":"0.3.50","shellUpdateVersion":null,"updateStatus":{"latest":null},"registry":null,"nodeDist":null,"autoStart":false,"safeMode":false}
+[PASS] 写：settings:set-route 往返成功 — 实际 {"ok":true,"route":"mirror"}
+[PASS] 写后再读：值已变更（真持久化往返） — 实际 route=mirror
+[PASS] 无 preload/sandbox 相关报错 — 控制台干净
+[PASS] 设置窗截图已落盘（capturePage，target 级） — C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\视觉验收_0.3.50_设置窗_900px.png（76808 字节，1329×1047）
+[PASS] 设置窗截图断言：标题/节点/可交互/锚点/无报错 — {"titleOk":true,"domNodes":154,"nodesOk":true,"interactivePresent":true,"anchorsHit":["更新","设置"],"anchorsOk":true,"errorishEmpty":true}
+
+══════════════════════════════════════════════════════════════════
+  结论：✔ 全部通过（共 12 项断言）
+  边界：本探针验证「设置窗页面 + preload 桥 + IPC 往返」在 sandbox:true 下可用；
+        主进程真实业务处理器未在此覆盖（需真实应用环境，且设置窗在本机无自动入口）。
+══════════════════════════════════════════════════════════════════

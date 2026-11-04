@@ -1,0 +1,48 @@
+{
+  "capturedAt": "2026-11-03T19:49:40.233Z",
+  "captureMethod": "cdp-page-captureScreenshot",
+  "targetUrl": "http://127.0.0.1:61589/",
+  "targetTitle": "DeepSeek Harness",
+  "viewport": {
+    "width": 1426,
+    "height": 884
+  },
+  "devicePixelRatio": 1.5,
+  "imagePixelSize": {
+    "width": 2139,
+    "height": 1326
+  },
+  "pngBytes": 49621,
+  "pngMagicOk": true,
+  "assertions": {
+    "readyState": "complete",
+    "readyStateOk": true,
+    "urlIsLocalBackend": true,
+    "nodes": 390,
+    "nodesOk": true,
+    "bodyTextLen": 71,
+    "anchorsHit": [
+      "新会话",
+      "插件",
+      "工作区",
+      "自动化任务",
+      "选择工作区",
+      "探索未至之境",
+      "标准模式",
+      "预览版"
+    ],
+    "anchorsOk": true,
+    "errorishEmpty": true,
+    "interactivePresent": true
+  },
+  "failedAssertions": [],
+  "domProbe": {
+    "inputs": 1,
+    "buttons": 13,
+    "svgIcons": 18,
+    "bodyTextHead": "新会话\nCtrl\n+\nAlt\n+\nN\n插件\n自动化任务\n工作区\n暂无会话\n更多\n探索未至之境\n预览版\n选择工作区\n标准模式\n选择一个工作区开始",
+    "errorish": []
+  },
+  "consoleErrors": [],
+  "note": "本图由 CDP Page.captureScreenshot 采集（target 级），不可能是其它程序的窗口；无本 .json 的截图不得作为验收证据。"
+}

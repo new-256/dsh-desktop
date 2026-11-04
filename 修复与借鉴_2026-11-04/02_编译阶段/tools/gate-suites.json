@@ -1,0 +1,197 @@
+{
+  "_why": "门禁套件清单。把『本轮必须跑哪些测试』从代码里的硬编码搬到这里，好处是：新增/改名测试只改清单，门禁代码不动；而清单里点名的『预期测试』如果找不到文件会显式报缺（required），不会静默漏跑。",
+  "_semantics": {
+    "include": "要执行的 glob 列表（相对仓库根）。命中 0 个文件不报错（历史脚本可能被退役）。",
+    "expect": "本轮『应当存在』的测试清单。required=true 时命中 0 个文件 → 门禁判失败（防止测试没写/改名后静默漏跑）；required=false 只提示。",
+    "allEmptyIsFailure": "全部 include 加起来命中 0 个文件 → 门禁判失败（防止『什么都没跑却显示绿』）。"
+  },
+  "suites": {
+    "stage1": {
+      "include": [
+        "scripts/test-h*.js",
+        "scripts/verify-h*.js",
+        "scripts/test-047-desktop-report.js"
+      ],
+      "expect": [
+        {
+          "pattern": "scripts/test-h01-rollback.js",
+          "required": true,
+          "why": "H-01 回滚接电"
+        },
+        {
+          "pattern": "scripts/test-h02-spawn-sync.js",
+          "required": true,
+          "why": "H-02 同步准备"
+        },
+        {
+          "pattern": "scripts/test-h03-startup-deadline.js",
+          "required": true,
+          "why": "H-03 分阶段超时"
+        },
+        {
+          "pattern": "scripts/test-h04-quarantine-safety.js",
+          "required": true,
+          "why": "H-04 隔离不删数据"
+        },
+        {
+          "pattern": "scripts/test-h05-apply-marker.js",
+          "required": true,
+          "why": "H-05 进行中标记"
+        },
+        {
+          "pattern": "scripts/test-h06-settings-dom.js",
+          "required": true,
+          "why": "H-06 设置窗注入面"
+        },
+        {
+          "pattern": "scripts/test-h06-csp-electron.js",
+          "required": true,
+          "why": "H-06 真机 CSP（Electron 运行器）"
+        },
+        {
+          "pattern": "scripts/test-h08-aumid.js",
+          "required": true,
+          "why": "H-08 AUMID + 成品形态回归"
+        },
+        {
+          "pattern": "scripts/test-h10-log-throughput.js",
+          "required": true,
+          "why": "H-10 日志吞吐"
+        },
+        {
+          "pattern": "scripts/test-h10-electron-exit-flush.js",
+          "required": true,
+          "why": "H-10 退出刷盘（双模式）"
+        },
+        {
+          "pattern": "scripts/test-047-desktop-report.js",
+          "required": true,
+          "why": "桌面报告固定名回归"
+        }
+      ]
+    },
+    "stage2": {
+      "include": [
+        "scripts/test-*.js",
+        "scripts/verify-*.js"
+      ],
+      "expect": [
+        {
+          "pattern": "scripts/test-b01*.js",
+          "required": true,
+          "why": "B-01 cookie 清理（只清旧后端源）"
+        },
+        {
+          "pattern": "scripts/test-b03*.js",
+          "required": true,
+          "why": "B-03 轮询工程化（退避/抖动/单飞）"
+        },
+        {
+          "pattern": "scripts/test-b04*.js",
+          "required": true,
+          "why": "B-04 插件操作环形台账"
+        },
+        {
+          "pattern": "scripts/test-b05*.js",
+          "required": true,
+          "why": "B-05 sandbox/导航白名单"
+        },
+        {
+          "pattern": "scripts/test-b06*.js",
+          "required": false,
+          "why": "B-06 更新确认 revision（可能与 b08/b17 合写）"
+        },
+        {
+          "pattern": "scripts/test-b08*.js",
+          "required": false,
+          "why": "B-08 干净退出才应用更新（可能与 b06/b17 合写）"
+        },
+        {
+          "pattern": "scripts/test-b17*.js",
+          "required": false,
+          "why": "B-17 下载包完整性校验（可能与 b06/b08 合写）"
+        },
+        {
+          "pattern": "scripts/test-b06*.js",
+          "required": false,
+          "why": "(兼容命名) B-06"
+        },
+        {
+          "pattern": "scripts/test-b08-b06*.js",
+          "required": false,
+          "why": "(兼容命名) B-08+B-06 合写"
+        },
+        {
+          "pattern": "scripts/test-h*.js",
+          "required": true,
+          "why": "阶段一全家桶不得回归"
+        },
+        {
+          "pattern": "scripts/test-047-desktop-report.js",
+          "required": true,
+          "why": "阶段一回归"
+        },
+        {
+          "pattern": "scripts/test-038.js",
+          "required": true,
+          "why": "历史回归"
+        },
+        {
+          "pattern": "scripts/test-039.js",
+          "required": true,
+          "why": "历史回归"
+        },
+        {
+          "pattern": "scripts/test-040.js",
+          "required": true,
+          "why": "历史回归"
+        },
+        {
+          "pattern": "scripts/test-041.js",
+          "required": true,
+          "why": "历史回归"
+        },
+        {
+          "pattern": "scripts/test-042.js",
+          "required": true,
+          "why": "历史回归"
+        },
+        {
+          "pattern": "scripts/test-043.js",
+          "required": true,
+          "why": "历史回归（已知：断言全通过但脚本不退出，见 known-hangs.json）"
+        },
+        {
+          "pattern": "scripts/test-043-ladder.js",
+          "required": true,
+          "why": "历史回归"
+        },
+        {
+          "pattern": "scripts/test-044.js",
+          "required": true,
+          "why": "历史回归"
+        },
+        {
+          "pattern": "scripts/test-045.js",
+          "required": true,
+          "why": "历史回归"
+        },
+        {
+          "pattern": "scripts/test-045b-copy-e2e.js",
+          "required": true,
+          "why": "历史回归"
+        },
+        {
+          "pattern": "scripts/test-046-preflight-resolution.js",
+          "required": true,
+          "why": "历史回归"
+        },
+        {
+          "pattern": "scripts/test-manifest-verify.js",
+          "required": true,
+          "why": "随包运行时清单校验"
+        }
+      ]
+    }
+  }
+}

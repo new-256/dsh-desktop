@@ -1,0 +1,37 @@
+
+══════════════════════════════════════════════════════════════════════
+  app.asar 实物清单
+  文件      : C:\Users\lcl\Desktop\DSH\release\win-unpacked\resources\app.asar
+  字节      : 2652265
+  头部长度  : 69848 字节
+  条目总数  : 269（asar 内 269 / 标记 unpacked 0）
+══════════════════════════════════════════════════════════════════════
+
+【应用文件】15 条（node_modules 部分 254 条，默认不展开）
+  · assets/icon.png  (27488 B)
+  · crash-report.js  (10058 B)
+  · diag-log.js  (12388 B)
+  · ladder-policy.js  (6249 B)
+  · lifecycle-log.js  (6408 B)
+  · main.js  (146014 B)
+  · package.json  (503 B)
+  · patch-file.js  (5633 B)
+  · plugin-resolution.js  (10195 B)
+  · preload.js  (524 B)
+  · quit-guard.js  (3928 B)
+  · settings-preload.js  (2201 B)
+  · settings.html  (28552 B)
+  · splash.html  (1580 B)
+  · updater-backend.js  (218513 B)
+
+【闭包对账】门禁闭包 vs asar 实物
+  门禁记录 : C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\02_编译阶段\evidence\build-files-gate_绿.json
+  闭包文件 : 16
+  ✖ asar 内缺失 1 项：
+    ✖ settings-renderer.js
+
+【运行期裸包】asar 内 node_modules 实测
+  asar 内 node_modules 条目数：254
+  ✔ electron-updater：66 个文件，含 package.json
+
+结论：✖ 实物核对未通过 —— 1 项在 asar 里找不到，装到真机必然出问题。

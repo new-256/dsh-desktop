@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-11-03T17:53:38.056Z",
+  "version": "0.3.48",
+  "expectedAppId": "com.deepseek.dshdesktop",
+  "candidates": [],
+  "strippedFieldHits": 1,
+  "passed": false,
+  "failures": [
+    {
+      "what": "main.js 读取被剥离字段",
+      "detail": "1 处"
+    },
+    {
+      "what": "随包 appId 常量",
+      "detail": "未找到（H-08 修复缺失：成品里 setAppUserModelId 将永不执行）"
+    }
+  ]
+}

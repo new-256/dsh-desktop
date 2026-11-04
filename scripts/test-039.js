@@ -112,9 +112,10 @@ fs.mkdirSync(p.root, { recursive: true });
 mgr.journalAdd('dsh', 'failed', { to: '0.1.9', reason: '网络错误 ERR_CONNECTION_RESET by mirror https://registry.example/proxy-detail' });
 mgr.journalAdd('dsh', 'failed', { to: '0.1.9', reason: '完全无法归类的神秘失败' });
 const j = mgr.readUpdateJournal();
-ok(j.entries[0].reason.startsWith('ERR_CONNECTION_RESET:'), '白名单码前缀：' + j.entries[0].reason.slice(0, 40));
-ok(j.entries[0].reason.length <= 120 + 40, 'reason 有界（120字摘要 + 码前缀）：' + j.entries[0].reason.length);
-ok(j.entries[1].reason.startsWith('UNCLASSIFIED:'), '未归类标记 UNCLASSIFIED');
+ok(j.entries[0].reason === 'ERR_CONNECTION_RESET', '白名单码命中（0.3.42 起只落分类码）：' + j.entries[0].reason);
+ok(!/mirror|registry\.example|proxy-detail/.test(j.entries[0].reason), '0.3.42 隐私：原始错误串（镜像 URL/代理细节）不落盘');
+ok(j.entries[0].reason.length <= 40, 'reason 有界（仅分类码）：' + j.entries[0].reason.length);
+ok(j.entries[1].reason === 'UNCLASSIFIED', '未归类标记 UNCLASSIFIED');
 mgr.journalAdd('dsh', 'staged', { from: '0.1.8', to: '0.1.9' });
 ok(mgr.readUpdateJournal().entries[2].reason === null, '非失败条目无 reason');
 

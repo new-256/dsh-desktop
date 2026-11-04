@@ -1,0 +1,27 @@
+{
+  "startedAt": "2026-11-03T18:48:00.777Z",
+  "environment": "dev（源码树 + node_modules/electron，非打包产物）",
+  "electron": "C:\\Users\\lcl\\Desktop\\DSH\\node_modules\\electron\\dist\\electron.exe",
+  "cdpPort": 9341,
+  "sandboxBase": "C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b05-a3Ppzq",
+  "steps": {
+    "electron": {
+      "status": "PASS",
+      "detail": "C:\\Users\\lcl\\Desktop\\DSH\\node_modules\\electron\\dist\\electron.exe"
+    },
+    "主流程": {
+      "status": "FAIL",
+      "detail": "Error: 等待超时：主窗口页面（后端 Web UI）出现\n    at waitFor (C:\\Users\\lcl\\Desktop\\DSH\\scripts\\b05-sandbox-evidence.js:80:9)\n    at async C:\\Users\\lcl\\Desktop\\DSH\\scripts\\b05-sandbox-evidence.js:122:22"
+    }
+  },
+  "functionalList": {},
+  "observations": [
+    "[18:48:00] ✔ electron：C:\\Users\\lcl\\Desktop\\DSH\\node_modules\\electron\\dist\\electron.exe",
+    "[18:48:00] 启动真实 main.js（隔离 userData + CDP 端口） {\"userData\":\"C:\\\\Users\\\\lcl\\\\AppData\\\\Local\\\\Temp\\\\dsh-b05-a3Ppzq\\\\userdata\",\"diagBase\":\"C:\\\\Users\\\\lcl\\\\AppData\\\\Local\\\\Temp\\\\dsh-b05-a3Ppzq\\\\logs\",\"cdpPort\":9341}",
+    "[18:50:02] ✖ 主流程：Error: 等待超时：主窗口页面（后端 Web UI）出现\n    at waitFor (C:\\Users\\lcl\\Desktop\\DSH\\scripts\\b05-sandbox-evidence.js:80:9)\n    at async C:\\Users\\lcl\\Desktop\\DSH\\scripts\\b05-sandbox-evidence.js:122:22"
+  ],
+  "pid": 19792,
+  "childStdoutTail": "\r\n[diag] [2026-11-03T18:48:01.135Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js\n[19792:1104/024801.146:ERROR:net\\base\\network_change_notifier_win.cc:213] WSALookupServiceBegin failed with: 10108\r\n\r\nDevTools listening on ws://127.0.0.1:9341/devtools/browser/41ca1fe2-2fa4-46c9-9cdf-ed472d812670\r\n[diag] [2026-11-03T18:48:01.171Z] 启动流程开始 {\"hidden\":false,\"packaged\":false,\"versions\":{\"node\":null,\"npm\":null,\"dsh\":null}}\n[diag] [2026-11-03T18:48:01.172Z] 日志目录: C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b05-a3Ppzq\\logs\\logs | 错误清单: C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b05-a3Ppzq\\logs\\logs\\DSH-Desktop-错误清单.txt\n[diag] [2026-11-03T18:48:01.255Z] 步骤0b 托盘已提前创建（灾备入口就绪） {\"hasTray\":true}\n[diag] [2026-11-03T18:48:01.262Z] 通知通道自检（H-08）: {\"aumid\":\"com.deepseek.dshdesktop\",\"aumidApplied\":true,\"aumidSource\":\"app-identity.js\",\"platform\":\"win32\",\"trayBalloonApi\":true,\"electronNotificationSupported\":true,\"packaged\":false}\n[diag] [2026-11-03T18:48:01.262Z] 步骤1 初始化活跃目录 ensureSeeded\n[backend-mgr] projection migration for dsh null took 0ms\n[diag] [2026-11-03T18:48:01.265Z] [backend-mgr] projection migration for dsh null took 0ms\n[backend-mgr] seeded dedicated Node prefix from factory runtime\n[diag] [2026-11-03T18:48:04.897Z] [backend-mgr] seeded dedicated Node prefix from factory runtime\n[backend-mgr] rimraf(safe) 未完成 C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b05-a3Ppzq\\userdata\\backend\\dsh\\node_modules: missing（已保留现场，不会跟随链接删除）\n[diag] [2026-11-03T18:48:04.899Z] [backend-mgr] rimraf(safe) 未完成 C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b05-a3Ppzq\\userdata\\backend\\dsh\\node_modules: missing（已保留现场，不会跟随链接删除）\n",
+  "mainLogTail": "\n===== 会话开始 PID=19792 版本=0.3.48 日志目录=C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b05-a3Ppzq\\logs\\logs 2026-11-03T18:48:01.136Z =====\n[2026-11-03T18:48:01.135Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js\n[2026-11-03T18:48:01.171Z] 启动流程开始 {\"hidden\":false,\"packaged\":false,\"versions\":{\"node\":null,\"npm\":null,\"dsh\":null}}\n[2026-11-03T18:48:01.172Z] 日志目录: C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b05-a3Ppzq\\logs\\logs | 错误清单: C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b05-a3Ppzq\\logs\\logs\\DSH-Desktop-错误清单.txt\n",
+  "finishedAt": "2026-11-03T18:50:02.827Z"
+}

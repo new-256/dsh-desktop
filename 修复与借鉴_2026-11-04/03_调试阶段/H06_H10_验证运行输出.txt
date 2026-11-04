@@ -1,0 +1,132 @@
+===== 1) node --check（6 个文件）=====
+node --check settings-preload.js -> exit code 0
+node --check settings-renderer.js -> exit code 0
+node --check diag-log.js -> exit code 0
+node --check scripts/test-h06-settings-dom.js -> exit code 0
+node --check scripts/test-h06-csp-electron.js -> exit code 0
+node --check scripts/test-h10-log-throughput.js -> exit code 0
+
+===== 2) node scripts/test-h06-settings-dom.js =====
+[PASS] A1 CSP meta 存在且串完全一致 — 实际：default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:
+[PASS] A2 无内联 <script> — 实际命中：[]
+[PASS] A3 引用外提脚本 settings-renderer.js — 实际命中：1
+[PASS] A4 无 on* 内联事件属性 — 实际命中：[]
+[PASS] A5 settings.html 内无 innerHTML — 实际命中：0
+[PASS] A6 无 script-src unsafe-inline / unsafe-eval — 实际：default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:
+[PASS] A7 注入路径汇点 id 全部存在于 settings.html
+[PASS] B1 可执行代码里无 innerHTML — 实际命中：0
+[PASS] B1 可执行代码里无 outerHTML — 实际命中：0
+[PASS] B1 可执行代码里无 insertAdjacentHTML — 实际命中：0
+[PASS] B1 可执行代码里无 document.write — 实际命中：0
+[PASS] B1 可执行代码里无 eval( — 实际命中：0
+[PASS] B1 可执行代码里无 new Function — 实际命中：0
+[PASS] B2 无选择器拼接变量 — 实际命中：[]
+[PASS] B3 白名单查表存在：ROUTE_RADIO_IDS
+[PASS] B3 白名单查表存在：NDIST_RADIO_IDS
+[PASS] B3 白名单查表存在：pickRadio
+[PASS] B4 渲染脚本引用的 DOM id 全部存在（共 46 个）
+[PASS] B5 使用 textContent 写外部字符串
+[PASS] B6 plugins:install 前有 window.confirm 确认
+[PASS] C1 白名单 ALLOWED_CHANNELS 存在且有内容 — 实际条目数：22
+[PASS] C2 所有 invoke 通道都在白名单内（共 22 个通道）
+[PASS] C3 仅 helper 内出现 ipcRenderer.invoke — 实际：1
+[PASS] C4 不暴露通用 invoke/send
+[PASS] C5 主进程 handleIpc 内置 assertOwnedSender 校验
+[PASS] C6 白名单通道均在主进程用 handleIpc 注册
+[PASS] C7 裸 ipcMain.handle 仅 handleIpc 包装器内 1 处（无旁路注册） — 实际裸注册处数：1
+[PASS] D1 自检清单逐个点名全部 28 个汇点
+[PASS] D2 自检清单写明 CSP 目标串
+
+[test-h06] 共 29 项，通过 29，失败 0
+[test-h06] 全部通过
+[exit code: 0]
+
+===== 3) electron.exe scripts/test-h06-csp-electron.js =====
+
+[14848:1104/012056.564:ERROR:net\base\network_change_notifier_win.cc:213] WSALookupServiceBegin failed with: 10108
+[PASS] 真机：外提脚本在 file:// + script-src self 下执行 — 实际：1
+[PASS] 真机：preload 桥可用 — 实际：true
+[PASS] 真机：style 仍生效（style-src 允许内联样式块） — 实际：rgb(11, 16, 32)
+[PASS] CSP 阳性对照：内联 <script> 被拦截 — 实际 inlineRan=false
+[PASS] CSP 阳性对照：eval 被拦截 — 实际：EvalError: Evaluating a string as JavaScript violates the following Content Secu
+[PASS] 首屏：payload 只以文本出现（无 img 元素） — 实际：{"imgs":0,"text":"<img src=x onerror=\"window.__xss='shell'\">（可升级 0.3.48）"}
+[PASS] 兼容表：无 img/script/svg 元素注入 — 实际：{"imgs":0,"scripts":0,"svgs":0}
+[PASS] 兼容表：window.__xss 未被置位 — 实际：null
+[PASS] 兼容表：payload 以纯文本呈现 — 实际文本片段：目标 0.1.9（当前 <img src=x onerror="window.__xss='compat-current'">）：插件共 2 个 — 不可用 1 · 未验证 0 · 兼容 1目标后端 Node 要求 ≥ >=20（当前 24.21.0，满足）插件判定原因<img src=x onerror="windo
+[PASS] 兼容表：表格行数与数据一致（表头 + 2 行） — 实际：3
+[PASS] 旧 Home 表：无 img/script/svg 元素注入 — 实际：{"imgs":0,"scripts":0,"svgs":0}
+[PASS] 旧 Home 表：window.__xss 未被置位 — 实际：null
+[PASS] 旧 Home 表：payload 以纯文本呈现 — 实际文本片段：旧 Home <img src=x onerror="window.__xss='legacy-home'"> 中有 1 个插件桌面版看不到：插件版本形态<img src=x onerror="window.__xss='legacy-name'"><b>1.0</b>npm 包（可导入）
+[PASS] 旧 Home 表：勾选框按 installable 生成（data-i 索引正确） — 实际：{"checked":true,"disabled":false,"index":"0"}
+[PASS] 选择器注入：伪造 registry 值不抛异常且不选中任何单选 — 实际：{"ok":true,"afterBogus":{"routeMirror":false,"ndistOfficial":false},"afterValid":{"routeOfficial":true,"ndistMirror":true}}
+[PASS] 选择器注入正向对照：合法值仍正常选中 — 实际：{"routeOfficial":true,"ndistMirror":true}
+[PASS] CSP 违规控制台输出（应只来自本测试的阳性对照） — 捕获 1 条：["Executing inline script violates the following Content Security Policy directive 'script-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-UwYTgd2DL2VSvb2lK6wO/b4I03bZjGCTyEkh5D7kH3c='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked."]
+
+[test-h06-electron] 共 17 项，通过 17，失败 0
+[exit code: 0]
+
+===== 4) node scripts/test-h10-log-throughput.js =====
+[PASS] 阶段1：注入 50000 行期间**零文件系统调用** — 实际：{"appendFileSync":0,"statSync":0,"renameSync":0,"writeFileSync":0,"existsSync":0}
+[PASS] 阶段1：队列完整收下 50002 条记录（无丢弃） — 实际：{"queuedLines":50002,"droppedTotal":0}
+[PASS] 阶段1：单行入队耗时 < 200µs — 实际：2.47µs/行，总 123.7ms
+[INFO] 同步基线（老路径形态）单行 331.92µs；本次入队 2.47µs（提速 134.1×）
+[PASS] 阶段1：flush 后队列清空 — 实际：0
+[PASS] 阶段1：flush 后零丢弃 — 实际：0
+[PASS] 阶段1：全部 50002 行落盘（header + 预热 + 50000） — 实际：50002
+[PASS] 阶段1：刷盘系统调用数远小于行数（批量证据） — 实际：78 次调用处理 50002 行，耗时 45.0ms
+[PASS] 阶段1：日志正文无「队列触顶」记录 — 正文干净
+[PASS] 阶段2：滚动确实发生过（产生存档） — 存档数：6，文件：["DSH-Desktop-日志-2026-11-03-172106-1.txt","DSH-Desktop-日志-2026-11-03-172106-2.txt","DSH-Desktop-日志-2026-11-03-172106-3.txt","DSH-Desktop-日志-2026-11-03-172106-4.txt","DSH-Desktop-日志-2026-11-03-172106-5.txt","DSH-Desktop-日志-2026-11-03-172106.txt","DSH-Desktop-日志.txt"]
+[PASS] 阶段2：滚动 + 交错写入后行数守恒（3001 行） — 实际：3001，明细 [{"name":"DSH-Desktop-日志-2026-11-03-172106-1.txt","lines":455,"bytes":67795},{"name":"DSH-Desktop-日志-2026-11-03-172106-2.txt","lines":455,"bytes":68161},{"name":"DSH-Desktop-日志-2026-11-03-172106-3.txt","lines":490,"bytes":73500},{"name":"DSH-Desktop-日志-2026-11-03-172106-4.txt","lines":455,"bytes":68250},{"name":"DSH-Desktop-日志-2026-11-03-172106-5.txt","lines":455,"bytes":68250},{"name":"DSH-Desktop-日志-2026-11-03-172106.txt","lines":457,"bytes":67986},{"name":"DSH-Desktop-日志.txt","lines":234,"bytes":35100}]
+[PASS] 阶段2：零丢弃 — 实际：{"mid":0,"final":0}
+[PASS] 阶段2：单文件不显著超阈值（块粒度 ≤ 块字节 + 阈值） — 实际：[67795,68161,73500,68250,68250,67986,35100]
+[PASS] 阶段3：触顶丢弃计数准确且未被静默吞掉 — 实际：{"droppedTotal":901,"queuedLines":100,"expectedDropped":901}
+[diag] [2026-11-03T17:21:06.158Z] ⚠ 诊断日志队列触顶（上限 100 行 / 33554432 字节）：本次丢弃 901 行，累计丢弃 901 行；被丢弃的行仍完整打印在 [dsh-backend] 标准输出，可用控制台日志补齐
+[PASS] 阶段3：丢弃计数写进了日志正文 — 正文片段：队列触顶（上限 100 行 / 33554432 字节）：本次丢弃 901 行，累计丢弃 901 行；被丢弃的行仍完整打印在 [dsh-backend] 标准输出，可用控制台日志补齐
+[PASS] 阶段3：正文里记的丢弃数 == 实际丢弃数 — 正文含「本次丢弃 901 行」
+[PASS] 阶段3：正文里的丢弃数之后不再重复计数（状态归零） — 实际：0
+[PASS] 阶段3：写入行数 = 队列上限（100 行）+ 1 条丢弃说明 — 实际：101
+[PASS] 阶段4：子进程正常退出 — 实际 status=0 signal=null
+[PASS] 阶段4：退出钩子把队列清空（501 行） — 实际：501
+[PASS] 阶段4：未触发「退出刷盘超预算」 — 正文干净
+
+[test-h10] 共 20 项，通过 20，失败 0
+[test-h10] 数据：{"phase1":{"perLineUs":2.474882,"baselinePerLineUs":331.915155,"flushMs":44.968,"io":{"appendFileSync":26,"statSync":26,"renameSync":0,"writeFileSync":26,"existsSync":2}},"phase2":{"archives":6,"files":7},"phase3":{"expectedDropped":901,"lines":101},"phase4":{"lines":501}}
+[test-h10] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-h10-test-14160
+[test-h10] 全部通过
+[exit code: 0]
+
+===== 5) Electron 主进程 diag-log 集成冒烟（app.exit 路径）=====
+# 说明：本段在临时脚本上跑出了"首轮失败 → 修复后通过"的完整证据；该冒烟已固化为
+#       scripts/test-h10-electron-exit-flush.js（下方「固化版」为其独立重跑输出）。
+
+[19560:1104/012106.787:ERROR:net\base\network_change_notifier_win.cc:213] WSALookupServiceBegin failed with: 10108
+[diag] [2026-11-03T17:21:06.806Z] 集成冒烟 1 {"pid":19560,"electron":"44.3.0"}
+[diag] [2026-11-03T17:21:06.811Z] 集成冒烟 2 错误示例 error simulated
+{"queuedBeforeExit":3,"logPath":"C:\\Users\\lcl\\Desktop\\DSH\\.tmp-h06-h10\\smoke-base\\logs\\DSH-Desktop-日志.txt","errPath":"C:\\Users\\lcl\\Desktop\\DSH\\.tmp-h06-h10\\smoke-base\\logs\\DSH-Desktop-错误清单.txt","reportPath":null,"existsBeforeExit":{"log":false,"err":false,"report":false}}
+--- 落盘主日志 ---
+
+===== 会话开始 PID=19560 版本=44.3.0 日志目录=C:\Users\lcl\Desktop\DSH\.tmp-h06-h10\smoke-base\logs 2026-11-03T17:21:06.808Z =====
+[2026-11-03T17:21:06.806Z] 集成冒烟 1 {"pid":19560,"electron":"44.3.0"}
+[2026-11-03T17:21:06.811Z] 集成冒烟 2 错误示例 error simulated
+--- 落盘错误清单 ---
+[2026-11-03T17:21:06.811Z] 集成冒烟 2 错误示例 error simulated
+--- 落盘桌面报告 ---
+===== DSH Desktop 错误报告 2026-11-03T17:21:06.817Z PID=19560 版本=44.3.0 =====
+[2026-11-03T17:21:06.811Z] 集成冒烟 2 错误示例 error simulated
+
+
+===== 5') 固化版：node scripts/test-h10-electron-exit-flush.js =====
+[PASS] Electron 子进程正常退出 — 实际 status=0 signal=null
+[PASS] 退出前队列确有未落盘行（证明被测的正是退出 flush） — 实际：3
+[PASS] 退出前磁盘上还没有日志（说明不是提前写的） — 实际：false
+[PASS] app.exit 后主日志落盘 3 行（会话头 + 2 条） — 实际：3
+[PASS] app.exit 后错误清单落盘 1 行 — 实际：1
+[PASS] app.exit 后桌面报告（固定名）落盘 2 行（头 + 1 条） — 实际：2
+[PASS] 主日志含 electron 真实版本号（electron.app.getVersion 路径可用） — 实际头：[2026-11-03T17:21:41.164Z] 退出冒烟 1 {"pid":32680,"electron":"44.3.0"}
+[PASS] 未触发「退出刷盘超预算」
+
+[test-h10-electron] 共 8 项，通过 8，失败 0
+[test-h10-electron] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-h10-electron-35484
+[test-h10-electron] 全部通过
+
+===== 汇总：失败项 0 =====

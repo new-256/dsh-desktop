@@ -1,0 +1,20 @@
+
+[39596:1104/022935.437:ERROR:net\base\network_change_notifier_win.cc:213] WSALookupServiceBegin failed with: 10108
+[diag] [2026-11-03T18:29:35.467Z] 插件台账 关键操作失败 isolate plugin=bad-plugin version=9.9.9 reason=EISOLATE phase=startup
+[PASS] 真机：crash-report 在真实 Electron 里落盘成功 — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\crash\crash-2026-11-03T18-29-35-494Z-main.log
+[PASS] 真机：报告目录来自 crashDir()（真实路径契约） — 实际目录=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\crash
+[PASS] 真机：含 context, not proof of cause 标题（官方原话） — 实际：----- recent plugin operations (context, not proof of cause) -----
+[PASS] 真机：四个动作都出现在报告里 — 实际：[]
+[PASS] 真机：失败原因码可见（可归因） — 实际：有
+[PASS] 真机：含收集完成标记 — 实际：[collection complete] records=4 dropped=0 ledger=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\diag\logs\plugin-operations
+[PASS] 真机：基础报告段完好（error / backend tail / renderer console 都在） — 实际：{"error":true,"tail":true,"renderer":true}
+[PASS] 真机：附加段在基础报告之后（追加而非插入） — 实际：error@185 ops@452
+[PASS] 真机：报告里没有凭据样式内容 — 实际：干净
+[PASS] 真机：台账段文件已落盘（≤2 段） — 实际：["plugin-operations-1.log"] dir=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\diag\logs\plugin-operations
+[PASS] 真机：台账目录与诊断日志同域（logs/plugin-operations） — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\diag\logs\plugin-operations
+[PASS] 真机：writeCrashReportBounded 在 1s 预算内返回路径 — 实际：22ms file=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\crash\crash-2026-11-03T18-29-35-505Z-main.log
+[PASS] 真机：bounded 路径写出的报告同样带插件操作段 — 实际：有
+
+[test-b04-electron] 共 13 项，通过 13，失败 0
+[test-b04-electron] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596
+[test-b04-electron] 全部通过

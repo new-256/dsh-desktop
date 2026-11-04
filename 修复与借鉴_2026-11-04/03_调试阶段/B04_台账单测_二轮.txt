@@ -1,0 +1,50 @@
+[PASS] ① 入队 120 条（行级零 fs：队列里确实攒住了） — 实际 queued=120
+[PASS] ① flush 报告排空条数与入队一致 — 实际：{"flushed":120,"deferred":0}
+[PASS] ① 磁盘上仍然只有 2 段（环形，不无限增段） — 实际：["plugin-operations-1.log","plugin-operations-2.log"]
+[PASS] ① 总字节 ≤ 2×段预算 + 一个块余量 — 实际 8743 ≤ 9216
+[PASS] ① 无解析错误（每行都是完整 JSON） — 实际：[]
+[PASS] ① 保留记录序号连续无洞（装得下的一条不丢） — 实际：48 条，首=73 末=120，连续=true
+[PASS] ① 最后一条就是最后写入的那条 — 实际最后 seq=120
+[PASS] ① 记录字段齐全（墙钟+单调+动作+名+版本+来源+结果+阶段） — 实际样例：{"seq":120,"wall":"2026-11-03T18:22:02.256Z","monoMs":2.853,"action":"install","plugin":"plug-119","version":"1.0.119","source":"registry","result":"ok","reason":"","phase":"running"}
+[PASS] ② 超长记录被截断并标 truncated:true — 实际 truncated=true
+[PASS] ② 记录了截断前字节数 originalBytes > 4096 — 实际 originalBytes=20181
+[PASS] ② 单条（不含换行）≤ 4096 字节 — 实际=422
+[PASS] ② 截断后仍保留归因要点（动作/结果/原因码/阶段） — 实际：["seq","wall","monoMs","action","plugin","version","source","result","reason","phase","originalBytes","truncated"]
+[PASS] ② 正常记录不被误标 truncated — 实际：{"seq":2,"wall":"2026-11-03T18:22:02.333Z","monoMs":11.679,"action":"install","plugin":"normal-plugin","version":"1.0.0"
+[PASS] ③ 触顶后 record() 返回 false 且计数一致 — 实际 dropped=55 rejected=55
+[diag] [2026-11-03T18:22:02.338Z] 插件台账：排队触顶丢弃 55 条（已写入台账正文，丢弃时排队字节= 878 ）
+[PASS] ③ 台账正文有丢弃说明记录（含精确条数） — 实际：{"seq":61,"wall":"2026-11-03T18:22:02.337Z","monoMs":2.039,"action":"journal-drop","reason":"queue-overflow","dropped":55,"queuedBytes":878,"phase":"unknown"}
+[PASS] ③ 丢弃说明也写进了诊断日志正文（主日志可搜到） — 实际主日志片段：[2026-11-03T18:22:02.338Z] 插件台账：排队触顶丢弃 55 条（已写入台账正文，丢弃时排队字节= 878 ）
+[PASS] ③ 状态里 droppedWritten 已追上 dropped（不重复写说明） — 实际：{"dropped":55,"droppedWritten":55}
+[PASS] ③ 内存环仍保留被丢弃的记录（崩溃报告可用） — 实际：未被丢弃标记的条数=55
+[PASS] ④ 写失败后 status().disabled = true — 实际：{"disabled":true,"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b04-4756\\fail\\blocked-as-file'"}
+[PASS] ④ 失败计数与错误信息都曝光（不静默） — 实际：{"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b04-4756\\fail\\blocked-as-file'"}
+[PASS] ④ 停用后不再尝试写入（调用计数 = 0） — 实际 attempts=0
+[PASS] ④ 停用后仍然能给出内存环快照（崩溃报告用它） — 实际 recent=1
+[PASS] ④ 停用后 flush 返回 disabled 且不假装成功 — 实际：{"flushed":0,"dropped":0,"failed":1,"remaining":1,"deferred":1,"disabled":true,"ms":0}
+[PASS] ④ 首次 flush 也未抛出（本模块对外永不抛错） — 实际：{"flushed":0,"dropped":0,"failed":1,"remaining":1,"deferred":1,"disabled":true,"ms":1}
+[plugin-journal] EEXIST: file already exists, mkdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b04-4756\fail\blocked-as-file'
+[PASS] ⑤ recent(0) = [] — 实际：[]
+[PASS] ⑤ recent(-5) = [] — 实际：0
+[PASS] ⑤ recent() 缺省 20 条 — 实际：20
+[PASS] ⑤ recent(5) 返回最新 5 条且按时间升序 — 实际：r-25,r-26,r-27,r-28,r-29
+[PASS] ⑤ recent(1e6) 返回全部（30 条） — 实际：30
+[PASS] ⑤ renderRecent(10) 给出省略计数（30-10=20） — 实际：{"omitted":20,"lines":10}
+[PASS] ⑤ 渲染行包含动作/插件/结果/阶段 — 实际末行：#30 2026-11-03T18:22:02.349Z +1.374ms enable r-29 source=profile ok phase=running
+[PASS] ⑥ 崩溃报告已落盘 — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-4756\crash\logs\crash-2026-11-03T18-22-02-374Z-main.log
+[PASS] ⑥ 附加段标题逐字含 context, not proof of cause — 实际标题行：----- recent plugin operations (context, not proof of cause) -----
+[PASS] ⑥ 基础报告字节未被重写（除时间戳外与原文逐字节一致，附加段只追加） — 实际：基础=903B 前缀=903B 完全一致=false 归一后一致=true
+[PASS] ⑥ 附加段含我们的插件操作行 — 实际：#16 2026-11-03T18:22:02.361Z +8.853ms install crashplug-15@2.0.15 source=registry ok phase=startup
+[PASS] ⑥ 超过 40 条时有省略计数 — 实际：省略 15 条更早记录
+[PASS] ⑥ 有收集完成标记（含 records/dropped/ledger） — 实际：[collection complete] records=55 dropped=0 ledger=logs/plugin-operations/
+[PASS] ⑥ 非白名单字段未被持久化（token 值不出现） — 实际：已丢弃
+[PASS] ⑥ 凭据样式已脱敏（abc123supersecret 不出现） — 实际：已脱敏
+[PASS] ⑥ 失败记录原因码在报告里可见（结果可归因） — 实际：有
+[PASS] ⑥ 凭据被打码的记录带 redacted 标记（读者能看出内容被改写） — 实际台账里 redacted 标记数=47
+[PASS] ⑥ 基础报告里仍保留错误与尾部（附加段没有挤掉原有内容） — 实际：{"error":true,"tail":true}
+[PASS] ⑦ 退出预算内可同步排空（≤500ms 预算可被崩溃/退出路径等待） — 实际：{"flushed":1,"ms":2}
+[PASS] ⑦ 排空后磁盘上确实有这条记录 — 实际条数=1
+
+[test-b04] 共 44 项，通过 44，失败 0
+[test-b04] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-b04-4756
+[test-b04] 全部通过

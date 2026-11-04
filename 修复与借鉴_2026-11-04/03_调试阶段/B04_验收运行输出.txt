@@ -1,0 +1,109 @@
+===== 0) node --check =====
+node --check plugin-journal.js -> exit code 0
+node --check crash-report.js -> exit code 0
+node --check scripts/test-b04-plugin-journal.js -> exit code 0
+node --check scripts/test-b04-crash-report-electron.js -> exit code 0
+
+===== 1) node scripts/test-b04-plugin-journal.js =====
+[PASS] ① 入队 120 条（行级零 fs：队列里确实攒住了） — 实际 queued=120
+[PASS] ① flush 报告排空条数与入队一致 — 实际：{"flushed":120,"deferred":0}
+[PASS] ① 磁盘上仍然只有 2 段（环形，不无限增段） — 实际：["plugin-operations-1.log","plugin-operations-2.log"]
+[PASS] ① 总字节 ≤ 2×段预算 + 一个块余量 — 实际 8744 ≤ 9216
+[PASS] ① 无解析错误（每行都是完整 JSON） — 实际：[]
+[PASS] ① 保留记录序号连续无洞（装得下的一条不丢） — 实际：48 条，首=73 末=120，连续=true
+[PASS] ① 最后一条就是最后写入的那条 — 实际最后 seq=120
+[PASS] ① 记录字段齐全（墙钟+单调+动作+名+版本+来源+结果+阶段） — 实际样例：{"seq":120,"wall":"2026-11-03T18:28:43.146Z","monoMs":3.353,"action":"install","plugin":"plug-119","version":"1.0.119","source":"registry","result":"ok","reason":"","phase":"running"}
+[PASS] ② 超长记录被截断并标 truncated:true — 实际 truncated=true
+[PASS] ② 记录了截断前字节数 originalBytes > 4096 — 实际 originalBytes=20181
+[PASS] ② 单条（不含换行）≤ 4096 字节 — 实际=422
+[PASS] ② 截断后仍保留归因要点（动作/结果/原因码/阶段） — 实际：["seq","wall","monoMs","action","plugin","version","source","result","reason","phase","originalBytes","truncated"]
+[PASS] ② 正常记录不被误标 truncated — 实际：{"seq":2,"wall":"2026-11-03T18:28:43.215Z","monoMs":7.882,"action":"install","plugin":"normal-plugin","version":"1.0.0",
+[PASS] ③ 触顶后 record() 返回 false 且计数一致 — 实际 dropped=55 rejected=55
+[diag] [2026-11-03T18:28:43.221Z] 插件台账：排队触顶丢弃 55 条（已写入台账正文，丢弃时排队字节= 880 ）
+[PASS] ③ 台账正文有丢弃说明记录（含精确条数） — 实际：{"seq":61,"wall":"2026-11-03T18:28:43.220Z","monoMs":2.268,"action":"journal-drop","reason":"queue-overflow","dropped":55,"queuedBytes":880,"phase":"unknown"}
+[PASS] ③ 丢弃说明也写进了诊断日志正文（主日志可搜到） — 实际主日志片段：[2026-11-03T18:28:43.221Z] 插件台账：排队触顶丢弃 55 条（已写入台账正文，丢弃时排队字节= 880 ）
+[PASS] ③ 状态里 droppedWritten 已追上 dropped（不重复写说明） — 实际：{"dropped":55,"droppedWritten":55}
+[PASS] ③ 内存环仍保留被丢弃的记录（崩溃报告可用） — 实际：未被丢弃标记的条数=55
+[PASS] ④ 写失败后 status().disabled = true — 实际：{"disabled":true,"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b04-40272\\fail\\blocked-as-file'"}
+[PASS] ④ 失败计数与错误信息都曝光（不静默） — 实际：{"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b04-40272\\fail\\blocked-as-file'"}
+[PASS] ④ 停用后不再尝试写入（调用计数 = 0） — 实际 attempts=0
+[PASS] ④ 停用后仍然能给出内存环快照（崩溃报告用它） — 实际 recent=1
+[PASS] ④ 停用后 flush 返回 disabled 且不假装成功 — 实际：{"flushed":0,"dropped":0,"failed":1,"remaining":1,"deferred":1,"disabled":true,"ms":0}
+[PASS] ④ 首次 flush 也未抛出（本模块对外永不抛错） — 实际：{"flushed":0,"dropped":0,"failed":1,"remaining":1,"deferred":1,"disabled":true,"ms":1}
+[plugin-journal] EEXIST: file already exists, mkdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b04-40272\fail\blocked-as-file'
+[PASS] ⑤ recent(0) = [] — 实际：[]
+[PASS] ⑤ recent(-5) = [] — 实际：0
+[PASS] ⑤ recent() 缺省 20 条 — 实际：20
+[PASS] ⑤ recent(5) 返回最新 5 条且按时间升序 — 实际：r-25,r-26,r-27,r-28,r-29
+[PASS] ⑤ recent(1e6) 返回全部（30 条） — 实际：30
+[PASS] ⑤ renderRecent(10) 给出省略计数（30-10=20） — 实际：{"omitted":20,"lines":10}
+[PASS] ⑤ 渲染行包含动作/插件/结果/阶段 — 实际末行：#30 2026-11-03T18:28:43.230Z +1.145ms enable r-29 source=profile ok phase=running
+[PASS] ⑥ 崩溃报告已落盘 — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-40272\crash\logs\crash-2026-11-03T18-28-43-252Z-main.log
+[PASS] ⑥ 附加段标题逐字含 context, not proof of cause — 实际标题行：----- recent plugin operations (context, not proof of cause) -----
+[PASS] ⑥ 基础报告字节未被重写（除时间戳外与原文逐字节一致，附加段只追加） — 实际：基础=904B 前缀=904B 完全一致=false 归一后一致=true
+[PASS] ⑥ 附加段含我们的插件操作行 — 实际：#16 2026-11-03T18:28:43.239Z +6.741ms install crashplug-15@2.0.15 source=registry ok phase=startup
+[PASS] ⑥ 超过 40 条时有省略计数 — 实际：省略 15 条更早记录
+[PASS] ⑥ 有收集完成标记（含 records/dropped/ledger） — 实际：[collection complete] records=55 dropped=0 ledger=C:\Users\lcl\AppData\Local\Temp\dsh-b04-40272\crash\logs\plugin-operations
+[PASS] ⑥ 基础报告字节未被重写（时间戳归一后 sha256 完全一致 = 逐字节只追加） — 实际：前缀 sha256=95dc6c8f60e1052fd5932ac3d646a57538a08bac0192d09b730b95b9640e8ba9 期望=95dc6c8f60e1052fd5932ac3d646a57538a08bac0192d09b730b95b9640e8ba9
+[PASS] ⑥ 非白名单字段未被持久化（token 值不出现） — 实际：已丢弃
+[PASS] ⑥ 附加段不含凭据类键名（token/password/secret/authorization） — 实际命中：[]
+[PASS] ⑥ 凭据样式已脱敏（abc123supersecret 不出现） — 实际：已脱敏
+[PASS] ⑥ 失败记录原因码在报告里可见（结果可归因） — 实际：有
+[PASS] ⑥ 凭据被打码的记录带 redacted 标记（读者能看出内容被改写） — 实际台账里 redacted 标记数=47
+[PASS] ⑥ 基础报告里仍保留错误与尾部（附加段没有挤掉原有内容） — 实际：{"error":true,"tail":true}
+[PASS] ⑦ 退出预算内可同步排空（≤500ms 预算可被崩溃/退出路径等待） — 实际：{"flushed":1,"ms":3}
+[PASS] ⑦ 排空后磁盘上确实有这条记录 — 实际条数=1
+[PASS] ⑧ 边写边刷：9000 条全部记入（已落盘 + 排队 = 9000，零丢弃） — 实际：{"written":8801,"queued":199,"dropped":0}
+[PASS] ⑧ 磁盘仍只有 2 段文件 — 实际：["plugin-operations-1.log","plugin-operations-2.log"]
+[PASS] ⑧ 总字节 ≤ 512KiB + 一个块余量 — 实际 303316 ≤ 557056
+[PASS] ⑧ 排空后无积压、无丢弃、落盘总数 = 9000 — 实际：{"flushed":199,"deferred":0,"dropped":0,"queued":0,"written":9000}
+[PASS] ⑧ 保留的是最近一段且有界（序号连续、末条是最新） — 实际保留 1623 条，首=7378 末=9000
+[PASS] ⑨ 慢磁盘（每次 append 阻塞 30ms）下 500ms 预算不被拖爆 — 实际：{"ms":524,"flushed":85,"deferred":115}
+[PASS] ⑨ 未排完的记录留在队列（不丢）+ 可继续排空 — 实际：{"deferred":115,"remaining":115}
+[PASS] ⑨ 继承预算后最终全部落盘（两次调用合计 = 200 条） — 实际：{"first":85,"second":115,"queued":0}
+
+[test-b04] 共 54 项，通过 54，失败 0
+[test-b04] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-b04-40272
+[test-b04] 全部通过
+[exit code: 0]
+
+===== 2) electron.exe scripts/test-b04-crash-report-electron.js（真机）=====
+# Electron 直写控制台，PowerShell 变量捕获会丢（退出码仍为 0）——以下为该测试单独落盘的全文：
+[39596:1104/022935.437:ERROR:net\base\network_change_notifier_win.cc:213] WSALookupServiceBegin failed with: 10108
+[diag] [2026-11-03T18:29:35.467Z] 插件台账 关键操作失败 isolate plugin=bad-plugin version=9.9.9 reason=EISOLATE phase=startup
+[PASS] 真机：crash-report 在真实 Electron 里落盘成功 — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\crash\crash-2026-11-03T18-29-35-494Z-main.log
+[PASS] 真机：报告目录来自 crashDir()（真实路径契约） — 实际目录=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\crash
+[PASS] 真机：含 context, not proof of cause 标题（官方原话） — 实际：----- recent plugin operations (context, not proof of cause) -----
+[PASS] 真机：四个动作都出现在报告里 — 实际：[]
+[PASS] 真机：失败原因码可见（可归因） — 实际：有
+[PASS] 真机：含收集完成标记 — 实际：[collection complete] records=4 dropped=0 ledger=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\diag\logs\plugin-operations
+[PASS] 真机：基础报告段完好（error / backend tail / renderer console 都在） — 实际：{"error":true,"tail":true,"renderer":true}
+[PASS] 真机：附加段在基础报告之后（追加而非插入） — 实际：error@185 ops@452
+[PASS] 真机：报告里没有凭据样式内容 — 实际：干净
+[PASS] 真机：台账段文件已落盘（≤2 段） — 实际：["plugin-operations-1.log"] dir=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\diag\logs\plugin-operations
+[PASS] 真机：台账目录与诊断日志同域（logs/plugin-operations） — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\diag\logs\plugin-operations
+[PASS] 真机：writeCrashReportBounded 在 1s 预算内返回路径 — 实际：22ms file=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\crash\crash-2026-11-03T18-29-35-505Z-main.log
+[PASS] 真机：bounded 路径写出的报告同样带插件操作段 — 实际：有
+[test-b04-electron] 共 13 项，通过 13，失败 0
+[test-b04-electron] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596
+[test-b04-electron] 全部通过
+
+===== 3) 阶段一门禁回归 =====
+--- scripts/test-047-desktop-report.js (exit 0) ---
+断言 15 项，失败 0 项
+--- scripts/test-h10-log-throughput.js (exit 0) ---
+[test-h10] 共 20 项，通过 20，失败 0
+[test-h10] 数据：{"phase1":{"perLineUs":3.4978200000000004,"baselinePerLineUs":456.221185,"flushMs":67.7543,"io":{"appendFileSync":26,"statSync":26,"renameSync":0,"writeFileSync":26,"existsSync":2}},"phase2":{"archives":6,"files":7},"phase3":{"expectedDropped":901,"lines":101},"phase4":{"lines":501}}
+[test-h10] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-h10-test-33532
+[test-h10] 全部通过
+--- scripts/test-h10-durability-layering.js (exit 0) ---
+[test-h10-durability] 共 18 项，通过 18，失败 0
+[test-h10-durability] 全部通过
+
+===== 4) 出包门禁 =====
+[app-identity-gate exit code: 0]
+  闭包文件数 : 22
+  结论：✔ 门禁通过 —— 引用闭包与 build.files 一致，可以出包。
+[build-files-gate exit code: 0]
+
+===== 汇总：失败项 0 =====

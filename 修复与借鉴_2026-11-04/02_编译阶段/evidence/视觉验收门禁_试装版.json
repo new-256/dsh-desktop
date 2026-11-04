@@ -1,0 +1,69 @@
+{
+  "checkedAt": "2026-11-03T20:34:59.887Z",
+  "minBytes": 8192,
+  "results": [
+    {
+      "png": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\试装版安装验收\\试装版_首帧_v2_20261104-043348.png",
+      "json": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\试装版安装验收\\试装版_首帧_v2_20261104-043348.json",
+      "checks": [
+        {
+          "name": "PNG 存在",
+          "ok": true,
+          "detail": "null"
+        },
+        {
+          "name": "同名 .json 元数据存在",
+          "ok": true,
+          "detail": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\试装版安装验收\\试装版_首帧_v2_20261104-043348.json"
+        },
+        {
+          "name": "字节数 >= 截断下限 8192（只防写盘截断，不判内容质量）",
+          "ok": true,
+          "detail": "58767 字节"
+        },
+        {
+          "name": "PNG magic 正确（89 50 4E 47 0D 0A 1A 0A）",
+          "ok": true,
+          "detail": "89 50 4E 47 0D 0A 1A 0A"
+        },
+        {
+          "name": "尺寸与 json.viewport 成等比缩放（防抓错 target/DPR）",
+          "ok": true,
+          "detail": "图 2139×1326 vs viewport 1426×884 → 1.500×/1.500×"
+        },
+        {
+          "name": "json.consoleErrors 为空（防带错页面当正常）",
+          "ok": true,
+          "detail": "空"
+        },
+        {
+          "name": "json.failedAssertions 为空（采集时声明的断言必须达标）",
+          "ok": true,
+          "detail": "空"
+        },
+        {
+          "name": "captureMethod 为 target 级（防全桌面截屏抓错窗口）",
+          "ok": true,
+          "detail": "cdp-page-captureScreenshot"
+        },
+        {
+          "name": "domProbe 命中关键锚点（新会话/插件/工作区）",
+          "ok": true,
+          "detail": "命中 3/3：新会话、插件、工作区"
+        },
+        {
+          "name": "domProbe.errorish 为空（防错误浮层被当正常）",
+          "ok": true,
+          "detail": "空"
+        },
+        {
+          "name": "像素非空白（唯一色数/标准差/最频色占比）",
+          "ok": true,
+          "detail": "唯一颜色数 >= 50=311 种；灰度标准差 > 3=stddev=14.82，均值=252.7；非近纯色背景=最频色占比 79.3%"
+        }
+      ],
+      "passed": true
+    }
+  ],
+  "passed": true
+}

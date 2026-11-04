@@ -1,0 +1,70 @@
+{
+  "runId": "supp6-0.3.50-20261104-0408",
+  "expectedVersion": "0.3.50",
+  "startedAt": "2026-11-04T04:04:02.1092975+08:00",
+  "results": {
+    "precondition": {
+      "status": "PASS",
+      "detail": "启动+首帧 HTTP 200（36962 字节）@ 127.0.0.1:56821"
+    },
+    "visualCapture": {
+      "status": "PASS",
+      "detail": "CDP Page.captureScreenshot + 元数据断言通过（readyState=complete、URL 本地后端、DOM 有实质内容）"
+    },
+    "u02-closeToTray": {
+      "status": "PASS",
+      "detail": "进程存活=True；可见主窗口=0；首次关闭确认框=False；托盘图标=False；留托盘日志=有"
+    },
+    "u04-singleInstance": {
+      "status": "PASS",
+      "detail": "第二实例退出=True/仍在=False；进程数 5→5；后端数 1→1；lifecycle 新增=2"
+    },
+    "u06-balloonConfirm": {
+      "status": "PASS",
+      "detail": "balloon-show 已触发；发出行：[2026-11-03T20:05:33.851Z] 托盘气泡已发出: {\"title\":\"DSH 有可用更新\",\"content\":\"DSH 后端 0.2.1-alpha.5 → 0.2.2-alpha.3\\n打开托盘菜单中的「设置」可确认下载。\",\"aumid\":\"com.deepseek.dshdesktop\",\"platform\":\"win32\",\"silentDropRisk\":\"低（AUMID 已设置）\"}"
+    },
+    "u08-openSettingsFromTray": {
+      "status": "NOT_VERIFIED_MANUAL",
+      "detail": "UIA 未枚举到 DSH 托盘图标（溢出区未出现或图标未被暴露）"
+    },
+    "hostIntact": {
+      "status": "PASS",
+      "detail": "宿主 4 个，仍存活 4"
+    }
+  },
+  "visualShot": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_.png",
+  "visualShotMeta": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_.json",
+  "u02": {
+    "dialogSeen": false,
+    "windowHidden": true,
+    "trayLogLine": "[2026-11-03T20:05:35.353Z] 托盘气泡已由系统确认显示（balloon-show 已触发）: {\"title\":\"DSH 有可用更新\",\"content\":\"DSH 后端 0.2.1-alpha.5 → 0.2.2-alpha.3\\n打开托盘菜单中的「设置」可确认下载。\",\"aumid\":\"com.deepseek.dshdesktop\",\"platform\":\"win32\"}",
+    "trayIconFound": false
+  },
+  "u04": {
+    "procsBefore": 5,
+    "procsAfter": 5,
+    "backendsBefore": 1,
+    "lifecycleLine": "{\"t\":\"2026-11-03T20:05:54.074Z\",\"pid\":37208,\"ppid\":38636,\"event\":\"exit\",\"reason\":\"second-instance\",\"detail\":\"单实例锁被占用：本进程是第二实例，直接退出\",\"uptimeMs\":79}",
+    "secondExited": true,
+    "secondStillRunning": false,
+    "backendsAfter": 1
+  },
+  "u06": {
+    "sentLine": "[2026-11-03T20:05:33.851Z] 托盘气泡已发出: {\"title\":\"DSH 有可用更新\",\"content\":\"DSH 后端 0.2.1-alpha.5 → 0.2.2-alpha.3\\n打开托盘菜单中的「设置」可确认下载。\",\"aumid\":\"com.deepseek.dshdesktop\",\"platform\":\"win32\",\"silentDropRisk\":\"低（AUMID 已设置）\"}",
+    "observed": true,
+    "shownLine": "[2026-11-03T20:05:35.353Z] 托盘气泡已由系统确认显示（balloon-show 已触发）: {\"title\":\"DSH 有可用更新\",\"content\":\"DSH 后端 0.2.1-alpha.5 → 0.2.2-alpha.3\\n打开托盘菜单中的「设置」可确认下载。\",\"aumid\":\"com.deepseek.dshdesktop\",\"platform\":\"win32\"}"
+  },
+  "u08": {
+    "menuItemFound": false,
+    "invokeAttempted": false,
+    "settingsWindow": false,
+    "reason": "UIA 未枚举到 DSH 托盘图标（溢出区未出现或图标未被暴露）"
+  },
+  "savedLogs": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\补充验收日志_supp6-0.3.50-20261104-0408",
+  "counts": {
+    "notVerified": 1,
+    "fail": 0,
+    "pass": 6
+  },
+  "finishedAt": "2026-11-04T04:06:48.3434333+08:00"
+}

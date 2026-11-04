@@ -1,0 +1,71 @@
+{
+  "runId": "supp5-0.3.49-20261104-0402",
+  "expectedVersion": "0.3.49",
+  "startedAt": "2026-11-04T03:44:38.8770050+08:00",
+  "results": {
+    "precondition": {
+      "status": "PASS",
+      "detail": "启动+首帧 HTTP 200（36962 字节）@ 127.0.0.1:61589"
+    },
+    "visualCapture": {
+      "status": "PASS",
+      "detail": "CDP Page.captureScreenshot + 元数据断言通过（readyState=complete、URL 本地后端、DOM 有实质内容）"
+    },
+    "u02-closeToTray": {
+      "status": "PASS",
+      "detail": "进程存活=True；可见主窗口=0；首次关闭确认框=False；托盘图标=True；留托盘日志=有"
+    },
+    "u04-singleInstance": {
+      "status": "PASS",
+      "detail": "第二实例退出=True/仍在=False；进程数 5→5；后端数 1→1；lifecycle 新增=2"
+    },
+    "u06-balloonConfirm": {
+      "status": "PASS",
+      "detail": "balloon-show 已触发；发出行：[2026-11-03T19:49:46.133Z] 托盘气泡已发出: {\"title\":\"DSH 有可用更新\",\"content\":\"DSH 后端 0.2.1-alpha.5 → 0.2.2-alpha.3\\n打开托盘菜单中的「设置」可确认下载。\",\"aumid\":\"com.deepseek.dshdesktop\",\"platform\":\"win32\",\"silentDropRisk\":\"低（AUMID 已设置）\"}"
+    },
+    "u08-openSettingsFromTray": {
+      "status": "NOT_VERIFIED_MANUAL",
+      "detail": "托盘图标支持模式=；尝试了 无可用模式，但未出现托盘菜单窗口（#32768），因此无法点到「设置…」"
+    },
+    "hostIntact": {
+      "status": "PASS",
+      "detail": "宿主 4 个，仍存活 4"
+    }
+  },
+  "visualShot": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.49_首帧.png",
+  "visualShotMeta": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.49_首帧.json",
+  "u02": {
+    "dialogSeen": false,
+    "trayLogLine": "[2026-11-03T19:49:47.644Z] 托盘气泡已由系统确认显示（balloon-show 已触发）: {\"title\":\"DSH 有可用更新\",\"content\":\"DSH 后端 0.2.1-alpha.5 → 0.2.2-alpha.3\\n打开托盘菜单中的「设置」可确认下载。\",\"aumid\":\"com.deepseek.dshdesktop\",\"platform\":\"win32\"}",
+    "windowHidden": true,
+    "trayIconFound": true
+  },
+  "u04": {
+    "secondExited": true,
+    "procsAfter": 5,
+    "secondStillRunning": false,
+    "procsBefore": 5,
+    "lifecycleLine": "{\"t\":\"2026-11-03T19:50:06.962Z\",\"pid\":9088,\"ppid\":24440,\"event\":\"exit\",\"reason\":\"second-instance\",\"detail\":\"单实例锁被占用：本进程是第二实例，直接退出\",\"uptimeMs\":86}",
+    "backendsAfter": 1,
+    "backendsBefore": 1
+  },
+  "u06": {
+    "shownLine": "[2026-11-03T19:49:47.644Z] 托盘气泡已由系统确认显示（balloon-show 已触发）: {\"title\":\"DSH 有可用更新\",\"content\":\"DSH 后端 0.2.1-alpha.5 → 0.2.2-alpha.3\\n打开托盘菜单中的「设置」可确认下载。\",\"aumid\":\"com.deepseek.dshdesktop\",\"platform\":\"win32\"}",
+    "sentLine": "[2026-11-03T19:49:46.133Z] 托盘气泡已发出: {\"title\":\"DSH 有可用更新\",\"content\":\"DSH 后端 0.2.1-alpha.5 → 0.2.2-alpha.3\\n打开托盘菜单中的「设置」可确认下载。\",\"aumid\":\"com.deepseek.dshdesktop\",\"platform\":\"win32\",\"silentDropRisk\":\"低（AUMID 已设置）\"}",
+    "observed": true
+  },
+  "u08": {
+    "menuItemFound": false,
+    "invokeAttempted": false,
+    "settingsWindow": false,
+    "reason": "托盘图标支持模式=；尝试了 无可用模式，但未出现托盘菜单窗口（#32768），因此无法点到「设置…」",
+    "supportedPatterns": []
+  },
+  "savedLogs": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\补充验收日志_supp5-0.3.49-20261104-0402",
+  "counts": {
+    "pass": 6,
+    "notVerified": 1,
+    "fail": 0
+  },
+  "finishedAt": "2026-11-04T03:51:05.1999788+08:00"
+}

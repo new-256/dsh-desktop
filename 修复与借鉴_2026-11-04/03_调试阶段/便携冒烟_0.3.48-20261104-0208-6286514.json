@@ -1,0 +1,63 @@
+{
+  "runId": "0.3.48-20261104-0208-6286514",
+  "mode": "portable-smoke",
+  "expectedVersion": "0.3.48",
+  "unpackedDir": "C:\\Users\\lcl\\Desktop\\DSH\\release\\win-unpacked",
+  "startedAt": "2026-11-04T02:09:45.3681254+08:00",
+  "steps": {
+    "copy": {
+      "status": "PASS",
+      "detail": "robocopy exit=3"
+    },
+    "lifecycleStart": {
+      "status": "PASS",
+      "detail": "version=0.3.48 reason=boot"
+    },
+    "singleInstance": {
+      "status": "PASS",
+      "detail": "便携副本未被子实例锁拦截（隔离 userData 生效）"
+    },
+    "window": {
+      "status": "PASS",
+      "detail": "DSH Desktop"
+    },
+    "aumid": {
+      "status": "FAIL",
+      "detail": "AUMID 未生效：[2026-11-03T18:09:49.492Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js"
+    },
+    "webui": {
+      "status": "PASS",
+      "detail": "HTTP 200 @ 127.0.0.1:54557/（36962 字节，text/html; charset=utf-8）"
+    },
+    "hostIntact": {
+      "status": "PASS",
+      "detail": "启动前 4 个，仍存活 4 个"
+    },
+    "cleanup": {
+      "status": "PASS",
+      "detail": "定向 taskkill pid=37132"
+    }
+  },
+  "note": "不执行 NSIS 安装；以隔离 userData + DSH_DIAG_BASE 启动 win-unpacked 同一组二进制",
+  "hostPidsBefore": [
+    1192,
+    8912,
+    19360,
+    30540
+  ],
+  "smokeRoot": "C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-smoke-0.3.48-20261104-0208-6286514",
+  "lifecycleLog": "C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-smoke-0.3.48-20261104-0208-6286514\\diag\\logs\\DSH-Desktop-生命周期.log",
+  "pid": 37132,
+  "windowTitle": "DSH Desktop",
+  "aumidLine": "[2026-11-03T18:09:49.492Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js",
+  "port": "54557",
+  "shot": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\便携冒烟_首帧_0.3.48-20261104-0208-6286514.png",
+  "savedLogs": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\便携冒烟日志_0.3.48-20261104-0208-6286514",
+  "counts": {
+    "fail": 1,
+    "skip": 0,
+    "pass": 7
+  },
+  "passed": false,
+  "finishedAt": "2026-11-04T02:11:50.8433347+08:00"
+}

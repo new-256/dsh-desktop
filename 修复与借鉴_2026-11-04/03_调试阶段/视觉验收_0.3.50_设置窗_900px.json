@@ -1,0 +1,31 @@
+{
+  "capturedAt": "2026-11-03T20:03:44.707Z",
+  "captureMethod": "electron-webContents-capturePage",
+  "windowTitle": "DSH Desktop 设置",
+  "targetUrl": "file:///C:/Users/lcl/Desktop/DSH/release/win-unpacked/resources/app.asar/settings.html",
+  "viewport": {
+    "width": 1329,
+    "height": 1047
+  },
+  "assertions": {
+    "titleOk": true,
+    "domNodes": 154,
+    "nodesOk": true,
+    "interactivePresent": true,
+    "anchorsHit": [
+      "更新",
+      "设置"
+    ],
+    "anchorsOk": true,
+    "errorishEmpty": true
+  },
+  "domProbe": {
+    "inputs": 8,
+    "selects": 3,
+    "buttons": 13,
+    "bodyTextLen": 1282,
+    "bodyTextHead": "DSH Desktop 设置\n更新设置\n更新路线（后端组件下载源）\n镜像站（npmmirror） — 国内访问快；镜像同步可能滞后几小时到一天\n官方站（npmjs） — 版本与依赖始终最新；国内网络可能较慢\n桌面版\n0.3.50\n当前版本\n0.2.1-alpha.5 · Node 24.4.0\n最新版本\n未检查\n更新状"
+  },
+  "bytes": 76808,
+  "note": "本图由 Electron webContents.capturePage() 采集（窗口自身页面），不可能是其它程序；无本 .json 的截图不得作为验收证据。"
+}

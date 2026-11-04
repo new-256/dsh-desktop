@@ -1,0 +1,504 @@
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:26:10.067+08:00
+  label    : node --check main.js
+  command  : node --check main.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:26:10.389+08:00 exit=0 reason=exit elapsed=0.3s label=node --check main.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:26:10.636+08:00
+  label    : node --check startup-deadline.js
+  command  : node --check startup-deadline.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:26:10.944+08:00 exit=0 reason=exit elapsed=0.3s label=node --check startup-deadline.js
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:26:11.128+08:00
+  label    : node --check 测试脚本
+  command  : node --check scripts/test-h01-rollback.js && node --check scripts/test-h02-spawn-sync.js && node --check scripts/test-h03-startup-deadline.js && node --check scripts/test-h08-aumid.js && node --check scripts/lib/stage1-main-harness.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:26:12.074+08:00 exit=0 reason=exit elapsed=0.9s label=node --check 测试脚本
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:26:12.239+08:00
+  label    : H-03 纯逻辑测试
+  command  : node scripts/test-h03-startup-deadline.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+0.3.48 · H-03 启动截止时间纯逻辑
+模块：startup-deadline.js（不 require electron，可直接在 Node 里跑）
+
+① 默认预算与书面理由
+  ✓ 阶段顺序为 spawn → health → paint
+  ✓ spawn 默认预算取 DEFAULT_BUDGETS_MS
+  ✓ health 默认预算取 DEFAULT_BUDGETS_MS
+  ✓ paint 默认预算取 DEFAULT_BUDGETS_MS
+  ✓ 干净环境下没有任何配置错误
+  ✓ 每个阶段都有面向用户的中文标签（弹窗文案只有一份来源）
+
+② 环境变量覆盖 / 倍率 / 非法值不静默容忍
+  ✓ 单个阶段预算可被环境变量覆盖
+  ✓ 来源被记为 env（日志里能看出来）
+  ✓ 未覆盖的阶段保持默认（分阶段而非一刀切）
+  ✓ 全局倍率同时作用于所有阶段
+  ✓ 非法值退回默认预算（不让应用起不来）
+  ✓ 非法值被记入 errors[]，调用方会写日志（不许静默容忍）
+  ✓ 错误信息包含原始非法值，便于用户自查
+  ✓ 0 不算合法预算（会立刻超时）
+  ✓ 0 与负倍率都被如实报告
+  ✓ spawn 预算不小于 health（含初始化，不能比"等 HTTP"更短）
+
+③ 阶段打点（回答"卡在哪一步、等了多久"）
+  ✓ 三个点都被记录
+  ✓ 时间偏移累计正确（毫秒）
+  ✓ since() 能查出某一步在什么时刻发生
+  ✓ lines() 生成可读序列（进日志/弹窗）
+  ✓ last() 返回最后一个点
+  ✓ snapshot() 是深拷贝，外部改不动内部状态
+
+④ watchdog（注入假计时器，同一段真实逻辑）
+  ✓ 构造时不启动计时器（显式 start 才开始）
+  ✓ start() 按预算毫秒摆好计时器
+  ✓ 到点触发一次 onExpire
+  ✓ onExpire 收到阶段与预算
+  ✓ isExpired() 反映已超时
+  ✓ stop() 清掉了计时器句柄（不留悬挂定时器）
+  ✓ stop() 后状态为已停止
+  ✓ stop() 之后不会再触发（阶段成功完成时就是这个路径）
+
+⑤ 超时文案：阶段名 + 最后一条日志 + 日志绝对路径
+  ✓ 报告带阶段专属错误码
+  ✓ ① 文案含超时阶段名
+  ✓ ② 文案含最后一条后端日志
+  ✓ ③ 文案含日志绝对路径
+  ✓ 日志路径确实是绝对路径（不是裸文件名）
+  ✓ 文案附上阶段打点序列
+  ✓ 文案写清已等待时长
+  ✓ 后端一行输出都没有时，文案如实说明（而不是留空）
+  ✓ createTimeoutError 的 message 就是报告文案
+  ✓ Error 携带 timeout/code/phase（上层可按类型分流）
+  ✓ Error 携带完整报告对象（落盘/弹窗复用）
+  ✓ 三个阶段的错误码互不相同
+
+⑥ lastMeaningfulLogLine：末尾空行/超长行/纯空白
+  ✓ 忽略末尾空行，取真正最后一条
+  ✓ 数组输入同样跳过空白行
+  ✓ 完全没输出时返回空字符串（上层据此显示"没有任何输出"）
+  ✓ 超长行按上限截断并带省略号
+  ✓ 折叠多余空白（弹窗里不出现锯齿）
+
+────────────────────────────────────────
+断言 47 项，失败 0 项
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:26:12.530+08:00 exit=0 reason=exit elapsed=0.3s label=H-03 纯逻辑测试
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:26:12.680+08:00
+  label    : H-02 spawn 反模式测试
+  command  : node scripts/test-h02-spawn-sync.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+0.3.48 · H-02 回归：spawnBackend 的同步异常必须 reject 外层 Promise
+沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-h02-2J6YP4
+预算：spawn=400ms health=400ms（环境变量覆盖，默认值见 startup-deadline.js）
+
+⓪ 对照实验（证明本测试能抓住这个缺陷）
+  ✓ 旧结构（new Promise(async …)）在外层确实永不 settle —— 本测试有能力发现回归
+
+① 结构断言（源码级）
+  ✓ main.js 的可执行代码中不存在 `new Promise(async …)` 反模式
+  ✓ 同步准备已抽成 prepareBackendSpawn()（可被 try/catch 包住）
+  ✓ spawnBackend 内对同步准备失败显式 reject 外层 Promise
+
+② 缺 node.exe（旧实现会永久 pending）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:26:13.889Z] 后端进程准备失败（同步阶段，已显式 reject 外层）: Error: 缺少 Node 运行时：未找到活跃 node.exe（seed 失败）。
+    at prepareBackendSpawn (C:\Users\lcl\Desktop\DSH\main.js:555:40)
+    at C:\Users\lcl\Desktop\DSH\main.js:593:18
+    at new Promise (<anonymous>)
+    at Object.spawnBackend (C:\Users\lcl\Desktop\DSH\main.js:590:10)
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h02-spawn-sync.js:136:44
+  ✓ Promise 在 3s 内落定（没有永久 pending）
+  ✓ Promise 以 reject 落定（不是静默 resolve）
+  ✓ 错误文案保留原有语义（缺少 Node 运行时…）
+
+③ buildDedicatedEnv() 同步抛错
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:26:13.897Z] 后端进程准备失败（同步阶段，已显式 reject 外层）: Error: buildDedicatedEnv 失败（测试注入：磁盘满/权限异常）
+    at Object.buildDedicatedEnv (C:\Users\lcl\Desktop\DSH\scripts\lib\stage1-main-harness.js:274:35)
+    at prepareBackendSpawn (C:\Users\lcl\Desktop\DSH\main.js:561:19)
+    at C:\Users\lcl\Desktop\DSH\main.js:593:18
+    at new Promise (<anonymous>)
+    at Object.spawnBackend (C:\Users\lcl\Desktop\DSH\main.js:590:10)
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h02-spawn-sync.js:149:44
+  ✓ Promise 在 3s 内落定（旧实现里这里就是永久 pending 的现场）
+  ✓ Promise 以 reject 落定
+  ✓ 原始异常信息原样透出（不被改写成模糊文案）
+  ✓ 基本检查通过后确实调用了 buildDedicatedEnv
+
+④ spawn() 同步抛出 EACCES
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:26:13.905Z] 后端进程准备失败（同步阶段，已显式 reject 外层）: Error: spawn EACCES
+    at Object.spawn [as onSpawn] (C:\Users\lcl\Desktop\DSH\scripts\test-h02-spawn-sync.js:164:32)
+    at spawn (C:\Users\lcl\Desktop\DSH\scripts\lib\stage1-main-harness.js:234:33)
+    at prepareBackendSpawn (C:\Users\lcl\Desktop\DSH\main.js:570:17)
+    at C:\Users\lcl\Desktop\DSH\main.js:593:18
+    at new Promise (<anonymous>)
+    at Object.spawnBackend (C:\Users\lcl\Desktop\DSH\main.js:590:10)
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h02-spawn-sync.js:166:44
+  ✓ Promise 在 3s 内落定
+  ✓ Promise 以 reject 落定
+  ✓ 错误码 EACCES 完整保留（便于归因杀软/权限）
+
+⑤ H-03 阶段一：后端不打印地址（spawn deadline）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[dsh-backend] starting backend: node=C:\Users\lcl\AppData\Local\Temp\dsh-h02-2J6YP4\case5\node.exe DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-h02-2J6YP4\case5\dsh-home host=127.0.0.1 port=0
+[diag] [2026-11-03T17:26:13.910Z] 后端输出 starting backend: node=C:\Users\lcl\AppData\Local\Temp\dsh-h02-2J6YP4\case5\node.exe DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-h02-2J6YP4\case5\dsh-home host=127.0.0.1 port=0
+
+[diag] [2026-11-03T17:26:13.910Z] 启动超时预算: {"spawn":400,"health":400,"paint":400} | 来源: {"spawn":"env","health":"env","paint":"env"}
+[dsh-backend] booting dsh web, loading plugins...
+[diag] [2026-11-03T17:26:13.974Z] 后端输出 booting dsh web, loading plugins...
+
+[diag] [2026-11-03T17:26:14.314Z] 启动超时（spawn 阶段）: 启动超时：后端进程拉起（等待 dsh web 打印监听地址）
+  超时阶段：spawn（E_STARTUP_SPAWN_NO_URL）
+  已经等过：0.40s；该阶段预算 0.40s
+  最后一条后端日志：booting dsh web, loading plugins...
+  启动阶段打点：spawn[pid=5150]@0.00s
+  完整日志（绝对路径）：C:\Users\lcl\AppData\Local\Temp\dsh-h02-2J6YP4\logs\DSH-Desktop-日志.txt
+  这意味着：这一步没有在预期时间内给出结果。超时本身不代表后端一定坏了，
+  但它确实卡住了 —— 下面可以重试启动、回滚到上一个版本，或先查看日志。
+  ✓ 超时后 Promise 在 4s 内落定（旧实现会永远停在这里）
+  ✓ 超时按 reject 处理（走既有 showFatal 路径）
+  ✓ 错误码区分了"未捕获到后端地址"
+  ✓ 超时文案含超时阶段名
+  ✓ 超时文案含最后一条后端日志
+  ✓ 超时文案含日志绝对路径标签
+  ✓ 日志路径确实是绝对路径
+  ✓ 超时后清理了卡住的后端进程（避免占着端口/文件锁）
+  ✓ 阶段打点记录了 spawn（事后可回答卡在哪一步）
+
+⑥ H-03 阶段二：地址已打印但 HTTP 无响应（health deadline）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[dsh-backend] starting backend: node=C:\Users\lcl\AppData\Local\Temp\dsh-h02-2J6YP4\case6\node.exe DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-h02-2J6YP4\case6\dsh-home host=127.0.0.1 port=0
+[diag] [2026-11-03T17:26:14.321Z] 后端输出 starting backend: node=C:\Users\lcl\AppData\Local\Temp\dsh-h02-2J6YP4\case6\node.exe DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-h02-2J6YP4\case6\dsh-home host=127.0.0.1 port=0
+
+[diag] [2026-11-03T17:26:14.321Z] 启动超时预算: {"spawn":400,"health":400,"paint":400} | 来源: {"spawn":"env","health":"env","paint":"env"}
+[dsh-backend] dsh web: http://127.0.0.1:1
+[diag] [2026-11-03T17:26:14.390Z] 后端输出 dsh web: http://127.0.0.1:1
+
+[diag] [2026-11-03T17:26:14.811Z] 启动超时（health 阶段）: 启动超时：后端健康检查（地址已打印，等待 HTTP 响应）
+  超时阶段：health（E_STARTUP_HEALTH_UNRESPONSIVE）
+  已经等过：0.40s；该阶段预算 0.40s
+  最后一条后端日志：dsh web: http://127.0.0.1:1
+  启动阶段打点：spawn[pid=5151]@0.00s → url-ready[http://127.0.0.1:1]@0.07s
+  完整日志（绝对路径）：C:\Users\lcl\AppData\Local\Temp\dsh-h02-2J6YP4\logs\DSH-Desktop-日志.txt
+  这意味着：这一步没有在预期时间内给出结果。超时本身不代表后端一定坏了，
+  但它确实卡住了 —— 下面可以重试启动、回滚到上一个版本，或先查看日志。
+  ✓ health 阶段超时后 Promise 落定
+  ✓ health 超时按 reject 处理
+  ✓ 错误码与"未捕获到地址"不同（H-03 要求分成两个错误码）
+  ✓ 超时文案含 health 阶段名
+  ✓ 阶段打点记录了 url-ready（说明地址确实抓到了）
+
+────────────────────────────────────────
+断言 28 项，失败 0 项
+
+沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-h02-2J6YP4
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:26:14.845+08:00 exit=0 reason=exit elapsed=2.2s label=H-02 spawn 反模式测试
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:26:14.992+08:00
+  label    : H-01 回滚接电测试
+  command  : node scripts/test-h01-rollback.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+0.3.48 · H-01 回归：回滚接电 + 自动回滚防死循环
+沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-h01-GewTho
+
+① 首次启动失败：只计数、只弹窗（不越级自动回滚）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+  ✓ 磁盘上的 dsh.previous 被识别为可用回滚目标
+  ✓ 初始台账为零
+[diag] [2026-11-03T17:26:15.408Z] 启动失败（fatal）: Error: 后端进程提前退出（code=1 signal=null）。
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:121:25
+    at Object.<anonymous> (C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:277:3)
+    at Module._compile (node:internal/modules/cjs/loader:1929:14)
+    at Object..js (node:internal/modules/cjs/loader:2060:10)
+    at Module.load (node:internal/modules/cjs/loader:1651:32)
+    at Module._load (node:internal/modules/cjs/loader:1443:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47
+[diag] [2026-11-03T17:26:15.411Z] 启动阶段打点: []
+[diag] [2026-11-03T17:26:15.412Z] 启动失败计数: {"consecutiveFailures":1,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
+[diag] [2026-11-03T17:26:15.419Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-GewTho\logs\crash-2026-11-03T17-26-15-417Z-host.log
+[diag] [2026-11-03T17:26:15.420Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:26:15.420Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:26:15.420Z] 启动恢复决策: {"action":"none","reason":"below-threshold","recommendRollback":false}
+  ✓ 弹了且只弹了一次恢复弹窗
+  ✓ 只有 1 次失败时不提供回滚按钮（阈值是连续 2 次）
+  ✓ 非端口占用场景仍是 6 个动作（保持既有风格）
+  ✓ 失败次数已落盘为 1
+  ✓ 这次没有任何重启（用户选了留在托盘）
+[diag] [2026-11-03T17:26:15.421Z] 启动失败（fatal）: Error: 后端进程提前退出（code=1 signal=null）。
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:131:25
+[diag] [2026-11-03T17:26:15.421Z] 启动阶段打点: []
+[diag] [2026-11-03T17:26:15.422Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-GewTho\logs\crash-2026-11-03T17-26-15-421Z-host.log
+[diag] [2026-11-03T17:26:15.423Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:26:15.423Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:26:15.423Z] 启动恢复决策: {"action":"none","reason":"below-threshold","recommendRollback":false}
+  ✓ 同一次启动内重复进入 showFatal 不重复计数
+
+② 连续第 2 次失败：自动回滚 + 暂存"已回滚"提示
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:26:15.429Z] 启动失败（fatal）: Error: 后端进程提前退出（code=1 signal=null）。
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:142:25
+[diag] [2026-11-03T17:26:15.429Z] 启动阶段打点: []
+[diag] [2026-11-03T17:26:15.430Z] 启动失败计数: {"consecutiveFailures":2,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
+[diag] [2026-11-03T17:26:15.431Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-GewTho\logs\crash-2026-11-03T17-26-15-430Z-host.log
+[diag] [2026-11-03T17:26:15.431Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:26:15.431Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:26:15.431Z] 启动恢复决策: {"action":"auto-rollback","reason":"consecutive-failures","recommendRollback":true}
+[diag] [2026-11-03T17:26:15.432Z] 触发自动回滚: {"reason":"consecutive-failures"}
+[dsh-backend] 连续启动失败，正在自动回滚到上一个版本…
+[diag] [2026-11-03T17:26:15.432Z] 后端输出 连续启动失败，正在自动回滚到上一个版本…
+
+[diag] [2026-11-03T17:26:15.432Z] 回滚（auto）：后端已停止 {"stopped":true,"forced":false,"ms":0,"how":"no-backend"}
+[diag] [2026-11-03T17:26:15.432Z] 回滚（auto）完成：1.0.0-test → 0.9.0-previous
+[dsh-backend] 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（只替换 backend 里的 dsh 程序目录，插件与数据未改动）
+[diag] [2026-11-03T17:26:15.432Z] 后端输出 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（只替换 backend 里的 dsh 程序目录，插件与数据未改动）
+
+[diag] [2026-11-03T17:26:15.436Z] restartApp：准备重启（更新应用流程）
+[diag] [2026-11-03T17:26:15.437Z] restartApp：app.relaunch + exit
+  ✓ 自动执行了一次 rollbackDsh()（此前全仓零调用点）
+  ✓ 本轮自动回滚次数已落盘为 1（防死循环的计量单元）
+  ✓ 失败计数累加到 2（保留证据，不因回滚而抹掉）
+  ✓ 台账记录了这是一次自动回滚
+  ✓ 台账记录了回滚前后版本（from → to）
+  ✓ 「已自动回滚到 vX」提示已暂存给下次启动
+  ✓ 回滚后自动重启应用
+  ✓ 自动回滚路径不弹阻塞弹窗（提示留给重启后）
+  ✓ 回滚前仍先发了一次托盘气泡（托盘入口保留）
+  ✓ 诊断日志写明回滚后的版本（0.3.48 · 回滚必须留痕）
+  ✓ 生命周期台账写了 auto-rollback 事件
+
+③ 回滚后启动成功：清零计数 + 一次性提示
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:26:15.847Z] 启动成功：清空失败计数与自动回滚链 {"wasConsecutiveFailures":2,"wasRollbacksInChain":1,"pendingNotice":{"kind":"auto-rollback","at":"2026-11-04T00:00:01.000Z","from":"1.0.0-test","to":"0.9.0-previous","reason":"consecutive-failures"}}
+[diag] [2026-11-03T17:26:15.848Z] 显示自动回滚提示（一次性）: {"kind":"auto-rollback","at":"2026-11-04T00:00:01.000Z","from":"1.0.0-test","to":"0.9.0-previous","reason":"consecutive-failures"}
+[diag] [2026-11-03T17:26:15.848Z] 托盘气泡已发出: {"title":"已自动回滚到上一个版本","content":"DSH 后端已回滚：1.0.0-test → 0.9.0-previous","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+  ✓ 启动成功 → 失败计数清零（否则几个月后偶发失败会误触发回滚）
+  ✓ 启动成功 → 自动回滚链清零（下一次真正需要时仍可自动救一次）
+  ✓ 一次性提示已消费（不会每次启动都弹）
+  ✓ 回滚后的提示弹了一次
+  ✓ 提示文案说明"已自动回滚到 vX"
+  ✓ 提示说明改了什么（不动会话/密钥/设置）
+  ✓ 提示里给出日志绝对路径
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+  ✓ 提示只显示一次（下一次启动不再打扰）
+
+④ 防死循环：本轮已回滚过就不再自动回滚
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:26:15.954Z] 启动失败（fatal）: Error: 又一次启动失败
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:208:25
+[diag] [2026-11-03T17:26:15.954Z] 启动阶段打点: []
+[diag] [2026-11-03T17:26:15.955Z] 启动失败计数: {"consecutiveFailures":2,"rollbacksInChain":1,"threshold":2,"autoRollbackLimit":1}
+[diag] [2026-11-03T17:26:15.955Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-GewTho\logs\crash-2026-11-03T17-26-15-955Z-host.log
+[diag] [2026-11-03T17:26:15.956Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:26:15.956Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:26:15.956Z] 启动恢复决策: {"action":"none","reason":"auto-rollback-limit-reached","recommendRollback":true}
+[diag] [2026-11-03T17:26:15.956Z] 用户请求回滚到上一个版本: fatal-dialog
+[diag] [2026-11-03T17:26:15.956Z] 回滚（manual）：后端已停止 {"stopped":true,"forced":false,"ms":0,"how":"no-backend"}
+[diag] [2026-11-03T17:26:15.956Z] 回滚（manual）完成：1.0.0-test → 0.9.0-previous
+[dsh-backend] 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（只替换 backend 里的 dsh 程序目录，插件与数据未改动）
+[diag] [2026-11-03T17:26:15.956Z] 后端输出 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（只替换 backend 里的 dsh 程序目录，插件与数据未改动）
+
+[diag] [2026-11-03T17:26:15.957Z] restartApp：准备重启（更新应用流程）
+[diag] [2026-11-03T17:26:15.957Z] restartApp：app.relaunch + exit
+  ✓ 第 2 次自动回滚被拒绝，但手动回滚按钮排在第一位
+  ✓ 弹窗解释了为什么不再自动回滚（不许无声地不回滚）
+  ✓ 用户点按钮后才执行了这一次回滚（自动侧没有越权）
+  ✓ 手动回滚不计入"本轮自动回滚"额度
+  ✓ 手动回滚后重启应用
+
+⑤ journal 未验证记录 → 提示用户 + 提供回滚
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+  ✓ journal 未验证记录可被安全读取
+[diag] [2026-11-03T17:26:15.961Z] 启动失败（fatal）: Error: 后端进程提前退出（code=9）
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:229:25
+[diag] [2026-11-03T17:26:15.961Z] 启动阶段打点: []
+[diag] [2026-11-03T17:26:15.961Z] 启动失败计数: {"consecutiveFailures":1,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
+[diag] [2026-11-03T17:26:15.963Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-GewTho\logs\crash-2026-11-03T17-26-15-963Z-host.log
+[diag] [2026-11-03T17:26:15.964Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:26:15.964Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:26:15.964Z] 启动恢复决策: {"action":"advisory","reason":"journal-unverified","recommendRollback":true}
+[diag] [2026-11-03T17:26:15.964Z] 用户请求回滚到上一个版本: fatal-dialog
+[diag] [2026-11-03T17:26:15.965Z] 回滚（manual）：后端已停止 {"stopped":true,"forced":false,"ms":0,"how":"no-backend"}
+[diag] [2026-11-03T17:26:15.965Z] 回滚（manual）完成：1.0.0-test → 0.9.0-previous
+[dsh-backend] 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（只替换 backend 里的 dsh 程序目录，插件与数据未改动）
+[diag] [2026-11-03T17:26:15.965Z] 后端输出 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（只替换 backend 里的 dsh 程序目录，插件与数据未改动）
+
+[diag] [2026-11-03T17:26:15.967Z] restartApp：准备重启（更新应用流程）
+[diag] [2026-11-03T17:26:15.967Z] restartApp：app.relaunch + exit
+  ✓ journal 证据存在时回滚按钮出现
+  ✓ 弹窗标题点明"上次更新未验证通过"
+  ✓ 弹窗列出 journal 证据（不是只写日志）
+
+⑥ 没有 dsh.previous：不提供回滚按钮
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+  ✓ dsh.previous 不存在时判定为不可回滚
+[diag] [2026-11-03T17:26:15.973Z] 启动失败（fatal）: Error: 启动失败（没有上一个版本）
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:245:25
+[diag] [2026-11-03T17:26:15.973Z] 启动阶段打点: []
+[diag] [2026-11-03T17:26:15.974Z] 启动失败计数: {"consecutiveFailures":2,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
+[diag] [2026-11-03T17:26:15.975Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-GewTho\logs\crash-2026-11-03T17-26-15-974Z-host.log
+[diag] [2026-11-03T17:26:15.975Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:26:15.975Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:26:15.975Z] 启动恢复决策: {"action":"none","reason":"no-previous-version","recommendRollback":false}
+  ✓ 没有回滚素材就不出现回滚按钮
+  ✓ 自动回滚也没有被触发（无米下锅）
+[diag] [2026-11-03T17:26:15.975Z] 回滚（manual）：后端已停止 {"stopped":true,"forced":false,"ms":0,"how":"no-backend"}
+[diag] [2026-11-03T17:26:15.975Z] 回滚（manual）未完成: 没有可用的上一个版本（dsh.previous 不完整）
+[dsh-backend] 回滚失败：没有可用的上一个版本（dsh.previous 不完整）
+[diag] [2026-11-03T17:26:15.975Z] 后端输出 回滚失败：没有可用的上一个版本（dsh.previous 不完整）
+
+  ✓ performRollback 在没有素材时返回 ok=false
+  ✓ 失败原因可读（不是一句"失败"）
+
+⑦ 端口被占（EADDRINUSE）时不回滚
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:26:15.979Z] 启动失败（fatal）: Error: listen EADDRINUSE: address already in use 127.0.0.1:1234
+    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:264:25
+[diag] [2026-11-03T17:26:15.979Z] 启动阶段打点: []
+[diag] [2026-11-03T17:26:15.980Z] 启动失败计数: {"consecutiveFailures":6,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
+[diag] [2026-11-03T17:26:15.980Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-GewTho\logs\crash-2026-11-03T17-26-15-980Z-host.log
+[diag] [2026-11-03T17:26:15.981Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+[diag] [2026-11-03T17:26:15.981Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
+
+[diag] [2026-11-03T17:26:15.981Z] 启动恢复决策: {"action":"none","reason":"address-in-use","recommendRollback":false}
+  ✓ 端口冲突即便连续失败 5 次也不自动回滚（回滚治不了端口冲突）
+  ✓ 端口冲突仍走既有的两按钮专用路径
+  ✓ 用户选"退出"即退出
+
+────────────────────────────────────────
+断言 44 项，失败 0 项
+
+沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-h01-GewTho
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:26:16.008+08:00 exit=0 reason=exit elapsed=1.0s label=H-01 回滚接电测试
+==============================================================================
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:26:16.142+08:00
+  label    : H-08 AUMID 测试
+  command  : node scripts/test-h08-aumid.js
+  timeout  : 120s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+0.3.48 · H-08 回归：AppUserModelID + 通知通道取证
+沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-h08-HFDqdO
+
+① AppUserModelID 与 package.json 的 build.appId 一致
+  ✓ package.json 里存在 build.appId（安装器身份来源）
+  ✓ main.js 调用了 app.setAppUserModelId()
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+  ✓ 进程启动时调用了一次 setAppUserModelId（不是 0 次）
+  ✓ 传入的 AUMID 与 package.json build.appId 完全相同
+  ✓ 与当前安装器一致：com.deepseek.dshdesktop
+  ✓ main.js 没有硬编码 appId 字面量（从 package.json 读取，避免两处分叉）
+  ✓ AUMID 的来源是 require(package.json).build.appId
+
+② 设置时机（必须早于 whenReady / 早于任何气泡）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+  ✓ 模块加载阶段即完成设置（whenReady 未执行）
+  ✓ 源码顺序上 setAppUserModelId 在 whenReady 之前
+
+③ 通知统一出口：气泡发出即留证
+  ✓ main.js 里只有 notifyUser 内部一处 displayBalloon（三处调用点已收口）
+  ✓ 启动失败/后端更新/外壳更新都走 notifyUser
+  ✓ 启动期有通知通道自检日志（托盘/AUMID/Notification 能力一次写清）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:26:16.468Z] 托盘气泡已发出: {"title":"DSH 有可用更新","content":"dsh → 1.2.3","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+  ✓ 气泡确实发给了托盘（保留原有通道）
+  ✓ 标题原样透传
+  ✓ 诊断日志记录了"气泡已发出"
+  ✓ 日志里带上了 AUMID（事后可判定是否身份不一致）
+  ✓ 日志里带上了"被系统静默丢弃"的风险判定
+  ✓ （balloon-show 确认在 1.5s 后异步记录，见下一个用例）
+
+④ 收到 balloon-show：认定已显示，不重复打扰
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:26:17.079Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+[diag] [2026-11-03T17:26:17.975Z] 托盘气泡已由系统确认显示（balloon-show 已触发）: {"title":"DSH 有可用更新","content":"dsh → 1.2.3","aumid":"com.deepseek.dshdesktop","platform":"win32"}
+[diag] [2026-11-03T17:26:18.593Z] 托盘气泡已由系统确认显示（balloon-show 已触发）: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志。","aumid":"com.deepseek.dshdesktop","platform":"win32"}
+  ✓ 日志记录了"系统确认显示"（这是可观测的成功证据）
+  ✓ 已确认显示时不再补发 Notification（不重复打扰）
+
+⑤ 等不到 balloon-show：如实记录 + 改走可验证通道
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:26:19.292Z] 托盘气泡已发出: {"title":"DSH 有可用更新","content":"dsh → 1.2.3","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
+  ✓ 1.5s 观察窗内不抢跑（先等确认）
+[diag] [2026-11-03T17:26:20.803Z] 托盘气泡未收到 balloon-show 确认（已设置 AUMID 的前提下仍疑似被系统丢弃）: {"title":"DSH 有可用更新","content":"dsh → 1.2.3","aumid":"com.deepseek.dshdesktop","platform":"win32"}
+[diag] [2026-11-03T17:26:20.803Z] 已改用 Notification 通道发送通知: {"title":"DSH 有可用更新","why":"balloon-unconfirmed"}
+  ✓ 日志如实记录"未收到显示确认（疑似被系统丢弃）"
+  ✓ 改用 Notification 通道补发一次（同语义、无二次确认）
+  ✓ Notification 确实调用了 show()
+  ✓ 替代通道的使用被写进日志（不许静默换通道）
+  ✓ 托盘入口保留（没有被通知改造拆掉）
+
+⑥ 通道不可用时不假装发过
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:26:21.502Z] 托盘气泡发送抛错（通道不可用）: {"title":"测试","content":"气泡抛错场景","aumid":"com.deepseek.dshdesktop","platform":"win32","error":"displayBalloon 不可用（测试注入）"}
+[diag] [2026-11-03T17:26:21.502Z] 已改用 Notification 通道发送通知: {"title":"测试","why":"balloon-threw"}
+  ✓ 抛错时立刻补发 Notification
+  ✓ 气泡抛错时记录"通道不可用"（不是静默失败）
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:26:22.122Z] 托盘气泡未发出（托盘不存在），改用替代通道: {"title":"测试","content":"没有托盘场景","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":false}
+[diag] [2026-11-03T17:26:22.122Z] 已改用 Notification 通道发送通知: {"title":"测试","why":"no-tray"}
+  ✓ 没有托盘时直接走替代通道
+  ✓ 日志说明"没有托盘"，而不是假装发过
+[dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
+[diag] [2026-11-03T17:26:22.737Z] 替代通知通道不可用（Notification.isSupported=false），本条通知仅落日志: {"title":"测试","why":"unit"}
+  ✓ Notification 不可用时返回 false（调用方能知道没发出去）
+  ✓ notificationSupported() 如实反映能力
+  ✓ 不可用的事实被写进日志
+
+────────────────────────────────────────
+断言 33 项，失败 0 项
+
+沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-h08-HFDqdO
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:26:23.390+08:00 exit=0 reason=exit elapsed=7.2s label=H-08 AUMID 测试
+==============================================================================

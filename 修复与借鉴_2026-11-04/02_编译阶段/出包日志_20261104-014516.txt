@@ -1,0 +1,63 @@
+
+==============================================================================
+[RUN BEGIN] 2026-11-04T01:45:16.300+08:00
+  label    : npm run dist
+  command  : npm run dist
+  timeout  : 2400s
+  cwd      : C:\Users\lcl\Desktop\DSH
+------------------------------------------------------------------------------
+npm warn Unknown project config "electron_mirror". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "electron_builder_binaries_mirror". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> dsh-desktop@0.3.48 dist
+> node scripts/build-files-gate.js && node scripts/pack-vendor.js && electron-builder --win
+
+
+══════════════════════════════════════════════════════════════════════════════
+  build.files 出包清单闭包门禁
+  仓库根 : C:\Users\lcl\Desktop\DSH
+  版本   : 0.3.48
+  入口   : main.js + settings.html + splash.html
+  白名单 : 4 条  黑名单 : 3 条
+══════════════════════════════════════════════════════════════════════════════
+
+【1】引用闭包 → build.files 覆盖检查
+  闭包文件数 : 17
+  ✔ 闭包内全部文件都被 build.files 覆盖
+
+【2】引用目标存在性（悬空引用）
+  ✔ 无悬空引用
+
+【3】反向体检（只告警，不阻断出包）
+  ✔ 未发现「列了却不存在」或「列了却没人用」的条目
+
+【4】运行期裸包依赖（node_modules）
+  ✔ 已安装  electron-updater  (require 自: main.js；已在 dependencies）
+
+══════════════════════════════════════════════════════════════════════════════
+  结论：✔ 门禁通过 —— 引用闭包与 build.files 一致，可以出包。
+══════════════════════════════════════════════════════════════════════════════
+
+[vendor-manifest] dsh=0.2.1-alpha.5 node=24.4.0 parts=8
+[vendor-manifest] files: runtime=2315 dsh=63581（合计 65896）
+[vendor-manifest] written: C:\Users\lcl\Desktop\DSH\build\payload\vendor-manifest.json (2644 bytes)
+[pack-vendor] 已是最新的 8 个分卷（均比所有输入文件新），跳过重打包。合计=121.1 MB
+  • electron-builder  version=26.15.3 os=10.0.22631
+  • loaded configuration  file=package.json ("build" field)
+  • executing @electron/rebuild  electronVersion=44.3.0 arch=x64 buildFromSource=false workspaceRoot=C:\Users\lcl\Desktop\DSH projectDir=./ appDir=./
+  • installing native dependencies  arch=x64
+  • completed installing native dependencies
+  • packaging       platform=win32 arch=x64 electron=44.3.0 appOutDir=release\win-unpacked
+  • downloaded      label=electron progress=100%
+  • downloaded electron zip extracted successfully  output=C:\Users\lcl\Desktop\DSH\release\win-unpacked
+  • searching for node modules  pm=npm searchDir=C:\Users\lcl\Desktop\DSH
+  • updating asar integrity executable resource  executablePath=release\win-unpacked\DSH Desktop.exe
+  • signing with signtool.exe  path=release\win-unpacked\DSH Desktop.exe
+  • building        target=nsis file=release\DSH Desktop Setup 0.3.48.exe archs=x64 oneClick=false perMachine=true
+  • signing with signtool.exe  path=release\win-unpacked\resources\elevate.exe
+  • signing with signtool.exe  path=release\DSH Desktop Setup 0.3.48.__uninstaller.exe
+  • signing with signtool.exe  path=release\DSH Desktop Setup 0.3.48.exe
+  • building block map  blockMapFile=release\DSH Desktop Setup 0.3.48.exe.blockmap
+------------------------------------------------------------------------------
+[RUN END] 2026-11-04T01:46:23.665+08:00 exit=0 reason=exit elapsed=67.4s label=npm run dist
+==============================================================================

@@ -1,0 +1,21 @@
+
+[14848:1104/012056.564:ERROR:net\base\network_change_notifier_win.cc:213] WSALookupServiceBegin failed with: 10108
+[PASS] 真机：外提脚本在 file:// + script-src self 下执行 — 实际：1
+[PASS] 真机：preload 桥可用 — 实际：true
+[PASS] 真机：style 仍生效（style-src 允许内联样式块） — 实际：rgb(11, 16, 32)
+[PASS] CSP 阳性对照：内联 <script> 被拦截 — 实际 inlineRan=false
+[PASS] CSP 阳性对照：eval 被拦截 — 实际：EvalError: Evaluating a string as JavaScript violates the following Content Secu
+[PASS] 首屏：payload 只以文本出现（无 img 元素） — 实际：{"imgs":0,"text":"<img src=x onerror=\"window.__xss='shell'\">（可升级 0.3.48）"}
+[PASS] 兼容表：无 img/script/svg 元素注入 — 实际：{"imgs":0,"scripts":0,"svgs":0}
+[PASS] 兼容表：window.__xss 未被置位 — 实际：null
+[PASS] 兼容表：payload 以纯文本呈现 — 实际文本片段：目标 0.1.9（当前 <img src=x onerror="window.__xss='compat-current'">）：插件共 2 个 — 不可用 1 · 未验证 0 · 兼容 1目标后端 Node 要求 ≥ >=20（当前 24.21.0，满足）插件判定原因<img src=x onerror="windo
+[PASS] 兼容表：表格行数与数据一致（表头 + 2 行） — 实际：3
+[PASS] 旧 Home 表：无 img/script/svg 元素注入 — 实际：{"imgs":0,"scripts":0,"svgs":0}
+[PASS] 旧 Home 表：window.__xss 未被置位 — 实际：null
+[PASS] 旧 Home 表：payload 以纯文本呈现 — 实际文本片段：旧 Home <img src=x onerror="window.__xss='legacy-home'"> 中有 1 个插件桌面版看不到：插件版本形态<img src=x onerror="window.__xss='legacy-name'"><b>1.0</b>npm 包（可导入）
+[PASS] 旧 Home 表：勾选框按 installable 生成（data-i 索引正确） — 实际：{"checked":true,"disabled":false,"index":"0"}
+[PASS] 选择器注入：伪造 registry 值不抛异常且不选中任何单选 — 实际：{"ok":true,"afterBogus":{"routeMirror":false,"ndistOfficial":false},"afterValid":{"routeOfficial":true,"ndistMirror":true}}
+[PASS] 选择器注入正向对照：合法值仍正常选中 — 实际：{"routeOfficial":true,"ndistMirror":true}
+[PASS] CSP 违规控制台输出（应只来自本测试的阳性对照） — 捕获 1 条：["Executing inline script violates the following Content Security Policy directive 'script-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-UwYTgd2DL2VSvb2lK6wO/b4I03bZjGCTyEkh5D7kH3c='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked."]
+
+[test-h06-electron] 共 17 项，通过 17，失败 0

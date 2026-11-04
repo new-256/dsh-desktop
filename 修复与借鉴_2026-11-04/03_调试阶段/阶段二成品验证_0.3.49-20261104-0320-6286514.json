@@ -1,0 +1,57 @@
+{
+  "runId": "0.3.49-20261104-0320-6286514",
+  "mode": "stage2-packaged-verify",
+  "expectedVersion": "0.3.49",
+  "startedAt": "2026-11-04T03:20:40.7204534+08:00",
+  "steps": {
+    "copy": {
+      "detail": "robocopy exit=3",
+      "status": "PASS"
+    },
+    "lifecycleStart": {
+      "detail": "version=0.3.49 reason=boot",
+      "status": "PASS"
+    },
+    "webui": {
+      "detail": "HTTP 200（36962 字节） @127.0.0.1:63084",
+      "status": "PASS"
+    },
+    "rendererIsolation": {
+      "detail": "Web UI 页面无 Node 全局（contextIsolation 生效），桥 dshDesktop 可用（http://127.0.0.1:63084/）",
+      "status": "PASS"
+    },
+    "aumid": {
+      "detail": "[2026-11-03T19:20:47.366Z] 通知通道自检（H-08）: {\"aumid\":\"com.deepseek.dshdesktop\",\"aumidApplied\":true,\"aumidSource\":\"app-identity.js\",\"platform\":\"win32\",\"trayBalloonApi\":true,\"electronNotificationSupported\":true,\"packaged\":true}",
+      "status": "PASS"
+    },
+    "cookieSideEffect": {
+      "detail": "外站 cookie 在清理重跑后仍在（未误删用户其它站点登录态）",
+      "status": "PASS"
+    },
+    "runtimeFilesNotPackaged": {
+      "detail": "resources 下无 apply-in-progress / plugin-journal 段文件",
+      "status": "PASS"
+    },
+    "cleanup": {
+      "detail": "定向 taskkill pid=15380",
+      "status": "PASS"
+    },
+    "hostIntact": {
+      "detail": "宿主  个，仍存活 4",
+      "status": "PASS"
+    }
+  },
+  "aumidLine": "[2026-11-03T19:20:47.366Z] 通知通道自检（H-08）: {\"aumid\":\"com.deepseek.dshdesktop\",\"aumidApplied\":true,\"aumidSource\":\"app-identity.js\",\"platform\":\"win32\",\"trayBalloonApi\":true,\"electronNotificationSupported\":true,\"packaged\":true}",
+  "cookieHygieneLines": [
+    "[2026-11-03T19:24:16.357Z] session-hygiene：旧后端 cookie 清理完成 {\"scanned\":0,\"removed\":0,\"kept\":0,\"byHost\":{},\"failed\":0,\"stillThere\":0}",
+    "[2026-11-03T19:24:16.358Z] 后端输出 旧后端 cookie 清理：扫描 0 条，清除 0 条（无），保留 0 条（cookie 忽略端口：旧端口的 cookie 会串到本次新端口）"
+  ],
+  "savedLogs": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\阶段二成品日志_0.3.49-20261104-0320-6286514",
+  "counts": {
+    "skip": 0,
+    "pass": 9,
+    "fail": 0
+  },
+  "passed": true,
+  "finishedAt": "2026-11-04T03:25:14.2803906+08:00"
+}

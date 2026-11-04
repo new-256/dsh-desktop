@@ -1,0 +1,53 @@
+{
+  "runId": "mechanics-test-3",
+  "mode": "stage2-packaged-verify",
+  "expectedVersion": "0.3.48",
+  "startedAt": "2026-11-04T02:55:37.0602267+08:00",
+  "steps": {
+    "copy": {
+      "status": "PASS",
+      "detail": "robocopy exit=3"
+    },
+    "lifecycleStart": {
+      "status": "PASS",
+      "detail": "version=0.3.48 reason=boot"
+    },
+    "webui": {
+      "status": "PASS",
+      "detail": "HTTP 200（36962 字节） @127.0.0.1:57280"
+    },
+    "rendererSandbox": {
+      "status": "PASS",
+      "detail": "Web UI 渲染进程无 Node 全局，桥 dshDesktop 可用（http://127.0.0.1:57280/）"
+    },
+    "aumid": {
+      "status": "PASS",
+      "detail": "[2026-11-03T18:55:43.039Z] 通知通道自检（H-08）: {\"aumid\":\"com.deepseek.dshdesktop\",\"aumidApplied\":true,\"aumidSource\":\"app-identity.js\",\"platform\":\"win32\",\"trayBalloonApi\":true,\"electronNotificationSupported\":true,\"packaged\":true}"
+    },
+    "cookieSideEffect": {
+      "status": "SKIP",
+      "detail": "按参数跳过（-SkipCookieRestart）"
+    },
+    "runtimeFilesNotPackaged": {
+      "status": "PASS",
+      "detail": "resources 下无 apply-in-progress / plugin-journal 段文件"
+    },
+    "cleanup": {
+      "status": "PASS",
+      "detail": "定向 taskkill pid=40460"
+    },
+    "hostIntact": {
+      "status": "PASS",
+      "detail": "宿主  个，仍存活 4"
+    }
+  },
+  "aumidLine": "[2026-11-03T18:55:43.039Z] 通知通道自检（H-08）: {\"aumid\":\"com.deepseek.dshdesktop\",\"aumidApplied\":true,\"aumidSource\":\"app-identity.js\",\"platform\":\"win32\",\"trayBalloonApi\":true,\"electronNotificationSupported\":true,\"packaged\":true}",
+  "savedLogs": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\阶段二成品日志_mechanics-test-3",
+  "counts": {
+    "skip": 1,
+    "pass": 8,
+    "fail": 0
+  },
+  "passed": true,
+  "finishedAt": "2026-11-04T02:57:40.9382093+08:00"
+}

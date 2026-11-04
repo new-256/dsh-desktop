@@ -1,0 +1,34 @@
+回归扫描（2026-11-03T18:23:07.581Z 起，单项超时 180000ms）
+共 31 项：绿 31 / 红 0
+
+GREEN  test-038.js  [node]  exit=0  4.9s
+GREEN  test-039.js  [node]  exit=0  0.3s
+GREEN  test-040.js  [node]  exit=0  167.8s
+GREEN  test-041.js  [node]  exit=0  0.2s
+GREEN  test-042.js  [node]  exit=0  0.2s
+GREEN  test-043-ladder.js  [node]  exit=0  0.1s
+GREEN  test-043.js  [node]  exit=0  1.6s
+GREEN  test-044.js  [node]  exit=0  3.9s
+GREEN  test-045.js  [node]  exit=0  0.1s
+GREEN  test-045b-copy-e2e.js  [electron]  exit=0  2.2s
+GREEN  test-046-preflight-resolution.js  [node]  exit=0  0.2s
+GREEN  test-047-desktop-report.js  [node]  exit=0  0.2s
+GREEN  test-b03-update-schedule.js  [node]  exit=0  0.3s
+GREEN  test-b04-crash-report-electron.js  [electron]  exit=0  0.4s
+GREEN  test-b04-plugin-journal.js  [node]  exit=0  0.3s
+GREEN  test-h01-rollback.js  [node]  exit=0  0.9s
+GREEN  test-h02-spawn-sync.js  [node]  exit=0  2.0s
+GREEN  test-h03-startup-deadline.js  [node]  exit=0  0.1s
+GREEN  test-h04-h05-harness.js  [node]  exit=0  0.1s
+GREEN  test-h04-quarantine-safety.js  [node]  exit=0  2.1s
+GREEN  test-h05-apply-marker.js  [node]  exit=0  3.2s
+GREEN  test-h06-csp-electron.js  [electron]  exit=0  2.5s
+GREEN  test-h06-settings-dom.js  [node]  exit=0  0.2s
+GREEN  test-h08-aumid.js  [node]  exit=0  7.8s
+GREEN  test-h10-durability-layering.js  [node]  exit=0  0.2s
+GREEN  test-h10-electron-exit-flush.js  [node]  exit=0  1.0s
+GREEN  test-h10-log-throughput.js  [node]  exit=0  7.1s
+GREEN  test-manifest-verify.js  [node]  exit=0  0.2s
+GREEN  verify-041-real.js  [node]  exit=0  0.2s
+GREEN  verify-043-incident.js  [node]  exit=0  0.1s
+GREEN  verify-043-real.js  [node]  exit=0  10.1s

@@ -1,0 +1,47 @@
+{
+  "generatedAt": "2026-11-03T18:09:03.977Z",
+  "asar": "C:\\Users\\lcl\\Desktop\\DSH\\release\\win-unpacked\\resources\\app.asar",
+  "checks": [
+    {
+      "name": "代码里不再 require ./package.json",
+      "ok": true,
+      "detail": "实际 0 次（注释不计）"
+    },
+    {
+      "name": "代码里不再访问 .build / .scripts / .devDependencies",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "asar 内存在 app-identity.js",
+      "ok": true,
+      "detail": "4922 字节"
+    },
+    {
+      "name": "main.js require ./app-identity",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "main.js 调用了 setAppUserModelId",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "app-identity.js 含期望 appId 'com.deepseek.dshdesktop'",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "app-identity.js 未出现第二个 appId 字面量",
+      "ok": true,
+      "detail": "'com.deepseek.dshdesktop'"
+    },
+    {
+      "name": "闭包内 .js 与仓库源码逐文件一致",
+      "ok": true,
+      "detail": "14 个一致 / 0 个不一致 / 0 个仓库无对应"
+    }
+  ],
+  "passed": true
+}

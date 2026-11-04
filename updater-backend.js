@@ -46,9 +46,17 @@ const {
 // 'official'（npmjs，版本始终最新）。未设置时退回环境变量，再退回镜像站。
 function settingsPath() { return path.join(userDataPath(), 'settings.json'); }
 function readSettings() { try { return readJson(settingsPath(), {}); } catch { return {}; } }
+/** 会改变"更新目标"的设置键：改动它们就必须作废旧确认（B-06）。 */
+const TARGET_KEYS = ['npmRegistry', 'nodeDist', 'updateChannel', 'channel', 'dshVersion'];
+
 function writeSettings(patch) {
-  const s = { ...readSettings(), ...patch };
+  const prev = readSettings();
+  const s = { ...prev, ...patch };
   try { writeJson(settingsPath(), s); } catch (e) { log('write settings failed:', e.message); }
+  // 0.3.49 · B-06：切更新路线/换下载源 = 目标被换掉 → 代次自增，旧确认立即作废。
+  // 收敛在这一处（写设置的唯一漏斗），而不是散落到每个 UI 分支里 —— 漏一处就等于没做。
+  const hit = TARGET_KEYS.filter((k) => Object.prototype.hasOwnProperty.call(patch, k) && patch[k] !== prev[k]);
+  if (hit.length) bumpUpdateRevision(`设置变更：${hit.join(',')}`);
   return s;
 }
 function npmRegistryUrl() {
@@ -148,6 +156,14 @@ function P() {
 const diagLogMod = require('./diag-log');
 const diagLog = diagLogMod.write;
 function log(...a) { console.log('[backend-mgr]', ...a); diagLog('[backend-mgr]', ...a); }
+/**
+ * 关键产物用「持久化档」重复写一条（0.3.49 · 借用阶段一的 durability 分层）。
+ *
+ * 为什么：隔离/回滚/应用更新这类结论是**事后唯一的证据**。普通 log 走的是攒批落盘
+ * （高频日志不堵主线程的代价），崩溃/断电时最后几批可能丢。凡"事后要据此判断到底发生
+ * 了什么"的结论，一律走 writeDurable（同步刷队列 + 直写）。别自己造同步写。
+ */
+function logDurable(...a) { console.log('[backend-mgr]', ...a); diagLogMod.writeDurable('[backend-mgr]', ...a); }
 function mkdirp(d) { fs.mkdirSync(d, { recursive: true }); }
 function execSync(cmd) {
   try { require('child_process').execSync(cmd, { stdio: 'ignore', shell: true }); } catch {}
@@ -610,6 +626,16 @@ async function fetchJson(url) {
   } finally { clearIdle(); }
   return JSON.parse(body);
 }
+/** 取纯文本（SHASUMS256.txt 这类清单用；与 fetchJson 同一套超时纪律）。 */
+async function fetchText(url) {
+  const res = await httpsGet(url);
+  const clearIdle = armIdleTimeout(res, url);
+  let body = ''; res.setEncoding('utf8');
+  try {
+    for await (const c of res) body += c;
+  } finally { clearIdle(); }
+  return body;
+}
 async function downloadFile(url, dest, onProgress) {
   const res = await httpsGet(url);
   const total = parseInt(res.headers['content-length'] || '0', 10);
@@ -630,8 +656,111 @@ async function downloadFile(url, dest, onProgress) {
   }
   fs.renameSync(tmp, dest); if (onProgress && total) onProgress(1);
 }
-function extractZip(zipPath, destDir) {
-  return new Promise((resolve, reject) => {
+// --------------------------------------------------------------------------
+// 0.3.49 · B-17：运行期下载包的完整性校验
+//
+// 问题：构建期我们把 vendor 分卷逐个核 sha256（scripts/write-vendor-manifest.js），
+// 但**运行期**从 npm/镜像下载的后端包只查了 content-length。镜像同步到一半、CDN 截断、
+// 代理注入内容时，我们会把一棵坏树装进 dsh.new 然后在下次启动"应用"它 —— 归因难度
+// 远高于在下载完的那一刻就判定损坏。
+//
+// 口径（对齐官方把 ERR_UPDATER_CHECKSUM_MISMATCH 当一等公民的做法）：
+//  - registry 的 dist.integrity 是 SRI 串（`sha512-<base64>`），**sha512 优先**；
+//  - 老包可能只有 dist.shasum（sha1 十六进制）→ 退到它，但要记明"用了弱校验"；
+//  - 两者都缺 → 明确告知「无法校验」，绝不假装通过（是否继续由调用方按策略决定）。
+//
+// 边界（必须诚实）：本项防的是**传输损坏 / 截断 / 部分篡改**。它防不了"镜像站被整体
+// 接管"——那种情况下元数据与 tarball 会一起被改，需要签名信任根（B-10）。别把它宣传
+// 成"供应链安全已解决"。
+// --------------------------------------------------------------------------
+const SRI_ALGOS = ['sha512', 'sha384', 'sha256', 'sha1'];
+
+/**
+ * 解析 SRI 串（可能有多个空格分隔的条目，例如 `sha512-… sha1-…`）。
+ * 按 SRI_ALGOS 的优先级挑**最强**的可用条目，而不是取第一个 —— 某些工具会把
+ * 弱算法写在前面，取第一个等于自愿降级。
+ * @returns {{algo: string, digestBase64: string}|null}
+ */
+function parseSri(integrity) {
+  const text = String(integrity || '').trim();
+  if (!text) return null;
+  const found = new Map();
+  for (const token of text.split(/\s+/)) {
+    const m = /^([a-z0-9]+)-([A-Za-z0-9+/=]+)$/i.exec(token);
+    if (!m) continue;
+    const algo = m[1].toLowerCase();
+    if (!SRI_ALGOS.includes(algo) || found.has(algo)) continue;
+    found.set(algo, m[2]);
+  }
+  for (const algo of SRI_ALGOS) if (found.has(algo)) return { algo, digestBase64: found.get(algo) };
+  return null;
+}
+
+/**
+ * 从 registry 元数据里选校验口径。
+ * @returns {{algo, expected, encoding, from}|null} null = 元数据里没有任何可用哈希
+ */
+function chooseIntegrity(meta) {
+  const sri = parseSri(meta && meta.integrity);
+  if (sri) return { algo: sri.algo, expected: sri.digestBase64, encoding: 'base64', from: 'dist.integrity' };
+  const shasum = meta && typeof meta.shasum === 'string' ? meta.shasum.trim().toLowerCase() : '';
+  if (/^[0-9a-f]{40}$/.test(shasum)) return { algo: 'sha1', expected: shasum, encoding: 'hex', from: 'dist.shasum' };
+  return null;
+}
+
+/** 流式摘要（tarball 可能几十 MB，不整读进内存）。返回 base64 与 hex 两种表示。 */
+function digestFileSync(file, algo) {
+  const h = crypto.createHash(algo);
+  const fd = fs.openSync(file, 'r');
+  try {
+    const buf = Buffer.allocUnsafe(1024 * 1024);
+    let n;
+    while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) h.update(buf.subarray(0, n));
+  } finally {
+    try { fs.closeSync(fd); } catch (e) { log('关闭待校验文件失败:', e.message); }
+  }
+  const digest = h.digest();
+  return { base64: digest.toString('base64'), hex: digest.toString('hex') };
+}
+
+/**
+ * 校验一个已下载文件的完整性。
+ *
+ * @param {string} file 已落盘文件
+ * @param {{integrity?:string|null, shasum?:string|null}} meta registry 的 dist 元数据
+ * @param {{expectedBytes?: number|null}} [opts] 有 content-length 时先看大小，能更快给出
+ *        「被截断」这种可操作结论
+ * @returns {{ok: boolean, missingMetadata?: boolean, truncated?: boolean, algo, from,
+ *            expected: string|null, actual: string|null, size?: number, reason: string|null}}
+ */
+function verifyFileIntegrity(file, meta, opts = {}) {
+  const size = fs.existsSync(file) ? fs.statSync(file).size : null;
+  const expectedBytes = Number(opts.expectedBytes || 0) || null;
+  if (expectedBytes && size !== null && size !== expectedBytes) {
+    return {
+      ok: false, truncated: true, algo: null, from: null, expected: String(expectedBytes), actual: String(size), size,
+      reason: `文件大小不符：期望 ${expectedBytes} 字节，实际 ${size} 字节（下载可能被截断）`
+    };
+  }
+  const spec = chooseIntegrity(meta);
+  if (!spec) {
+    return {
+      ok: false, missingMetadata: true, algo: null, from: null, expected: null, actual: null, size,
+      reason: 'registry 元数据未提供 dist.integrity / dist.shasum，无法校验完整性'
+    };
+  }
+  const digest = digestFileSync(file, spec.algo);
+  const actual = spec.encoding === 'base64' ? digest.base64 : digest.hex;
+  if (actual !== spec.expected) {
+    return {
+      ok: false, algo: spec.algo, from: spec.from, expected: spec.expected, actual, size,
+      reason: `${spec.algo} 校验不匹配（来源 ${spec.from}）：期望 ${spec.expected}，实际 ${actual}`
+    };
+  }
+  return { ok: true, algo: spec.algo, from: spec.from, expected: spec.expected, actual, size, reason: null };
+}
+
+function extractZip(zipPath, destDir) {  return new Promise((resolve, reject) => {
     mkdirp(destDir);
     const child = spawn('tar.exe', ['-xf', zipPath, '-C', destDir], { windowsHide: true });
     let e = ''; child.stderr.on('data', (d) => (e += d));
@@ -665,12 +794,48 @@ async function npmDshPublished() {
   if (!versions.length) throw new Error('npm registry returned no versions');
   // 每个版本声明的 engines.node（可能缺失；缺失时调用方自行回退 FALLBACK_MIN_NODE）。
   const engines = {};
+  // 0.3.49 · B-17/B-06：同一次 packument 里就带着 dist.integrity / dist.shasum /
+  // dist.tarball —— 取它们**零额外网络**，没理由不拿来校验完整性、绑定用户确认。
+  const dist = {};
   for (const v of versions) {
     const meta = doc.versions[v];
     const en = meta && meta.engines && typeof meta.engines.node === 'string' ? meta.engines.node : null;
     if (en) engines[v] = en;
+    const d = meta && meta.dist;
+    if (d) {
+      dist[v] = {
+        integrity: typeof d.integrity === 'string' ? d.integrity : null,
+        shasum: typeof d.shasum === 'string' ? d.shasum : null,
+        tarball: typeof d.tarball === 'string' ? d.tarball : null,
+        unpackedSize: typeof d.unpackedSize === 'number' ? d.unpackedSize : null
+      };
+    }
   }
-  return { versions, latest: highestSemver(versions), engines };
+  lastDshDist = dist;
+  return { versions, latest: highestSemver(versions), engines, dist };
+}
+
+/** 最近一次 packument 里的 dist 元数据（version → {integrity, shasum, tarball}）。 */
+let lastDshDist = {};
+
+/**
+ * 取某版本的 dist 元数据。优先用最近一次 packument 的缓存（零网络）；缓存没有该版本
+ * 时按版本号单查一次。**拿不到就返回 null**，由调用方决定"无哈希可用"怎么处理 ——
+ * 本函数绝不编造哈希。
+ */
+async function dshDistMeta(version) {
+  if (!version) return null;
+  const cached = lastDshDist[version];
+  if (cached) return cached;
+  const doc = await fetchJson(`${npmRegistryUrl()}/@deepseek-ai%2Fdsh/${encodeURIComponent(version)}`);
+  const d = doc && doc.dist;
+  if (!d) return null;
+  return {
+    integrity: typeof d.integrity === 'string' ? d.integrity : null,
+    shasum: typeof d.shasum === 'string' ? d.shasum : null,
+    tarball: typeof d.tarball === 'string' ? d.tarball : null,
+    unpackedSize: typeof d.unpackedSize === 'number' ? d.unpackedSize : null
+  };
 }
 
 async function latestDshInfo() {
@@ -1290,6 +1455,11 @@ function pruneMigrationBackups(backupRoot) {
 function ensureSeeded() {
   const p = P();
   let changed = false;
+  // 0.3.48 · H-05：必须在**任何 seed 决定之前**看有没有「更新中断」标记 —— seed 一旦
+  // 跑起来就会把出厂版本解压进 dsh，把可恢复现场（dsh.old / dsh.previous）盖成
+  // 「干净的旧版」。检测只记录 + 暴露状态，不自动恢复（回滚是不可逆动作，决策权在
+  // 启动链；非静默：诊断日志 + journal 各留一条）。
+  interruptedApplyCache = detectInterruptedApply();
   mkdirp(p.root); mkdirp(path.join(p.root, 'node_modules'));
   // Isolated harness home (created eagerly so junction repair / first boot work even on a fresh install).
   mkdirp(p.dshHome);
@@ -1594,25 +1764,163 @@ function formatDateTimestamp(d = new Date()) {
   return `${YYYY}${MM}${DD}-${hh}${mm}${ss}`;
 }
 
+/** 隔离目录命名前缀与保留份数（README 承诺：保留最近 2 份，且不删任何数据）。 */
+const QUARANTINE_PREFIX = 'profiles.broken-';
+const QUARANTINE_KEEP = 2;
+/**
+ * 0.3.48 · H-04：清理只认**本程序自己生成**的隔离目录名
+ * （`profiles.broken-YYYYMMDD-HHmmss` / 冲突时追加 `_N`）。
+ * 旧实现用 `/^profiles\.broken-/i` 前缀匹配，用户手工建的 `profiles.broken-我的备份`
+ * 也会被当成自家产物删掉 —— 清理逻辑必须只删能解析出我方时间戳的目录。
+ */
+const QUARANTINE_NAME_RE = /^profiles\.broken-\d{8}-\d{6}(_\d+)?$/;
+
+/**
+ * 统计一棵树（文件数 / 目录数 / 链接数 / 字节数）。
+ * 与 `countTree()` 的区别是**读不到就抛错**：它服务于「复制后校验」，任何读不全的
+ * 子目录都必须让校验失败，绝不允许把「读不全」当成「复制一致」。
+ */
+function measureTree(root) {
+  const acc = { files: 0, dirs: 0, links: 0, bytes: 0 };
+  const walk = (dir) => {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      const st = fs.lstatSync(full);
+      if (st.isSymbolicLink()) { acc.links++; continue; }
+      if (st.isDirectory()) { acc.dirs++; walk(full); continue; }
+      acc.files++;
+      acc.bytes += st.size;
+    }
+  };
+  walk(root);
+  return acc;
+}
+
+/**
+ * 复制目录树，**绝不进入链接目标**。
+ *
+ * 0.3.48 · H-04：profiles 树里常驻指向用户插件源码的 junction（见
+ * `removeOwnedDirectory` 的注释）。跟随复制会把用户的源码/未提交改动扩进隔离目录，
+ * 跟随删除则会直接删掉用户源码。所以遇到链接只在目标侧重建同名链接，其余按文件复制。
+ * 读不到（EPERM/EBUSY）直接抛错，由调用方放弃隔离 —— 半份副本不算隔离成功。
+ */
+function copyTreePreservingLinks(src, dst) {
+  const st = fs.lstatSync(src);
+  if (st.isSymbolicLink()) {
+    const linkTarget = fs.readlinkSync(src);
+    mkdirp(path.dirname(dst));
+    try {
+      fs.symlinkSync(linkTarget, dst, 'junction');
+    } catch (e) {
+      // junction 类型只接受绝对目录目标；文件型符号链接用默认类型重建（仍是链接，不复制内容）
+      try { fs.symlinkSync(linkTarget, dst); }
+      catch (e2) { throw new Error(`重建链接失败 ${dst} → ${linkTarget}: ${e2.message}`); }
+    }
+    return;
+  }
+  if (!st.isDirectory()) {
+    mkdirp(path.dirname(dst));
+    fs.copyFileSync(src, dst);
+    return;
+  }
+  mkdirp(dst);
+  for (const name of fs.readdirSync(src)) copyTreePreservingLinks(path.join(src, name), path.join(dst, name));
+}
+
+/**
+ * H-04 的隔离兜底：复制到隔离目录 → 逐项校验 → 只有校验通过才允许上层删原树。
+ *
+ * 触发条件：`rename(profiles)` 失败（旧后端句柄未释放 / 杀软或索引服务占用 / 目标名冲突）。
+ * 可逆性：复制与校验都成功前**不删任何东西**；失败时只清理我们刚建的半成品副本。
+ * 证据要求：校验口径（文件数/目录数/链接数/字节数）落诊断日志，失败原因随返回值上抛。
+ *
+ * @returns {{ok: boolean, verification?: object, error?: Error, cleanup?: object}}
+ */
+function quarantineProfilesByCopy(prof, targetPath, targetName) {
+  try {
+    copyTreePreservingLinks(prof, targetPath);
+    const want = measureTree(prof);
+    const got = measureTree(targetPath);
+    const diff = ['files', 'dirs', 'links', 'bytes']
+      .filter((k) => want[k] !== got[k])
+      .map((k) => `${k} 期望 ${want[k]} 实得 ${got[k]}`);
+    if (diff.length) throw new Error(`复制校验不一致（${diff.join('；')}）`);
+    log(`copied profiles to ${targetName} and verified (${want.files} files / ${want.dirs} dirs / ${want.links} links / ${want.bytes} bytes)`);
+    return { ok: true, verification: { want, got } };
+  } catch (e) {
+    // 只清理我们自己刚建的副本（原树自始至终没动过）
+    const cleanup = removeOwnedDirectory(targetPath);
+    log(`copy-based quarantine to ${targetName} failed: ${e.message}（副本清理：${cleanup.reason || 'removed'}）`);
+    return { ok: false, error: e, cleanup };
+  }
+}
+
+/**
+ * 把「已被部分删除的原树」用校验过的副本补回原状（0.3.48 · H-04）。
+ *
+ * 为什么需要：rename 失败与删除失败通常来自**同一个占用**（杀软扫描 / 索引服务）。
+ * 于是「复制成功 → 删除原树」很可能删到一半就被锁挡住，留下半棵 profiles 树 —— 那是
+ * 比"没隔离"更糟的状态：插件目录缺文件、package.json 还在，dsh 会报一堆无从归因的错。
+ * 因为副本已经过逐项校验，这里只补**缺失**的条目（被占用的文件本来就没被删，跳过），
+ * 补完再比一次统计口径，让状态回到「本轮隔离被放弃、原树完好」。
+ *
+ * @returns {{ok: boolean, reason: string|null, restoredFiles: number, restoredLinks: number}}
+ */
+function restoreLiveTreeFromCopy(copyRoot, liveRoot) {
+  let restoredFiles = 0;
+  let restoredLinks = 0;
+  const walk = (src, dst) => {
+    const st = fs.lstatSync(src);
+    if (st.isSymbolicLink()) {
+      if (fs.existsSync(dst)) return;
+      mkdirp(path.dirname(dst));
+      try { fs.symlinkSync(fs.readlinkSync(src), dst, 'junction'); }
+      catch (e) { fs.symlinkSync(fs.readlinkSync(src), dst); }
+      restoredLinks++;
+      return;
+    }
+    if (!st.isDirectory()) {
+      if (fs.existsSync(dst)) return;
+      mkdirp(path.dirname(dst));
+      fs.copyFileSync(src, dst);
+      restoredFiles++;
+      return;
+    }
+    mkdirp(dst);
+    for (const name of fs.readdirSync(src)) walk(path.join(src, name), path.join(dst, name));
+  };
+  try {
+    walk(copyRoot, liveRoot);
+    const want = measureTree(copyRoot);
+    const got = measureTree(liveRoot);
+    const diff = ['files', 'dirs', 'links', 'bytes'].filter((k) => want[k] !== got[k]);
+    if (diff.length) {
+      return { ok: false, reason: `还原后仍不一致（${diff.map((k) => `${k} ${want[k]}≠${got[k]}`).join('；')}）`, restoredFiles, restoredLinks };
+    }
+    return { ok: true, reason: null, restoredFiles, restoredLinks };
+  } catch (e) {
+    return { ok: false, reason: e.message, restoredFiles, restoredLinks };
+  }
+}
+
 function pruneQuarantineProfiles(home) {
   try {
     const entries = fs.readdirSync(home);
     const quarantineDirs = [];
     for (const entry of entries) {
-      if (/^profiles\.broken-/i.test(entry)) {
-        const full = path.join(home, entry);
-        let st;
-        try { st = fs.lstatSync(full); } catch { continue; }
-        if (st.isDirectory()) {
-          quarantineDirs.push({ name: entry, path: full, mtime: st.mtimeMs });
-        }
+      if (!QUARANTINE_NAME_RE.test(entry)) continue;
+      const full = path.join(home, entry);
+      let st;
+      try { st = fs.lstatSync(full); } catch { continue; }
+      if (st.isDirectory()) {
+        quarantineDirs.push({ name: entry, path: full, mtime: st.mtimeMs });
       }
     }
 
     quarantineDirs.sort((a, b) => b.name.localeCompare(a.name) || (b.mtime - a.mtime));
 
-    if (quarantineDirs.length > 2) {
-      const toRemove = quarantineDirs.slice(2);
+    if (quarantineDirs.length > QUARANTINE_KEEP) {
+      const toRemove = quarantineDirs.slice(QUARANTINE_KEEP);
       for (const item of toRemove) {
         rimraf(item.path);
         log(`pruned old quarantine directory: ${item.name}`);
@@ -1624,9 +1932,22 @@ function pruneQuarantineProfiles(home) {
 }
 
 /**
- * Safely quarantine a broken profiles directory to profiles.broken-<YYYYMMDD-HHmmss>.
- * Falls back to destructive rimraf only if rename fails (e.g. file lock), ensuring
- * app boot reliability is never compromised. Prunes old quarantine dirs keeping the 2 most recent.
+ * 把可疑的 profiles 目录隔离成 `profiles.broken-<YYYYMMDD-HHmmss>`（保留最近 2 份）。
+ *
+ * 0.3.48 · H-04：rename 失败后的兜底从「rimraf 整棵树」改为「复制 → 校验 → 才删原树」。
+ * 为什么这样改：旧兜底在 rename 被占用打断时直接物理删除用户的插件注册树与依赖实体，
+ * 与 README「启动自愈最坏也只是隔离备份，不删任何数据」的承诺正相反；而且删完就没得救
+ * （`restoreProfileRegistrations` 只能恢复 package.json 里的名字，依赖实体已不存在）。
+ * 现在的失败顺序是：rename 失败 → 复制到隔离目录并校验（文件/目录/链接/字节数）→
+ * 校验通过后才删原树；复制或校验失败就**放弃本轮隔离**，原树保持字节不变；删除被同一个
+ * 占用挡到一半时，用校验过的副本把原树**补回原状**再放弃本轮隔离。所有结论都写诊断日志
+ * 并由返回值如实上报（阶梯本身允许跳过隔离，见 ladder-policy.js:99-110）。
+ *
+ * @returns {{quarantined: boolean, name: string|null, path: string|null, fallback: boolean,
+ *            copied: boolean, abandoned: boolean, reason: string|null, removal: object|null,
+ *            restore: object|null, registryFile: string|null, registry: Array}}
+ *   `quarantined` 只在「原目录确实已整体离开原位」时为 true；
+ *   `fallback` 表示走了复制兜底；`abandoned` 表示本轮隔离被放弃（原目录保持/已还原）。
  */
 /** Snapshot third-party registrations per profile dir (bundles / deps / patch). */
 function collectProfileRegistrations(home) {
@@ -1673,15 +1994,17 @@ function collectProfileRegistrations(home) {
  */
 function quarantineProfiles(home) {
   const prof = path.join(home, 'profiles');
-  if (!fs.existsSync(prof)) return { quarantined: false, name: null, fallback: false };
+  if (!fs.existsSync(prof)) {
+    return { quarantined: false, name: null, path: null, fallback: false, copied: false, abandoned: false, reason: null, removal: null, registryFile: null, registry: [] };
+  }
 
   const timestamp = formatDateTimestamp();
-  let targetName = `profiles.broken-${timestamp}`;
+  let targetName = `${QUARANTINE_PREFIX}${timestamp}`;
   let targetPath = path.join(home, targetName);
 
   let counter = 1;
   while (fs.existsSync(targetPath)) {
-    targetName = `profiles.broken-${timestamp}_${counter++}`;
+    targetName = `${QUARANTINE_PREFIX}${timestamp}_${counter++}`;
     targetPath = path.join(home, targetName);
   }
 
@@ -1703,25 +2026,56 @@ function quarantineProfiles(home) {
 
   let quarantined = false;
   let fallback = false;
+  let copied = false;
+  let abandoned = false;
+  let reason = null;
+  let removal = null;
+  let restore = null;
 
   try {
     fs.renameSync(prof, targetPath);
     quarantined = true;
     log(`quarantined broken profiles to ${targetName}`);
   } catch (e) {
-    log(`rename profiles to ${targetName} failed (${e.message}); falling back to rimraf`);
-    try {
-      rimraf(prof);
-      quarantined = true;
+    // 0.3.48 · H-04：**绝不**在 rename 失败后直接删用户数据。
+    // 触发条件：旧后端句柄未释放 / 杀软或索引服务占用 / 目标名冲突后 rename 仍失败。
+    // 可逆性：复制与校验都成功前不删任何东西；失败即放弃本轮隔离。
+    // 证据要求：失败原因与校验口径必须进诊断日志，并通过返回值让上层看得见。
+    log(`rename profiles to ${targetName} failed (${e.message}); falling back to copy-then-verify quarantine (user data is never deleted first)`);
+    const copyRes = quarantineProfilesByCopy(prof, targetPath, targetName);
+    if (!copyRes.ok) {
+      abandoned = true;
+      reason = `复制隔离失败，已放弃本轮隔离并保留原 profiles：${copyRes.error.message}`;
+      log(reason);
+    } else {
+      copied = true;
       fallback = true;
-    } catch (err) {
-      log(`fallback rimraf profiles failed: ${err.message}`);
+      // 复制且校验通过 —— 此刻用户数据已有完整副本，才允许删除原树。
+      removal = removeOwnedDirectory(prof);
+      quarantined = !!removal.removed;
+      if (quarantined) {
+        log(`removed original profiles tree after verified copy (copy kept at ${targetName})`);
+      } else {
+        // 删除被同一个占用挡住 → 原树已被部分删除：用校验过的副本补回原状再放弃本轮隔离
+        log(`original profiles tree NOT fully removed (${removal.reason || 'unknown'}); restoring it from the verified copy`);
+        restore = restoreLiveTreeFromCopy(targetPath, prof);
+        abandoned = true;
+        reason = `删除原 profiles 未完成（${removal.reason || 'unknown'}），已用校验过的副本还原；本轮隔离放弃，副本保留在 ${targetName}`;
+        if (restore.ok) log(`原 profiles 已从 ${targetName} 还原（补回 ${restore.restoredFiles} 文件 / ${restore.restoredLinks} 链接）`);
+        else log(`原 profiles 还原未完成：${restore.reason}（完整副本仍在 ${targetName}，数据未丢）`);
+      }
     }
   }
 
-  pruneQuarantineProfiles(home);
+  if (quarantined) pruneQuarantineProfiles(home);
 
-  return { quarantined, name: targetName, path: targetPath, fallback, registryFile, registry };
+  return {
+    quarantined,
+    name: (quarantined || copied) ? targetName : null,
+    path: (quarantined || copied) ? targetPath : null,
+    fallback, copied, abandoned, reason, removal, restore,
+    registryFile, registry
+  };
 }
 
 /**
@@ -3502,7 +3856,16 @@ function writeUpdateJournal(entries) {
 const JOURNAL_ERROR_CODES = [
   'ETIMEDOUT', 'ENOSPC', 'ERR_INTERNET_DISCONNECTED', 'ERR_CONNECTION_RESET',
   'ERR_CONNECTION_CLOSED', 'ERR_NAME_NOT_RESOLVED', 'ERR_UPDATER_INVALID_SIGNATURE',
-  'ERR_UPDATER_CHECKSUM_MISMATCH', 'ETARGET', 'EADDRINUSE', 'ENOENT', 'EACCES', 'EPERM'
+  'ERR_UPDATER_CHECKSUM_MISMATCH', 'ETARGET', 'EADDRINUSE', 'ENOENT', 'EACCES', 'EPERM',
+  // 0.3.48 · H-05：更新「应用」阶段被打断/未校验/连标记都写不进去 —— 三类都必须
+  // 在 journal 里可精确归因（旧实现这一阶段一条记录都没有）。
+  'ERR_UPDATER_APPLY_INTERRUPTED', 'ERR_UPDATER_APPLY_INCOMPLETE',
+  'ERR_UPDATER_APPLY_UNVERIFIED', 'ERR_UPDATER_APPLY_MARKER_FAILED',
+  // 0.3.49 · B-06 / B-08 / B-17：确认过期、后端未干净退出、元数据缺哈希。
+  // 与官方 update-journal.ts:12-13 同类：这几类必须是一等公民错误，不能笼统一句
+  // "更新失败"。
+  'ERR_UPDATER_CONFIRMATION_STALE', 'ERR_UPDATER_BACKEND_NOT_STOPPED',
+  'ERR_UPDATER_INTEGRITY_METADATA_MISSING'
 ];
 
 /**
@@ -3516,7 +3879,13 @@ function journalAdd(kind, state, extra = {}) {
   let reason = null;
   if (extra.reason) {
     const text = String(extra.reason);
-    const code = JOURNAL_ERROR_CODES.find((c) => text.includes(c)) || 'UNCLASSIFIED';
+    // 0.3.48 · H-05：**显式错误码优先**。调用方把分类码放在最前面时以它为准，否则会被
+    // 原文里先出现的 EPERM/EACCES 抢先匹配掉（例如"标记写不进去"的真实原因是被原始
+    // 系统错误串误导成权限问题），归因就错了。没有显式码时仍按白名单扫描。
+    const lead = text.trim().split(/\s+/)[0];
+    const code = JOURNAL_ERROR_CODES.includes(lead)
+      ? lead
+      : (JOURNAL_ERROR_CODES.find((c) => text.includes(c)) || 'UNCLASSIFIED');
     // 0.3.42 · 只落分类码，不再追加 120 字符原文（对齐官方 update-journal.ts:17,27
     // 的"错误全文绝不落盘"纪律）。journal 是长期留存、可能被用户分享给他人排查的
     // 证据文件；原始错误串里常带镜像 URL、代理主机名、内网路径 —— 而这些恰恰是
@@ -3554,11 +3923,154 @@ function journalUnverified() {
   return readUpdateJournal().entries.filter((e) => e.state === 'applied');
 }
 
+// --------------------------------------------------------------------------
+// 0.3.48 · H-05：「更新应用中」标记（root/apply-in-progress.json）
+//
+// 为什么需要它：`applyStaged()` 交换 dsh/dsh.new 时会经过两个**不可逆窗口** ——
+//  ① 窗口 A：`dsh` 已改名成 `dsh.old`、`dsh.new` 还没顶上来 → 此刻 `dsh` 不存在；
+//  ② 窗口 B：`dsh.new` 已消费、旧树还没落到 `dsh.previous`。
+// 进程若在这两个窗口内死亡（断电、强杀、BSOD），下次启动 `ensureSeeded()` 依据
+// `needDsh = !existsSync(dshBin)` 直接从 payload 解压**出厂版本**，用户刚更新的后端被
+// 静默降级，日志里只留一行 seeding（H-05 的原貌）。
+//
+// 因此：交换**之前**先落标记（含目标版本 / 开始时间 / 步骤名），交换并校验成功后才清除；
+// 启动早期读到残留标记时**不静默、也不自动恢复** —— 写诊断日志 + 落一条 journal 记录，
+// 把可判定的故障态与建议恢复动作（用 dsh.old / dsh.previous 换回）返回给主进程启动链。
+// 标记与 update-journal.json 同域同目录，journal 仍是唯一台账，本文件只是一次操作的
+// 生命周期信封（写入即覆盖，天然不增长）。
+// --------------------------------------------------------------------------
+const APPLY_IN_PROGRESS_FILE = 'apply-in-progress.json';
+const APPLY_INTERRUPTED_CODE = 'ERR_UPDATER_APPLY_INTERRUPTED';
+const applyInProgressPath = () => path.join(P().root, APPLY_IN_PROGRESS_FILE);
+
+function readApplyInProgress() {
+  const doc = readJson(applyInProgressPath(), null);
+  return doc && typeof doc === 'object' ? doc : null;
+}
+
+/**
+ * 开始一次「更新应用」并落标记。
+ * 写失败直接抛错：调用方必须据此**取消交换**（没有标记的交换被打断就是 H-05 本身）。
+ */
+function beginApplyInProgress(fields = {}) {
+  const doc = {
+    schemaVersion: 1,
+    operationId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+    startedAt: new Date().toISOString(),
+    pid: process.pid,
+    step: 'unknown',
+    ...fields
+  };
+  writeJson(applyInProgressPath(), doc);
+  return doc;
+}
+
+/** 推进同一次操作的步骤名；operationId 不匹配（已是另一次操作）时不写，返回 null。 */
+function updateApplyInProgress(operationId, fields = {}) {
+  const doc = readApplyInProgress();
+  if (!doc || doc.operationId !== operationId) return null;
+  const next = { ...doc, ...fields, updatedAt: new Date().toISOString() };
+  writeJson(applyInProgressPath(), next);
+  return next;
+}
+
+/**
+ * 清除标记。传 operationId 时只清属于自己的那次操作（绝不抹掉别人的可归因证据）；
+ * 不传则无条件清除，供主进程在「已向用户交代过」之后确认处理完毕。
+ * 清不掉（非 ENOENT）直接抛错 —— 留着会让下次启动误报中断，必须让上层看见。
+ */
+function clearApplyInProgress(operationId = null) {
+  const doc = readApplyInProgress();
+  if (doc && operationId && doc.operationId !== operationId) {
+    log(`apply-in-progress 标记属于另一次操作（${doc.operationId}），本次不清理`);
+    return false;
+  }
+  try { fs.unlinkSync(applyInProgressPath()); return true; }
+  catch (e) {
+    if (e.code === 'ENOENT') return true;
+    throw e;
+  }
+}
+
+/** 探测某个后端目录里实际躺着哪个版本（bin.js 缺失即视为不可用）。 */
+function probeDshTree(dir) {
+  const pkgDir = path.join(dir, 'node_modules', '@deepseek-ai', 'dsh');
+  if (!fs.existsSync(path.join(pkgDir, 'lib', 'bin.js'))) return null;
+  const pkg = readJson(path.join(pkgDir, 'package.json'), null);
+  return { dir, version: pkg && pkg.version ? pkg.version : null };
+}
+
+/**
+ * 启动早期检测残留的「应用中」标记（H-05 的读取端）。
+ *
+ * 立场：不静默（诊断日志 + 一条 journal 记录）、不自动恢复（回滚是不可逆操作，决策权
+ * 属于启动链/自愈阶梯 —— main.js 的 showFatal 与 H-01 范围），只返回可判定的状态。
+ *
+ * @returns {{active: boolean, marker?: object, step?: string, target?: string|null,
+ *            startedAt?: string|null, live?: object|null, old?: object|null,
+ *            previous?: object|null, staged?: object|null, recovery?: string}}
+ */
+function detectInterruptedApply() {
+  const p = P();
+  const markerFile = applyInProgressPath();
+  const marker = readApplyInProgress();
+  // 文件在但解析不出来（外部改坏 / 写盘中断）同样是「上次更新被打断」的证据，
+  // 绝不能当没看见（PROJECT_RULES §4 禁止静默容错）。
+  if (!marker && !fs.existsSync(markerFile)) return { active: false };
+
+  const live = probeDshTree(p.dshDir);
+  const oldTree = probeDshTree(path.join(p.root, 'dsh.old'));
+  const previous = probeDshTree(p.dshPrevious);
+  const staged = probeDshTree(p.dshNew);
+
+  // 恢复动作按「磁盘上还剩什么」机械推导，不猜：
+  //   dsh 还在 + dsh.new 还在 → 交换大概率没发生（可安全重试）
+  //   dsh 还在 + dsh.new 不在 → 交换大概率已完成，只需人工核对版本
+  //   dsh 缺失 → 用 dsh.old（本次交换的旧版）兜底，其次 dsh.previous
+  let recovery = 'reinstall-required';
+  if (live) recovery = staged ? 'swap-maybe-not-applied' : 'apply-maybe-completed';
+  else if (oldTree) recovery = 'restore-from-dsh.old';
+  else if (previous) recovery = 'restore-from-dsh.previous';
+
+  const state = {
+    active: true, marker,
+    unreadable: !marker,
+    step: marker ? (marker.step || 'unknown') : 'unreadable-marker',
+    target: marker ? (marker.to || null) : null,
+    startedAt: marker ? (marker.startedAt || null) : null,
+    live, old: oldTree, previous, staged,
+    recovery
+  };
+  log('检测到残留的更新中断标记（上次应用更新在交换阶段被打断）：'
+    + `步骤=${state.step} 目标=${state.target || '?'} 开始=${state.startedAt || '?'}；`
+    + `dsh=${live ? live.version : '缺失'} dsh.old=${oldTree ? oldTree.version : '无'} `
+    + `dsh.previous=${previous ? previous.version : '无'} dsh.new=${staged ? staged.version : '无'}；`
+    + `建议恢复动作=${recovery}（不会自动执行，交给启动链决定）`
+    + (state.unreadable ? '；注意：标记文件内容无法解析，按中断处理' : ''));
+
+  // journal 只记一条同一标记（避免每次启动刷屏）；它是唯一台账，标记文件只是信封。
+  const reported = readUpdateJournal().entries.some((x) =>
+    x.reason === APPLY_INTERRUPTED_CODE && x.to === state.target
+    && String(x.at || '') >= String(state.startedAt || ''));
+  if (!reported) journalAdd('dsh', 'failed', { to: state.target, reason: `${APPLY_INTERRUPTED_CODE} step=${state.step}` });
+  return state;
+}
+
+/** 最近一次检测结果（供主进程启动链读取；未检测过则现场检测一次）。 */
+let interruptedApplyCache = null;
+function interruptedApplyState() {
+  if (!interruptedApplyCache) interruptedApplyCache = detectInterruptedApply();
+  return interruptedApplyCache;
+}
+
 function stagedVersions() {
   const p = P();
   let dsh = null;
   let node = null;
+  // 0.3.49：被作废的暂存树不算"待装版本"——否则 UI 会永远显示"更新已就绪"，
+  // 用户点了重启也不会生效（因为 applyStaged 会主动跳过它）。
   try {
+    if (dshStagingInvalidated()) return { dsh: null, node: null, dshInvalidated: true };
     const dshPkgPath = path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'package.json');
     if (fs.existsSync(dshPkgPath)) {
       const m = readJson(dshPkgPath, null);
@@ -3575,13 +4087,311 @@ function stagedVersions() {
 }
 
 // --------------------------------------------------------------------------
+// 0.3.49 · B-06：更新确认与版本绑定（revision + 内容摘要）
+//
+// 问题：确认弹窗里写的是「有新版本 vX」，用户点确认之后到真正下载之间，目标可能已经
+// 变了 —— 上游把同一个版本重发了一份新的 tarball（内容不同）、或者用户在设置窗切了
+// 更新路线/换了后端版本。旧实现没有任何代号，弹窗的确认会按**它自己记住的版本号**
+// 继续执行，于是可能"确认的是 A，装上去的是 B 的内容"。
+//
+// 做法（对齐官方 update-coordinator.ts:96-97,172-183 的 revision 语义）：
+//  1. `revision` 是一个单调递增的代次，**只有** `bumpUpdateRevision()` 能改它，而
+//     "可能换掉目标"的三类动作（切更新路线 / 换后端版本 / 换 Node 版本）都必须调它 ——
+//     漏一处就退化成空转，所以收敛在唯一一个函数里。
+//  2. 确认令牌 = `{ revision, version, digest }`。digest 是候选内容的摘要
+//     （版本号 + tarball URL + integrity + shasum 的规范化 JSON 的 sha256）：
+//     **绑定内容而不是绑定"最新"** —— 同版本重发会改 digest，从而作废旧确认。
+//  3. 校验时机在 `stageDsh()` 的最前面（网络请求之前）：不新鲜就直接拒绝并给出可操作
+//     文案，绝不下到一半才发现。
+//
+// 边界：main.js 若没有把令牌带回来（未接线），这里会**显式记一条日志**说明"本次确认
+// 未绑定"，而不是假装校验过 —— 宁可留下证据，也不要虚假的安全感。
+// --------------------------------------------------------------------------
+let updateRevisionCounter = 0;
+/** 最近一次"用户可能看到了"的候选：{ version, digest, revision, at, source }。 */
+let updateCandidateSnapshot = null;
+
+function updateRevision() { return updateRevisionCounter; }
+
+/**
+ * 递增代次并作废当前候选快照。
+ * 触发条件：切更新路线 / 换后端版本 / 换 Node 版本 / 需要作废旧确认的任何动作。
+ * 可逆性：不可逆（代次只增），但代价只是让用户重新确认一次。
+ * @param {string} reason 记进日志的原因（排障时要能回答"谁让它过期的"）
+ */
+function bumpUpdateRevision(reason) {
+  updateRevisionCounter += 1;
+  updateCandidateSnapshot = null;
+  logDurable(`更新代次 revision → ${updateRevisionCounter}（原因：${reason}）；此前的确认一律作废`);
+  return updateRevisionCounter;
+}
+
+/** 候选内容摘要：版本 + tarball + 哈希的规范化 JSON。同版本重发会改变它。 */
+function candidateDigest(version, dist) {
+  const canonical = JSON.stringify({
+    version: version || null,
+    tarball: (dist && dist.tarball) || null,
+    integrity: (dist && dist.integrity) || null,
+    shasum: (dist && dist.shasum) || null
+  });
+  return crypto.createHash('sha256').update(canonical).digest('hex');
+}
+
+/** 记录"用户此刻大概率看到的候选"，供确认令牌绑定（dist 缺失时也要能算出稳定摘要）。 */
+async function recordUpdateCandidate(info, distHint = null) {
+  const version = (info && info.version) || null;
+  if (!version) return null;
+  let dist = distHint || lastDshDist[version] || null;
+  if (!dist) {
+    try { dist = await dshDistMeta(version); }
+    catch (e) { log('候选的 dist 元数据拉取失败（摘要将不含 tarball 信息）:', e.message); }
+  }
+  updateCandidateSnapshot = {
+    version,
+    digest: candidateDigest(version, dist),
+    revision: updateRevisionCounter,
+    at: new Date().toISOString(),
+    source: (info && info.source) || 'unknown'
+  };
+  log('记录更新候选（供确认绑定）', updateCandidateSnapshot);
+  return { ...updateCandidateSnapshot };
+}
+
+/** 给弹窗/调用方盖确认令牌：只绑定"此刻这个目标"，不绑定"最新"。 */
+function issueUpdateConfirmation() {
+  if (!updateCandidateSnapshot) return null;
+  const { revision, version, digest, at } = updateCandidateSnapshot;
+  return { revision, version, digest, at };
+}
+
+/**
+ * 校验确认令牌是否仍然新鲜（纯函数式判定，不产生任何网络/磁盘副作用）。
+ *
+ * @param {string} version 本次要装的目标版本
+ * @param {object|null} confirmation 调用方带回来的令牌
+ * @returns {{ok: boolean, stale: boolean, unbound: boolean, reason: string|null}}
+ *   - `unbound=true`：没带令牌（调用方未接线），调用方自行决定是否继续
+ *   - `stale=true`：目标已被换掉，必须拒绝
+ */
+function assertConfirmationFresh(version, confirmation) {
+  if (!confirmation || typeof confirmation !== 'object') {
+    return { ok: true, stale: false, unbound: true, reason: '调用方未携带确认令牌（B-06 未接线）' };
+  }
+  if (confirmation.version && String(confirmation.version) !== String(version)) {
+    return {
+      ok: false, stale: true, unbound: false,
+      reason: `确认的目标是 ${confirmation.version}，本次要装的是 ${version} —— 目标已变更，请重新确认。`
+    };
+  }
+  if (Number(confirmation.revision) !== updateRevisionCounter) {
+    return {
+      ok: false, stale: true, unbound: false,
+      reason: `确认后更新路线/版本已变更（确认代次 ${confirmation.revision}，当前 ${updateRevisionCounter}）—— 目标可能已换，请重新确认。`
+    };
+  }
+  const snap = updateCandidateSnapshot;
+  if (!snap) {
+    return {
+      ok: false, stale: true, unbound: false,
+      reason: '找不到与该确认匹配的候选快照（可能重启过或未重新检查更新）—— 请重新检查更新后再确认。'
+    };
+  }
+  if (snap.version !== String(version) || snap.digest !== confirmation.digest) {
+    return {
+      ok: false, stale: true, unbound: false,
+      reason: `候选内容已变化（版本 ${snap.version}，内容摘要 ${String(snap.digest).slice(0, 12)}… ≠ 确认时的 ${String(confirmation.digest).slice(0, 12)}…）—— 上游可能重发了该版本，请重新确认。`
+    };
+  }
+  return { ok: true, stale: false, unbound: false, reason: null };
+}
+
+/**
+ * 第二段校验：内容摘要（必须等拿到 registry 的 dist 元数据之后才能做）。
+ *
+ * 这一段专门对付「上游把**同一个版本号**重发了一份内容不同的包」：revision 没变、
+ * 版本号也没变，只有 tarball / integrity / shasum 变了 —— 这正是"确认了 A 却装了 B"
+ * 的真身。绑定"最新版本号"的写法在这里会完全失效。
+ *
+ * @param {object|null} confirmation 令牌
+ * @param {object|null} dist 本次实际要用的 dist 元数据
+ * @param {string} version 目标版本
+ */
+function checkConfirmationDigest(confirmation, dist, version) {
+  if (!confirmation || typeof confirmation !== 'object' || !confirmation.digest) {
+    return { ok: true, unchecked: true, reason: '确认令牌未携带内容摘要（B-06 未接线）' };
+  }
+  const actual = candidateDigest(version, dist);
+  if (actual !== confirmation.digest) {
+    return {
+      ok: false, unchecked: false,
+      reason: `上游重发了该版本（实际内容摘要 ${actual.slice(0, 12)}… ≠ 确认时的 ${String(confirmation.digest).slice(0, 12)}…）—— 请重新检查更新并确认。`
+    };
+  }
+  return { ok: true, unchecked: false, reason: null };
+}
+
+// --------------------------------------------------------------------------
 // STAGED updates — install/download to staging only; never touch running files.
 // --------------------------------------------------------------------------
-async function stageDsh(callbacks = {}, requestedVersion = null) {
+/**
+ * 取目标版本的 dist 元数据（完整性 + 直链）。
+ * 拉不到**不算错误**（私有镜像/离线测试可能没有 dist），但必须显式告知；
+ * 返回 null 时调用方退回"按版本号安装"（由 npm 自己校验）。
+ */
+async function resolveDshInstallDist(version, say) {
+  try {
+    const dist = await dshDistMeta(version);
+    if (!dist) logDurable(`dsh ${version} 的 registry 元数据没有 dist 字段（本次无法预校验安装包完整性）`);
+    return dist || null;
+  } catch (e) {
+    logDurable(`拉取 dsh ${version} 的 dist 元数据失败：${e.message}`);
+    say(`未能取得 ${version} 的完整性元数据（${e.message}），本次无法预校验安装包。`);
+    return null;
+  }
+}
+
+/**
+ * 「校验结论 → 动作」的纯策略函数（抽出来是为了让它自己可单测，下载路径要起网络）。
+ *
+ * 纪律：**没有哈希 ≠ 校验通过**。缺元数据时默认记账后继续（官方 B-17 验收标准第 4 条：
+ * 无哈希可用时不能把用户卡死），但只要 `DSH_REQUIRE_INTEGRITY=1` 就一律拒绝 —— 那是给
+ * 「我在意供应链、宁可装不上」的用户/企业环境用的硬开关。
+ *
+ * @param {{ok?:boolean, missingMetadata?:boolean, reason?:string|null}} verification
+ * @param {{requireHash?: boolean}} [opts]
+ * @returns {{action:'accept'|'accept-unverified'|'reject', code:string|null, reason:string|null}}
+ */
+function integrityPolicy(verification, opts = {}) {
+  const requireHash = typeof opts.requireHash === 'boolean'
+    ? opts.requireHash
+    : String(process.env.DSH_REQUIRE_INTEGRITY || '') === '1';
+  if (verification && verification.ok) return { action: 'accept', code: null, reason: null };
+  if (verification && verification.missingMetadata) {
+    return requireHash
+      ? { action: 'reject', code: 'ERR_UPDATER_INTEGRITY_METADATA_MISSING', reason: verification.reason }
+      : { action: 'accept-unverified', code: 'ERR_UPDATER_INTEGRITY_METADATA_MISSING', reason: verification.reason };
+  }
+  return { action: 'reject', code: 'ERR_UPDATER_CHECKSUM_MISMATCH', reason: verification ? verification.reason : '校验结果缺失' };
+}
+
+/**
+ * 下载安装包并按 registry 哈希校验（B-17）。
+ *
+ * 三条出口，一条都不许"假装通过"：
+ *  - 有哈希且匹配 → 返回文件（附校验口径，供日志与 UI 汇报"用了 sha512 还是 sha1"）；
+ *  - 有哈希但不匹配（含截断）→ 删包、记 ERR_UPDATER_CHECKSUM_MISMATCH、**抛错中止**；
+ *  - 没有哈希 → 明确告知（日志 + 用户文案），动作由 integrityPolicy 决定。
+ */
+async function downloadVerifiedDshTarball(p, version, dist, say) {
+  const tgz = path.join(p.downloadDir, `dsh-${version}.tgz`);
+  rimraf(tgz);
+  say(`正在下载 DSH 后端包 ${version} …`);
+  const expectedBytes = Number(dist.size || 0) || null;
+  await downloadFile(dist.tarball, tgz, () => {});
+  const verification = verifyFileIntegrity(tgz, dist, { expectedBytes });
+  const policy = integrityPolicy(verification);
+
+  if (policy.action === 'accept') {
+    logDurable(`dsh ${version} 安装包完整性校验通过（${verification.algo} / 来源 ${verification.from} / ${verification.size} 字节）`);
+    return { file: tgz, verification, policy };
+  }
+  if (policy.action === 'accept-unverified') {
+    logDurable(`dsh ${version} 缺少可用哈希，无法校验安装包完整性（按策略继续）：${verification.reason}`);
+    journalAdd('dsh', 'failed', { to: version, reason: `${policy.code} ${verification.reason}` });
+    say(`注意：该版本未提供完整性哈希，本次无法校验下载内容（${verification.reason}）。`);
+    return { file: tgz, verification, policy };
+  }
+  rimraf(tgz);
+  journalAdd('dsh', 'failed', { to: version, reason: `${policy.code} ${policy.reason}` });
+  logDurable(`dsh ${version} 安装包校验被拒绝（${policy.code}）：${policy.reason}`);
+  const hint = policy.code === 'ERR_UPDATER_INTEGRITY_METADATA_MISSING'
+    ? '该版本没有提供完整性哈希。可尝试：在托盘「设置」里切换到另一个更新路线后重试（或临时关闭 DSH_REQUIRE_INTEGRITY）。'
+    : '可尝试：在托盘「设置」里切换到另一个更新路线后重试，或稍后再试。';
+  throw new Error(`DSH ${version} 安装包校验失败（${verification.algo || '大小校验'}）：${policy.reason}\n`
+    + `本次更新已中止，当前后端版本未被替换。${hint}`);
+}
+
+/**
+ * 把（已校验的）后端包装进 dsh.new。
+ * @param {string|null} tgz 已校验的本地安装包；null = 退回按版本号在线安装
+ * @returns {string} 实际装出来的版本号
+ */
+async function installStagedDsh(p, version, tgz, say) {
+  rimraf(p.dshNew); mkdirp(p.dshNew);
+  // 不在 package.json 里预先声明依赖：npm 会把它和本地 tarball 混在一起解析，
+  // 可能绕过我们刚校验过的那份文件去 registry 重下一份。装完再写回版本形态。
+  writeJson(path.join(p.dshNew, 'package.json'), { name: 'dsh-active-backend', version: '0.0.0', private: true });
+  const args = [
+    p.npmCli, 'install', '--no-audit', '--no-fund', '--no-package-lock', '--loglevel=error',
+    `--registry=${npmRegistryUrl()}`, '--no-bin-links',
+    tgz || `@deepseek-ai/dsh@${version}`
+  ];
+  say(`正在安装 DSH 后端 ${version}（依赖较多，请稍候）…`);
+  await run(p.nodeExe, args, {
+    cwd: p.dshNew,
+    env: buildDedicatedEnv(),
+    onOutput: (s) => { const l = s.trim(); if (l && l.includes('packages')) say(l); }
+  });
+  const newBin = path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
+  if (!fs.existsSync(newBin)) {
+    rimraf(p.dshNew);
+    throw new Error('后端暂存安装后未找到 dsh，已放弃（当前版本不受影响）。');
+  }
+  const installed = readJson(path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'package.json'), {}).version || null;
+  if (!installed || compareSemver(installed, version) !== 0) {
+    rimraf(p.dshNew);
+    throw new Error(`暂存安装出的后端版本 ${installed || '未知'} 与目标 ${version} 不一致，已放弃（当前版本不受影响）。`);
+  }
+  // 装完把（可能带 file: 本地路径的）依赖声明改回版本形态，避免暂存树里留下指向
+  // downloads/ 的相对路径 —— 那个路径下次启动后就不存在了。
+  writeJson(path.join(p.dshNew, 'package.json'), {
+    name: 'dsh-active-backend', version: '0.0.0', private: true, dependencies: { '@deepseek-ai/dsh': installed }
+  });
+  return installed;
+}
+
+/**
+ * 暂存一个后端版本（不碰正在运行的文件）。
+ *
+ * 0.3.49 起多两道闸（顺序很重要，都在改磁盘上任何东西之前）：
+ *  ① B-06 确认令牌新鲜度（代次 + 版本；拿到元数据后再校内容摘要）→ 目标被换掉就拒绝；
+ *  ② B-17 安装包完整性（sha512 优先 / 退 sha1 / 缺失显式告知）→ 校验不过就**不建**
+ *     dsh.new，原来暂存着的版本保持原样（"保留旧版"不是靠回滚，而是靠没动过）。
+ *
+ * @param {{onLog?:Function,onProgress?:Function}} callbacks
+ * @param {string|null} requestedVersion 显式指定版本（版本列表/安装器选择）
+ * @param {{confirmation?: object, dist?: object, installTargetOverride?: boolean}} [options]
+ */
+async function stageDsh(callbacks = {}, requestedVersion = null, options = {}) {
   const p = P();
   const say = (m) => callbacks.onLog && callbacks.onLog(m);
+
+  // ① B-06 第一段：代次与目标版本 —— **必须在任何网络请求之前**完成。
+  //   过期的确认不该先花几十秒下载元数据再告诉用户"目标变了"。
+  //   没有显式版本时，用令牌自带的 version 当目标（它就是用户看到并确认的那个）。
+  const declaredTarget = requestedVersion
+    || (options.confirmation && options.confirmation.version ? String(options.confirmation.version) : null);
+  if (options.confirmation && declaredTarget) {
+    const pre = assertConfirmationFresh(declaredTarget, options.confirmation);
+    if (!pre.ok) {
+      journalAdd('dsh', 'failed', { to: declaredTarget, reason: `ERR_UPDATER_CONFIRMATION_STALE ${pre.reason}` });
+      logDurable('拒绝执行过期的更新确认（网络请求之前）：' + pre.reason);
+      throw new Error('目标已变更，请重新确认。\n\n' + pre.reason);
+    }
+  }
+
   const info = requestedVersion ? { version: requestedVersion, source: 'github', changes: [] } : await latestDshInfo();
   const latest = info.version;
+
+  // 目标解析出来之后再校一次（覆盖"令牌里的版本"与"实际候选"不一致的情况）
+  const conf = assertConfirmationFresh(latest, options.confirmation);
+  if (!conf.ok) {
+    journalAdd('dsh', 'failed', { to: latest, reason: `ERR_UPDATER_CONFIRMATION_STALE ${conf.reason}` });
+    logDurable('拒绝执行过期的更新确认：' + conf.reason);
+    throw new Error('目标已变更，请重新确认。\n\n' + conf.reason);
+  }
+  if (conf.unbound) log('本次 stageDsh 未携带确认令牌（B-06 未接线，目标绑定未生效）');
+
   // 显式指定版本：先校核 npm 是否已发布该版本，避免必然失败的下载。
   if (requestedVersion) {
     let published = null;
@@ -3591,21 +4401,37 @@ async function stageDsh(callbacks = {}, requestedVersion = null) {
     }
   }
   const staged = stagedVersions().dsh;
-  if (staged && compareSemver(staged, latest) >= 0) {
+  if (!options.installTargetOverride && staged && compareSemver(staged, latest) >= 0) {
     log(`dsh version ${staged} is already staged (latest=${latest}); reusing`);
     say(`最新 DSH 后端 (${staged}) 已在暂存区，无需重复下载。`);
-    return { version: staged, reused: true, changes: info.changes || [] };
+    return { version: staged, reused: true, changes: info.changes || [], source: info.source };
   }
   if (!fs.existsSync(p.nodeExe) || !fs.existsSync(p.npmCli)) throw new Error('缺少 node/npm，无法更新后端。');
-  rimraf(p.dshNew); mkdirp(p.dshNew);
-  writeJson(path.join(p.dshNew, 'package.json'), { name: 'dsh-active-backend', version: '0.0.0', private: true, dependencies: { '@deepseek-ai/dsh': latest } });
-  say(`正在下载并安装 DSH 后端 ${latest}（${info.source === 'github' ? 'GitHub 版本，npm 下载' : 'npm'}，依赖较多，请稍候）…`);
+
+  // ② B-17：先拿元数据（也要用它做 B-06 第二段的内容摘要校验），再下载校验，最后才装。
+  const dist = options.dist || await resolveDshInstallDist(latest, say);
+  const digestCheck = checkConfirmationDigest(options.confirmation, dist, latest);
+  if (!digestCheck.ok) {
+    journalAdd('dsh', 'failed', { to: latest, reason: `ERR_UPDATER_CONFIRMATION_STALE ${digestCheck.reason}` });
+    logDurable('拒绝执行：' + digestCheck.reason);
+    throw new Error('目标已变更，请重新确认。\n\n' + digestCheck.reason);
+  }
+  if (digestCheck.unchecked) log('确认令牌未含内容摘要（B-06 第二段校验跳过，已在日志留痕）');
+
+  let tgz = null;
+  let verification = null;
+  if (dist && dist.tarball) {
+    const got = await downloadVerifiedDshTarball(p, latest, dist, say);
+    tgz = got.file;
+    verification = got.verification;
+  } else {
+    logDurable(`dsh ${latest} 没有可用直链（dist.tarball），退回按版本号安装：本次无法预校验安装包完整性`);
+    say(`该版本元数据未提供安装包直链，改为按版本号安装（下载内容由 npm 自身校验）。`);
+  }
+
+  let ver = null;
   try {
-    await run(p.nodeExe, [p.npmCli, 'install', '--no-audit', '--no-fund', '--loglevel=error', `--registry=${npmRegistryUrl()}`, '--no-bin-links'], {
-      cwd: p.dshNew,
-      env: buildDedicatedEnv(),
-      onOutput: (s) => { const l = s.trim(); if (l && l.includes('packages')) say(l); }
-    });
+    ver = await installStagedDsh(p, latest, tgz, say);
   } catch (e) {
     const msg = (e && e.message) || String(e);
     journalAdd('dsh', 'failed', { to: latest, reason: String(msg).slice(0, 300) });
@@ -3617,17 +4443,61 @@ async function stageDsh(callbacks = {}, requestedVersion = null) {
         '可在托盘「设置」中把更新路线切换到「官方站（npmjs）」后重试，或稍等镜像同步（通常几小时）后再试。\n\n' + msg);
     }
     throw e;
+  } finally {
+    if (tgz) rimraf(tgz);   // 下载目录不该长期堆安装包；校验结论已经落进日志与返回值
   }
-  const newBin = path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
-  if (!fs.existsSync(newBin)) {
-    rimraf(p.dshNew);
-    journalAdd('dsh', 'failed', { to: latest, reason: 'staged install completed but bin.js missing' });
-    throw new Error('后端暂存安装后未找到 dsh，已放弃（当前版本不受影响）。');
-  }
-  const ver = readJson(path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'package.json'), {}).version || null;
+
   log('staged dsh', ver);
   journalAdd('dsh', 'staged', { from: currentVersions().dsh, to: ver });
-  return { version: ver, reused: false, changes: info.changes || [], source: info.source };
+  // 显式换版本 = 目标被换掉 → 作废其它挂着的确认，避免"确认的是 A、装的是 B"。
+  if (requestedVersion) bumpUpdateRevision('backend-version-explicit');
+  return {
+    version: ver, reused: false, changes: info.changes || [], source: info.source,
+    integrity: verification
+      ? { verified: !!verification.ok, algo: verification.algo, from: verification.from, missingMetadata: !!verification.missingMetadata }
+      : { verified: false, algo: null, from: null, missingMetadata: true, reason: '元数据无直链，未做预校验' }
+  };
+}
+
+/**
+ * 校验 Node 安装包（B-17 的第二个消费者）。
+ *
+ * 清单来源：`<nodeDist>/v<ver>/SHASUMS256.txt`（官方与 npmmirror 都有）。解析口径：
+ * 每行 `<sha256>␠␠<文件名>`，只认 `node-v<ver>-win-x64.zip` 那一行 —— 不猜、不模糊匹配。
+ *
+ * 三种出口与 tarball 校验一致：匹配 → ok；不匹配 → bad（调用方必须中止）；清单拿不到/
+ * 没有对应行 → missingMetadata（显式告知，不假装通过；默认继续，DSH_REQUIRE_INTEGRITY=1 时拒绝）。
+ *
+ * @returns {{ok:boolean, bad?:boolean, missingMetadata?:boolean, algo?:string, reason:string|null}}
+ */
+async function verifyNodeZip(zipPath, version, say) {
+  const fileName = `node-v${version}-win-x64.zip`;
+  const url = `${nodeDistBase()}/v${version}/SHASUMS256.txt`;
+  let text = null;
+  try {
+    text = await fetchText(url);
+  } catch (e) {
+    logDurable(`无法取得 Node v${version} 的 SHASUMS256.txt（${e.message}）：本次无法校验安装包完整性`);
+    say(`未能取得 Node v${version} 的校验清单（${e.message}），本次无法校验下载内容。`);
+    return { ok: false, missingMetadata: true, reason: `校验清单不可用：${e.message}` };
+  }
+  const entry = String(text).split(/\r?\n/)
+    .map((l) => l.trim().split(/\s+/))
+    .find((parts) => parts.length >= 2 && parts[parts.length - 1].replace(/^\*/, '') === fileName);
+  if (!entry) {
+    logDurable(`Node v${version} 的 SHASUMS256.txt 里没有 ${fileName} 这一行（无法校验）`);
+    say(`校验清单里没有 ${fileName} 的条目，本次无法校验下载内容。`);
+    return { ok: false, missingMetadata: true, reason: `校验清单缺少 ${fileName} 条目` };
+  }
+  const expected = entry[0].toLowerCase();
+  const actual = digestFileSync(zipPath, 'sha256').hex;
+  if (actual !== expected) {
+    const reason = `sha256 不匹配：期望 ${expected}，实际 ${actual}`;
+    logDurable(`Node v${version} 安装包校验失败：${reason}`);
+    return { ok: false, bad: true, algo: 'sha256', reason };
+  }
+  logDurable(`Node v${version} 安装包校验通过（sha256）`);
+  return { ok: true, algo: 'sha256', reason: null };
 }
 
 /**
@@ -3690,6 +4560,14 @@ async function stageNode(callbacks = {}, requestedVersion = null) {
   const zip = path.join(p.downloadDir, zipName);
   say(`正在下载 Node v${latest} …`);
   await downloadFile(url, zip, progress);
+  // 0.3.49 · B-17：Node 官方/镜像都提供 SHASUMS256.txt，没有理由只查长度。
+  const nodeCheck = await verifyNodeZip(zip, latest, say);
+  if (nodeCheck.bad) {
+    try { fs.unlinkSync(zip); } catch (e) { log('删除校验失败的 Node 包失败:', e.message); }
+    journalAdd('node', 'failed', { to: latest, reason: `ERR_UPDATER_CHECKSUM_MISMATCH ${nodeCheck.reason}` });
+    throw new Error(`Node v${latest} 安装包校验失败：${nodeCheck.reason}\n本次更新已中止，当前运行时未被替换。`
+      + '\n可尝试：在托盘「设置」里切换 Node 下载源后重试。');
+  }
   rimraf(p.nodeNew); mkdirp(p.nodeNew);
   say('正在解压 Node …');
   await extractZip(zip, p.nodeNew);
@@ -3702,7 +4580,9 @@ async function stageNode(callbacks = {}, requestedVersion = null) {
   rimraf(extracted);
   try { fs.unlinkSync(zip); } catch {}
   log('staged node', latest);
-  return { version: latest, reused: false };
+  // 0.3.49 · B-06：显式换 Node 版本同样是"目标被换掉"，旧确认必须作废。
+  if (requestedVersion) bumpUpdateRevision('node-version-explicit');
+  return { version: latest, reused: false, integrity: nodeCheck.ok ? { verified: true, algo: nodeCheck.algo } : { verified: false, missingMetadata: true } };
 }
 
 // --------------------------------------------------------------------------
@@ -3822,9 +4702,32 @@ function exportBackendCompatReport(plan) {
   return file;
 }
 
+/**
+ * 把活跃后端换回 `dsh.previous`（不可逆：当前 dsh 会被删除）。
+ *
+ * 触发条件：用户手动回滚 / 连续启动失败达阈值的自动回滚（main.js `performRollback`）。
+ * 可逆性：**不可逆** —— 当前 dsh 改名为 dsh.failed 后删除；补偿手段是重新暂存该版本。
+ * 证据要求：dsh.previous 内必须有 bin.js；执行前后版本号、journal、versions.json 必须
+ *   一致落盘（否则会出现"H-01 自动回滚把坏版本又装回来"这类二次事故）。
+ *
+ * 0.3.49 · B-08：三件事以前没做，现在必须做 ——
+ *  ① **journal 对齐**：把坏版本那条 `applied` 改成 `rolled-back`。不这么做的话，回滚后
+ *     只要有一次启动成功，`journalMarkVerified()` 就会把"坏版本"标成 verified，台账从此
+ *     撒谎；更糟的是后续的自动回滚决策会以这条错误记录为依据（"回滚回坏版本"）。
+ *  ② **versions.json 重写**：滚动后必须用新树的真实版本覆盖（原来就做，但只在成功路径）。
+ *  ③ **清掉 H-05 的中断标记**：回滚本身就是对"上次应用被打断"的最终处置，标记必须结束，
+ *     否则下次启动还会报一次中断。全部走 logDurable，断电也要留痕。
+ *
+ * @returns {boolean} true = 已回滚到上一个版本
+ */
 function rollbackDsh() {
   const p = P();
-  if (!fs.existsSync(path.join(p.dshPrevious, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'))) return false;
+  const target = probeDshTree(p.dshPrevious);
+  if (!target) {
+    logDurable('回滚被拒绝：dsh.previous 里没有可用的后端（缺 lib/bin.js）');
+    return false;
+  }
+  const fromVersion = dshVersion();
   const failed = path.join(p.root, 'dsh.failed');
   rimraf(failed);
   if (fs.existsSync(p.dshDir)) fs.renameSync(p.dshDir, failed);
@@ -3832,15 +4735,370 @@ function rollbackDsh() {
   rimraf(failed);
   const cur = currentVersions();
   writeJson(p.versionsJson, { ...readJson(p.versionsJson, {}), ...Object.fromEntries(Object.entries(cur).filter(([, v]) => v)) });
-  log('rolled back dsh to', cur.dsh);
+  const rolledBackEntries = journalMarkRolledBack(fromVersion, cur.dsh);
+  try { clearApplyInProgress(); }
+  catch (e) { logDurable('回滚后清理更新中断标记失败（下次启动会多报一次中断）:', e.message); }
+  logDurable(`rolled back dsh: ${fromVersion || '未知'} → ${cur.dsh || '未知'}（journal 修正 ${rolledBackEntries} 条 applied 记录）`);
   return true;
 }
 
-// Apply anything staged. Runs BEFORE the backend is spawned (so nothing is locked).
-function applyStaged() {
+/**
+ * 把 journal 里"坏版本已 applied"的记录改成 rolled-back 并补一条回滚记录。
+ *
+ * 为什么不是简单删掉：台账是事后归因的唯一证据，删了就说不清"我们曾经装过一个坏版本、
+ * 后来又退回去了"。改状态既保留了事实，又让 `journalUnverified()` / `journalMarkVerified()`
+ * 不再把它当成"待验证的更新"（这正是"回滚回坏版本"的成因）。
+ *
+ * @returns {number} 被修正的记录条数
+ */
+function journalMarkRolledBack(badVersion, toVersion) {
+  const { entries } = readUpdateJournal();
+  let n = 0;
+  for (const e of entries) {
+    if (e.kind !== 'dsh' || e.state !== 'applied') continue;
+    if (badVersion && e.to && String(e.to) !== String(badVersion)) continue;
+    e.state = 'rolled-back';
+    n++;
+  }
+  entries.push({
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+    kind: 'dsh', state: 'rolled-back', at: new Date().toISOString(),
+    from: badVersion || null, to: toVersion || null, reason: null
+  });
+  writeUpdateJournal(entries);
+  return n;
+}
+
+/**
+ * 0.3.48 · H-05：交换完成后校验「新树真的可用」，只有校验通过才允许清除中断标记。
+ * 口径：`lib/bin.js` 存在 + `package.json` 能读出与暂存版本一致的 version。
+ * （交换成功但校验不过 = 现场不可信，标记必须留着让下次启动判定。）
+ */
+function verifyAppliedDsh(expectedVersion) {
+  const p = P();
+  if (!fs.existsSync(p.dshBin)) return { ok: false, version: null, reason: '交换后缺少 lib/bin.js' };
+  const version = dshVersion();
+  if (!version) return { ok: false, version: null, reason: '交换后无法从 package.json 读出后端版本' };
+  if (expectedVersion && String(version).replace(/^v/, '') !== String(expectedVersion).replace(/^v/, '')) {
+    return { ok: false, version, reason: `磁盘版本 ${version} ≠ 暂存版本 ${expectedVersion}` };
+  }
+  return { ok: true, version, reason: null };
+}
+
+/** 同步退避（等待被占用/被扫描的旧树释放句柄，无需事件循环）。 */
+function sleepSync(ms) {
+  try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch {}
+}
+
+/**
+ * 4 次 rename 重试交换 dsh 目录（后端刚被杀 / 杀软扫描会短暂占用旧树）。
+ * 每次进入窗口 A（dsh → dsh.old）后立刻把标记步骤推进到 `dsh-hidden`，让断电后的
+ * 现场可被精确判定（H-05 的证据要求）。
+ * @returns {{swapped: boolean, lastErr: Error|null}}
+ */
+function swapDshDirectories(p) {
+  let swapped = false;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 4 && !swapped; attempt++) {
+    try {
+      const oldBackup = path.join(p.root, 'dsh.old');
+      rimraf(oldBackup);
+      if (fs.existsSync(p.dshDir)) fs.renameSync(p.dshDir, oldBackup);
+      const marker = readApplyInProgress();
+      if (marker && marker.operationId) {
+        try { updateApplyInProgress(marker.operationId, { step: 'dsh-hidden' }); }
+        catch (e) { log('更新中断标记步骤补写失败（标记仍在，判定仍可进行）：' + e.message); }
+      }
+      try {
+        fs.renameSync(p.dshNew, p.dshDir);
+      } catch (midSwap) {
+        // Restore the first rename so the next attempt starts from a clean state.
+        if (!fs.existsSync(p.dshDir) && fs.existsSync(oldBackup)) fs.renameSync(oldBackup, p.dshDir);
+        throw midSwap;
+      }
+      swapped = true;
+      // Retain the previous version for rollback after startup health checks.
+      rimraf(p.dshPrevious);
+      if (fs.existsSync(oldBackup)) { try { fs.renameSync(oldBackup, p.dshPrevious); } catch { rimraf(oldBackup); } }
+    } catch (e) {
+      lastErr = e;
+      log(`apply staged dsh attempt ${attempt} failed: ${e.message}`);
+      if (attempt < 4) sleepSync(900);
+    }
+  }
+  return { swapped, lastErr };
+}
+
+/**
+ * 「dsh.new 不可再应用」标记（0.3.49）。
+ *
+ * 为什么需要：copy 兜底交换成功后，`dsh.new` 可能因为**同一个占用**删不净（实测：
+ * 占用在 dsh.new 内部时，连重命名 dsh.new 本身都 EPERM）。若不管它，下次启动会把
+ * 一棵缺文件的暂存树当成待装版本再交换一次 —— 那是把好树换坏的最短路径。
+ *
+ * 因此把"这棵暂存树作废了"记在 **dsh.new 之外**（root/dsh.new.invalid.json），
+ * 由 applyStaged / stagedVersions 统一认；等哪次能把它删干净了再清标记。
+ */
+const dshStagingInvalidPath = () => path.join(P().root, 'dsh.new.invalid.json');
+
+function dshStagingInvalidated() {
+  return !!readJson(dshStagingInvalidPath(), null);
+}
+
+/** 作废当前暂存树（不可逆地"不再尝试应用"，但不动磁盘上的树，保留取证）。 */
+function invalidateDshStaging(reason) {
+  try {
+    writeJson(dshStagingInvalidPath(), {
+      schemaVersion: 1, at: new Date().toISOString(), reason: String(reason).slice(0, 300)
+    });
+    logDurable(`已把 dsh.new 标记为不可应用（${reason}）：下次启动不会拿它去交换`);
+    return true;
+  } catch (e) {
+    logDurable(`标记 dsh.new 不可应用失败（下次启动可能重试应用）：${e.message}`);
+    return false;
+  }
+}
+
+/** 暂存树已清干净时清掉作废标记（否则会永远显示"有个坏暂存"）。 */
+function clearDshStagingInvalidation() {
+  try {
+    fs.unlinkSync(dshStagingInvalidPath());
+    logDurable('dsh.new 不可应用标记已清除（暂存目录已清干净）');
+    return true;
+  } catch (e) {
+    if (e.code === 'ENOENT') return true;
+    logDurable('清除 dsh.new 不可应用标记失败：' + e.message);
+    return false;
+  }
+}
+
+/**
+ * 交换彻底失败后的最后手段：把 dsh.new **复制**成新树再整体换上（0.3.49 修正）。
+ * 旧实现是 `copyDir(dshNew → dsh)` 后删 dsh.new —— 两个真实缺陷：
+ *  ① **叠加而非替换**：新版本删掉/改名的文件会作为旧版残留留在 dsh 里，形成"新旧混合
+ *     树"，而 `verifyAppliedDsh` 只看 bin.js + 版本号，看不出来；
+ *  ② **不产 `dsh.previous`**：于是这条路径上的更新没有回滚素材，H-01 的自动回滚在这条
+ *     路径上"无版本可退"。
+ *
+ * 现在的做法：先把 dsh.new 复制到 `dsh.copy`（同卷临时目录）→ 校验树完整且版本正确 →
+ * 才把旧 dsh 挪到 `dsh.old`、`dsh.copy` 挪成 dsh、`dsh.old` 落到 `dsh.previous`。
+ * 任何一步失败都把 dsh 还原回原位并保留 dsh.new（本次不应用，下次启动重试），绝不留下
+ * "dsh 不存在"的中间态。
+ *
+ * @returns {boolean} true = 已换上且 dsh.previous 已就位
+ */
+function swapDshByCopy(p, lastErr, expectedVersion = null) {
+  const copyTmp = path.join(p.root, 'dsh.copy');
+  const oldBackup = path.join(p.root, 'dsh.old');
+  let movedAside = false;
+  try {
+    rimraf(copyTmp);
+    copyDir(p.dshNew, copyTmp);
+    const probe = probeDshTree(copyTmp);
+    if (!probe) throw new Error('复制后的树缺少 lib/bin.js');
+    if (expectedVersion && probe.version && compareSemver(probe.version, expectedVersion) !== 0) {
+      throw new Error(`复制后的版本 ${probe.version} ≠ 目标 ${expectedVersion}`);
+    }
+    rimraf(oldBackup);
+    if (fs.existsSync(p.dshDir)) { fs.renameSync(p.dshDir, oldBackup); movedAside = true; }
+    fs.renameSync(copyTmp, p.dshDir);
+    // 旧版本落到 dsh.previous —— 这就是 H-01 自动回滚的素材来源。
+    rimraf(p.dshPrevious);
+    if (fs.existsSync(oldBackup)) fs.renameSync(oldBackup, p.dshPrevious);
+    rimraf(p.dshNew);
+    // 暂存目录若因为占用删不净，必须让它"不可再被应用"：否则下次启动会把一棵缺文件的
+    // dsh.new 当成待装版本再交换一次，直接把好树换坏。
+    //
+    // 注意：这里**不能**靠"改名藏起来"——当占用就在 dsh.new 内部时，连 rename 它自己
+    // 都会 EPERM（实测）。所以标记放在 dsh.new **外面**（root/dsh.new.invalid.json），
+    // 由 applyStaged / stagedVersions 统一认这个标记。
+    if (fs.existsSync(p.dshNew)) invalidateDshStaging('copy fallback 后暂存目录未删净（被占用）');
+    logDurable(`applied staged dsh via copy fallback (version ${probe.version || '?'}, previous retained)`);
+    return true;
+  } catch (e) {
+    // 已经动过 dsh 目录就尽力还原：宁可这次不更新，也不能留一个"dsh 消失"的现场。
+    if (movedAside && !fs.existsSync(p.dshDir) && fs.existsSync(oldBackup)) {
+      try { fs.renameSync(oldBackup, p.dshDir); }
+      catch (e2) { logDurable(`复制兜底失败后还原 dsh 也失败（下次启动会按更新中断处理）：${e2.message}`); }
+    }
+    rimraf(copyTmp);
+    logDurable(`apply staged dsh copy fallback failed；dsh.new 保留待下次启动: ${(e && e.message) || (lastErr && lastErr.message)}`);
+    return false;
+  }
+}
+
+/**
+ * dsh 树的「标记 → 交换 → 校验 → 清标记」全过程（从 applyStaged 抽出，0.3.48 · H-05）。
+ * 交换是唯一不可逆窗口，单独成函数才能把标记纪律一眼看完。
+ * @returns {{applied: string|null, swapped: boolean}}
+ */
+function applyStagedDshSwap(p) {
+  const staged = stagedVersions().dsh || null;
+  const stale = readApplyInProgress();
+  if (stale) {
+    log(`发现上一次更新留下的中断标记（步骤=${stale.step || '?'} 开始=${stale.startedAt || '?'}）：本次应用将覆盖它，历史状态已进诊断日志`);
+  }
+
+  let marker;
+  try {
+    marker = beginApplyInProgress({ step: 'dsh-swap', from: currentVersions().dsh, to: staged });
+  } catch (e) {
+    log('写入更新中断标记失败，取消本次 dsh 交换（dsh.new 保留，下次启动重试）：' + e.message);
+    journalAdd('dsh', 'failed', { to: staged, reason: `ERR_UPDATER_APPLY_MARKER_FAILED ${e.message}` });
+    return { applied: null, swapped: false };
+  }
+
+  const direct = swapDshDirectories(p);
+  const swapped = direct.swapped || swapDshByCopy(p, direct.lastErr, staged);
+
+  if (!swapped) {
+    log('dsh 交换未完成：保留中断标记，下次启动据此判定是否从 dsh.old / dsh.previous 恢复');
+    journalAdd('dsh', 'failed', { to: staged, reason: `ERR_UPDATER_APPLY_INCOMPLETE ${(direct.lastErr && direct.lastErr.message) || ''}` });
+    try { updateApplyInProgress(marker.operationId, { step: 'dsh-swap-failed' }); }
+    catch (e) { log('更新中断标记步骤补写失败：' + e.message); }
+    return { applied: null, swapped: false };
+  }
+
+  const verified = verifyAppliedDsh(staged);
+  if (!verified.ok) {
+    log('dsh 交换已完成但校验未通过，保留中断标记供下次启动判定：' + verified.reason);
+    journalAdd('dsh', 'failed', { to: staged, reason: `ERR_UPDATER_APPLY_UNVERIFIED ${verified.reason}` });
+    try {
+      updateApplyInProgress(marker.operationId, { step: 'dsh-swap-unverified', detail: String(verified.reason).slice(0, 200), onDisk: verified.version || null });
+    } catch (e) { log('更新中断标记步骤补写失败：' + e.message); }
+    return { applied: verified.version || dshVersion(), swapped: true };
+  }
+
+  log('applied staged dsh', verified.version);
+  journalAdd('dsh', 'applied', { from: readJson(p.versionsJson, {}).dsh, to: verified.version });
+  try { clearApplyInProgress(marker.operationId); }
+  catch (e) { log('清除更新中断标记失败（下次启动会按“更新被中断”处理，属如实上报）：' + e.message); }
+  return { applied: verified.version, swapped: true };
+}
+
+// --------------------------------------------------------------------------
+// 0.3.49 · B-08：干净退出才允许应用更新
+//
+// 官方 host-process.ts:363-366 的判定式是「requireGraceful && 子进程已退出且退出码 0
+// 且 teardown 完成」，不满足直接抛 DesktopHostUncleanExitError。我们**不能照抄**：
+// Windows 上我们已实测 SIGTERM handler 不触发（0.3.44），等价物只能是「后端进程真的
+// 不在了」。
+//
+// 这里的纪律是「不许强杀后硬上」：检测不通过 → **不应用**（dsh.new / node.new 原样
+// 留着），返回 blocked + 可操作文案，由调用方稍后重试。绝不 taskkill 完就往下走 ——
+// 那会把"更新装到一半的树"和"正在退出的后端"叠在一起，是最难归因的一类现场。
+// --------------------------------------------------------------------------
+/** 由主进程注入的探针（它才知道 child_process 与在途会话写入的真实状态）。 */
+let applyGateProbe = null;
+
+/**
+ * 注册"能不能应用更新"的探针。
+ * @param {() => ({backendRunning?: boolean, pendingWrites?: number, detail?: string})} probe
+ */
+function setApplyGate(probe) {
+  applyGateProbe = typeof probe === 'function' ? probe : null;
+  log('apply 闸门探针已注册:', !!applyGateProbe);
+  return true;
+}
+
+/**
+ * 自带进程探针：找 `backend\node.exe` 这个**专用** node 副本的进程。
+ * 用专用副本而不是 `node.exe` 通配，避免把用户自己跑的 node 当成我们的后端。
+ * @returns {{running: boolean, pids: number[], error: string|null}}
+ */
+function scanBackendProcesses() {
+  const p = P();
+  const script = [
+    `$p = '${String(p.nodeExe).replace(/'/g, "''")}'`,
+    'try {',
+    '  $list = Get-CimInstance Win32_Process -Filter "Name=\'node.exe\'" -ErrorAction Stop | Where-Object { $_.ExecutablePath -eq $p }',
+    '  if ($list) { ($list | ForEach-Object { $_.ProcessId }) -join \',\' } else { \'\' }',
+    '} catch { "ERR:" + $_.Exception.Message }'
+  ].join('; ');
+  try {
+    const out = require('child_process').execFileSync('pwsh', ['-NoProfile', '-Command', script], {
+      encoding: 'utf8', timeout: 8000, windowsHide: true
+    }).trim();
+    if (out.startsWith('ERR:')) return { running: false, pids: [], error: out.slice(4) };
+    const pids = out ? out.split(',').map((x) => Number(x)).filter((n) => Number.isFinite(n)) : [];
+    return { running: pids.length > 0, pids, error: null };
+  } catch (e) {
+    // 探针自己失败 ≠ 干净。宁可判"不干净"让它稍后重试，也不要带着未知状态去改磁盘。
+    return { running: false, pids: [], error: (e && e.message) || String(e) };
+  }
+}
+
+/**
+ * 当前是否允许应用更新。
+ * @returns {{clean: boolean, reasons: string[], detail: object}}
+ */
+function applyGateStatus() {
+  const reasons = [];
+  const detail = { process: null, writer: 'not-registered', probeError: null };
+  let running = null;
+  let pendingWrites = null;
+
+  if (applyGateProbe) {
+    const r = applyGateProbe() || {};
+    if (typeof r.backendRunning === 'boolean') running = r.backendRunning;
+    if (typeof r.pendingWrites === 'number') { pendingWrites = r.pendingWrites; detail.writer = r.pendingWrites; }
+    if (r.detail) detail.probeDetail = String(r.detail).slice(0, 200);
+  }
+  if (running === null) {
+    const scan = scanBackendProcesses();
+    detail.process = scan;
+    if (scan.error) { detail.probeError = scan.error; reasons.push(`无法确认后端是否已退出（探针失败：${scan.error}）`); }
+    running = scan.running;
+  }
+  if (running === true) reasons.push('后端进程仍在运行');
+  if (pendingWrites && pendingWrites > 0) reasons.push(`仍有 ${pendingWrites} 项会话写入未落盘`);
+  return { clean: reasons.length === 0, reasons, detail };
+}
+
+/**
+ * 应用暂存更新（在启动链上、后端未运行时调用）。
+ *
+ * 0.3.49 · B-08：真正动手之前先过「干净退出」闸门。有东西要装时才探测（探测要起一个
+ * PowerShell，几百毫秒 —— 绝大多数启动根本没有暂存更新，不该为此付代价）。
+ *
+ * @param {{skipGate?: boolean}} [options] skipGate 仅供测试构造（生产调用不要传）
+ * @returns {{dsh: string|null, node: string|null, blocked?: boolean, gate?: object,
+ *            retryHint?: string, nextRetryAtMs?: number}}
+ */
+function applyStaged(options = {}) {
   const p = P();
   const applied = { dsh: null, node: null };
-  const sleepSync = (ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch {} };
+
+  // 0.3.49：先处理"被作废的暂存树"。能清干净就清标记；清不干净就本次坚决跳过 ——
+  // 拿一棵缺文件的 dsh.new 去交换，比不更新糟得多。
+  let stagingInvalid = dshStagingInvalidated();
+  if (stagingInvalid) {
+    rimraf(p.dshNew);
+    if (!fs.existsSync(p.dshNew)) { clearDshStagingInvalidation(); stagingInvalid = false; }
+    else logDurable('dsh.new 已被标记为不可应用：本次跳过（文件仍被占用，稍后再清）');
+  }
+
+  const hasStagedNode = fs.existsSync(path.join(p.nodeNew, 'node.exe'));
+  const hasStagedDsh = !stagingInvalid && fs.existsSync(path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'));
+
+  // 没有暂存内容 = 无事可做。既不该探测，也不该写 journal。
+  if (!hasStagedNode && !hasStagedDsh) return applied;
+
+  if (!options.skipGate) {
+    const gate = applyGateStatus();
+    if (!gate.clean) {
+      const reasonText = gate.reasons.join('；');
+      logDurable(`已阻止本次应用更新（后端未干净退出）：${reasonText}`);
+      journalAdd('dsh', 'failed', { to: stagedVersions().dsh, reason: `ERR_UPDATER_BACKEND_NOT_STOPPED ${reasonText}` });
+      return {
+        ...applied,
+        blocked: true,
+        gate,
+        retryHint: '正在收尾，稍后自动重试（本次不会应用更新，已暂存的版本保持原样）',
+        nextRetryAtMs: 60000
+      };
+    }
+  }
 
   // Node first: apply the FULL staged prefix (node.exe + shims + node_modules/{npm,corepack}).
   if (fs.existsSync(path.join(p.nodeNew, 'node.exe'))) {
@@ -3874,47 +5132,10 @@ function applyStaged() {
 
   // Dsh backend: swap dshDir with dshNew. Retried because a just-killed
   // backend (or antivirus) can transiently hold locks on the old tree.
+  // 0.3.48 · H-05：交换全过程（含「进行中」标记与校验）已抽到 applyStagedDshSwap。
   if (fs.existsSync(path.join(p.dshNew, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'))) {
-    let swapped = false;
-    let lastErr = null;
-    for (let attempt = 1; attempt <= 4 && !swapped; attempt++) {
-      try {
-        const oldBackup = path.join(p.root, 'dsh.old');
-        rimraf(oldBackup);
-        if (fs.existsSync(p.dshDir)) fs.renameSync(p.dshDir, oldBackup);
-        try {
-          fs.renameSync(p.dshNew, p.dshDir);
-        } catch (midSwap) {
-          // Restore the first rename so the next attempt starts from a clean state.
-          if (!fs.existsSync(p.dshDir) && fs.existsSync(oldBackup)) fs.renameSync(oldBackup, p.dshDir);
-          throw midSwap;
-        }
-        swapped = true;
-        // Retain the previous version for rollback after startup health checks.
-        rimraf(p.dshPrevious);
-        if (fs.existsSync(oldBackup)) { try { fs.renameSync(oldBackup, p.dshPrevious); } catch { rimraf(oldBackup); } }
-      } catch (e) {
-        lastErr = e;
-        log(`apply staged dsh attempt ${attempt} failed: ${e.message}`);
-        if (attempt < 4) sleepSync(900);
-      }
-    }
-    if (!swapped) {
-      // Last resort: copy new over old. dsh.new is kept if this fails too.
-      try {
-        copyDir(p.dshNew, p.dshDir);
-        rimraf(p.dshNew);
-        swapped = true;
-        log('applied staged dsh via copy fallback');
-      } catch (e) {
-        log('apply staged dsh failed; dsh.new kept for next launch:', (e && e.message) || (lastErr && lastErr.message));
-      }
-    }
-    if (swapped) {
-      applied.dsh = dshVersion();
-      log('applied staged dsh', applied.dsh);
-      journalAdd('dsh', 'applied', { from: readJson(p.versionsJson, {}).dsh, to: applied.dsh });
-    }
+    const res = applyStagedDshSwap(p);
+    if (res.applied) applied.dsh = res.applied;
   }
 
   if (applied.node || applied.dsh) {
@@ -4010,7 +5231,57 @@ async function checkForUpdates(options = {}) {
       }
     } catch (e) { result.errors.push({ component: t.key, error: e.message }); }
   }));
+  // 0.3.49 · B-06：只有"确实有更新可提示"时才记录候选 —— 记录的是用户**即将在弹窗里
+  // 看到的那个目标**（版本 + 内容摘要），不是"最新"这个抽象概念。
+  try {
+    const hasDshUpdate = result.updates.some((u) => u.component === 'dsh');
+    if (hasDshUpdate && !requested) await recordUpdateCandidate({ version: result.latest.dsh, source: 'check' });
+    else if (requested) log('安装器指定版本模式：不记录更新候选（该路径不走确认弹窗）');
+  } catch (e) { log('记录更新候选失败（确认绑定将退化为未绑定）:', e.message); }
   return result;
+}
+
+// --------------------------------------------------------------------------
+// 0.3.49 · B-03：把「何时检查更新」交给 update-schedule.js（纯逻辑、可注入时钟）
+//
+// 旧实现是 main.js 里的 `setTimeout(5s)` + `setInterval(6h)`：无退避、无抖动、无单飞、
+// 用墙钟。这里只提供**接线件**，策略全在 update-schedule.js 里（可单测）。
+// --------------------------------------------------------------------------
+/**
+ * 创建后端更新检查的常驻节拍器。
+ *
+ * 语义边界：它只决定**何时**检查；检查到更新后仍然只发通知（通知制不变）。
+ *
+ * 接线（main.js，一行）：
+ *   `const loop = mgr.createBackendUpdateLoop(); ... loop.start()` 取代原来的
+ *   `setTimeout(checkBackendUpdates, 5000)` + `setInterval(checkBackendUpdates, 6h)`。
+ *
+ * @param {{env?: object, includeNode?: boolean, log?: Function,
+ *          hrtime?: Function, random?: Function, baseMs?: number, maxBackoffMs?: number, jitter?: number}} [opts]
+ */
+function createBackendUpdateLoop(opts = {}) {
+  const schedule = require('./update-schedule');
+  const cfg = schedule.configFromEnv(opts.env || process.env, {
+    baseMs: opts.baseMs, maxBackoffMs: opts.maxBackoffMs, jitter: opts.jitter
+  });
+  const say = opts.log || ((msg, detail) => log('[update-schedule] ' + msg, detail === undefined ? '' : detail));
+  return schedule.createUpdateScheduler({
+    ...cfg,
+    hrtime: opts.hrtime,
+    random: opts.random,
+    log: (msg, detail) => say(msg, detail),
+    check: async (reason) => {
+      // 0.3.49 · B-03：把「检查本身」的失败也纳入退避 —— 网络错误、元数据解析失败
+      // 都算失败；单靠"没发现新版本"当成功会让弱网永远按 10 分钟硬撞镜像。
+      const res = await checkForUpdates({ includeNode: opts.includeNode !== false });
+      const errs = Array.isArray(res.errors) ? res.errors : [];
+      if (errs.length) {
+        throw new Error(`更新检查有 ${errs.length} 项失败：` + errs.slice(0, 3).map((e) => `${e.component}:${e.error}`).join('; '));
+      }
+      log('更新检查完成', { reason, updates: res.updates.map((u) => u.component + '→' + u.latest) });
+      return res;
+    }
+  });
 }
 
 // --------------------------------------------------------------------------
@@ -4570,6 +5841,19 @@ module.exports = {
   detectPythonRuntime, pythonBootCheck, dismissPythonPrompt,
   comboGateCheck, dismissComboPrompt,
   journalAdd, readUpdateJournal, journalMarkVerified, journalUnverified,
+  // 0.3.48 · H-05「更新应用中」标记：交换前落标记、启动早期检测残留、主进程确认后清除
+  applyInProgressPath, readApplyInProgress, beginApplyInProgress, updateApplyInProgress,
+  clearApplyInProgress, detectInterruptedApply, interruptedApplyState, verifyAppliedDsh,
+  // 0.3.49 · B-03 更新节拍（策略在 update-schedule.js，这里只给接线件）
+  createBackendUpdateLoop,
+  // 0.3.49 · B-17 运行期完整性校验（供 stageDsh/stageNode 与测试/诊断调用）
+  parseSri, chooseIntegrity, verifyFileIntegrity, digestFileSync, verifyNodeZip, dshDistMeta,
+  integrityPolicy,
+  // 0.3.49 · B-06 更新确认与版本绑定（revision + 内容摘要）
+  updateRevision, bumpUpdateRevision, issueUpdateConfirmation, assertConfirmationFresh,
+  checkConfirmationDigest, candidateDigest, recordUpdateCandidate,
+  // 0.3.49 · B-08 干净退出闸门与回滚台账对齐
+  setApplyGate, applyGateStatus, scanBackendProcesses, journalMarkRolledBack,
   // 0.3.42 原子写（供测试与诊断调用）
   writeJson, readJson,
   // 0.3.43 不跟随链接的目录删除（防 junction 删进用户源码）

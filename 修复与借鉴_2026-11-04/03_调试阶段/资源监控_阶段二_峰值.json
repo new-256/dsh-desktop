@@ -1,0 +1,25 @@
+{
+  "label": "阶段二 门禁+出包",
+  "startedAt": "2026-11-03T19:09:52.532Z",
+  "durationSec": 947.1,
+  "samples": 471,
+  "intervalSec": 2,
+  "reason": "检测到停止文件 C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\_monitor2-stop.flag",
+  "filters": [
+    "DSH Desktop.exe",
+    "node.exe",
+    "electron.exe"
+  ],
+  "pids": [],
+  "peaks": {
+    "cpu": 99.18590973812914,
+    "ws": 3639,
+    "pb": 3279,
+    "sysUsedPct": 85.17137200269258,
+    "gpuUtil": 98,
+    "gpuMem": 9881,
+    "gpuTemp": 69,
+    "gpu": "NVIDIA GeForce RTX 5060 Ti"
+  },
+  "csv": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\资源监控_阶段二.csv"
+}

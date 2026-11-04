@@ -1,0 +1,21 @@
+[PASS] A1 50 条高频行期间零同步文件系统调用（H-10 收益保持） — 实际：{"appendFileSync":0,"statSync":0,"renameSync":0,"writeFileSync":0}
+[PASS] A2 高频行全部留在队列（51 = 会话头 + 50 行） — 实际：51
+[PASS] A3 返回后主日志尚未创建（批量语义） — 实际存在：false
+[PASS] A4 高频行不产生错误清单/桌面报告 — 实际：错误清单 false / 桌面报告 false
+[PASS] B1 错误行返回后主日志已落盘（含普通行，共 3 行：头 + 2） — 实际：3
+[PASS] B2 错误行返回后错误清单已落盘 1 行 — 实际：1
+[PASS] B3 错误行返回后桌面报告已落盘 2 行（头 + 1） — 实际：2
+[PASS] B4 三个产物内容都含错误文本 — 实际：{"log":true,"err":true,"report":true}
+[PASS] B5 错误行不入队列（durable 直写，队列清零） — 实际：0
+[PASS] C1 writeDurable 返回后主日志已落盘（含 1 条记录 + 会话头） — 实际：2
+[PASS] C2 writeDurable 不会把普通文本伪造进错误清单 — 实际：false
+[PASS] C3 writeDurable 返回后队列为空 — 实际：0
+[PASS] D1 屏障后 201 条记录全部落盘（头 + 200 高频 + 1 关键） — 实际：202
+[PASS] D2 关键记录排在最后（未插队到更早的行前面） — 实际末行：[2026-11-03T17:38:46.669Z] 关键产物：更新决策已记录
+[PASS] D3 高频行顺序保持（第 2 行是 queued-0） — 实际：第2行=[2026-11-03T17:38:46.666Z] 后端输出 queued-0 第201行=[2026-11-03T17:38:46.669Z] 后端输出 queued-199
+[PASS] E1 判定函数 feedsCriticalSink 存在且以 isError（去向）为判据
+[PASS] E2 durable 判定不含测试名或文本匹配（机制化，不是名单） — 实际判据：(未找到)
+[PASS] E3 关键产物走 durability 层、高频行走批量层（两条路径均存在）
+
+[test-h10-durability] 共 18 项，通过 18，失败 0
+[test-h10-durability] 全部通过

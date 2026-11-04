@@ -1,0 +1,24 @@
+{
+  "label": "H-08 打包后失效复修验证",
+  "startedAt": "2026-11-03T17:58:57.159Z",
+  "durationSec": 32.4,
+  "samples": 31,
+  "intervalSec": 1,
+  "reason": "检测到停止文件 C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\H08_复修_监控.stop",
+  "filters": [
+    "node.exe",
+    "pwsh.exe"
+  ],
+  "pids": [],
+  "peaks": {
+    "cpu": 31.42198978956543,
+    "ws": 2653,
+    "pb": 2066,
+    "sysUsedPct": 81.34138585256883,
+    "gpuUtil": 99,
+    "gpuMem": 8520,
+    "gpuTemp": 69,
+    "gpu": "NVIDIA GeForce RTX 5060 Ti"
+  },
+  "csv": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\H08-复修_资源监控.csv"
+}
