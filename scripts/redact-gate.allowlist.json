@@ -1,0 +1,10 @@
+{
+  "_comment": "redact-gate 白名单：只允许『故意写成凭据样式来验证脱敏逻辑』的测试夹具，且必须写理由。命中不会静默跳过，门禁会以 ALLOWED 明示打印，便于审计。",
+  "entries": [
+    {
+      "file": "scripts/test-b04-plugin-journal.js",
+      "rule": "本地/会话 token（token=<16+>）",
+      "reason": "测试夹具：该测试的断言就是『凭据样式必须被打码』（断言 abc123supersecret 不出现在产物里）。夹具值本身就是假值，改成更短的值等于为过门禁而改测试，故此处显式白名单并保留原样。"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 0.3.47 桌面报告纪律回归
-沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-047-lXOPLb
+沙箱：C:\Users\<user>\AppData\Local\Temp\dsh-047-lXOPLb
 
 ① 启动即归档：桌面只留当前这一份
   ✓ 启动归档前：桌面上有两份历史报告（复现现场）

@@ -2,7 +2,7 @@
 
 > 调查组：预检解析组（只读调查，未修改任何业务文件）
 > 报告时间：2026-10-20 20:49（Asia/Shanghai；本次外网时间接口 timeapi.io / timeanddate.com / worldtimeapi.org 均被网络策略拦截，故取会话运行时时钟，已为北京时间时区）
-> 调查范围：`C:\Users\lcl\Desktop\DSH`（桌面壳源码）、`C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\dsh`（运行时 DSH 后端实现）、`C:\Users\lcl\AppData\Roaming\DSH Desktop\dsh-home`（运行时家目录）
+> 调查范围：`C:\Users\<user>\Desktop\DSH`（桌面壳源码）、`C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\dsh`（运行时 DSH 后端实现）、`C:\Users\<user>\AppData\Roaming\DSH Desktop\dsh-home`（运行时家目录）
 
 ---
 
@@ -37,7 +37,7 @@ WITH INTERCEPTION import @deepseek-ai/dsh-mcp-resources => OK, exports: McpResou
 
 ### 1.1 环节 1 —— Loader 把裸包名交给 Node 时用的「父路径」= `ctx.baseUrl`
 
-`C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\dsh\node_modules\@deepseek-ai\cordis-plugin-loader\src\config\tree.ts`
+`C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\dsh\node_modules\@deepseek-ai\cordis-plugin-loader\src\config\tree.ts`
 
 ```ts
 111:  /** Import a plugin module from a specifier or `cordis:` builtin. */
@@ -168,7 +168,7 @@ DSH **不是**把裸包名直接丢给 Node 原生解析。它在 boot 阶段给
 119: const INSTALL_ANCHOR = fileURLToPath(new URL("../package.json", import.meta.url));
 ```
 `import.meta.url` = `…\backend\dsh\node_modules\@deepseek-ai\dsh\lib\profile-boot-C14i-8IN.js` ⇒
-**`INSTALL_ANCHOR = C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\dsh\node_modules\@deepseek-ai\dsh\package.json`**
+**`INSTALL_ANCHOR = C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\dsh\node_modules\@deepseek-ai\dsh\package.json`**
 
 **(c) 路由规则（决定裸包名最终从哪解析）**
 
@@ -234,7 +234,7 @@ NATIVE node_modules chain from ...\dsh-home\profiles\web
   ...\DSH Desktop\node_modules
   ...\Roaming\node_modules
   ...\AppData\node_modules
-  C:\Users\lcl\node_modules
+  C:\Users\<user>\node_modules
   C:\Users\node_modules
   C:\node_modules
 NATIVE import FAILED -> ERR_MODULE_NOT_FOUND  @deepseek-ai/dsh-mcp-client
@@ -271,7 +271,7 @@ WITH INTERCEPTION import @deepseek-ai/dsh-mcp-resources => OK, exports: McpResou
 | A4 | `…\DSH Desktop\node_modules` | ❌ | — |
 | A5 | `…\AppData\Roaming\node_modules` | ❌ | — |
 | A6 | `…\AppData\node_modules` | ❌ | — |
-| A7 | `C:\Users\lcl\node_modules` | ✅ | 126 个顶层条目（全局残留：`codebuddy-first-bridge`、`dsh-bot-gateway`、`axios`、`vue`…） |
+| A7 | `C:\Users\<user>\node_modules` | ✅ | 126 个顶层条目（全局残留：`codebuddy-first-bridge`、`dsh-bot-gateway`、`axios`、`vue`…） |
 | A8 | `C:\Users\node_modules` | ❌ | — |
 | A9 | `C:\node_modules` | ❌ | — |
 
@@ -284,8 +284,8 @@ WITH INTERCEPTION import @deepseek-ai/dsh-mcp-resources => OK, exports: McpResou
 | **B3** | **`…\DSH Desktop\backend\dsh\node_modules`** | ✅ | **539 个 installation scope 包**：`@deepseek-ai/dsh-mcp-client` 0.2.1-alpha.5、`@deepseek-ai/dsh-mcp-resources` 0.2.1-alpha.5、`@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app`、… |
 | B4 | `…\DSH Desktop\backend\node_modules` | ✅ | 仅 `npm` / `corepack`（非 dsh 包根，但同在 declarer 链上） |
 | B5 | `…\DSH Desktop\node_modules` | ❌ | — |
-| B6 | `…\AppData\Roaming\node_modules` / `…\AppData\node_modules` / `C:\Users\lcl\node_modules` / `C:\Users\node_modules` / `C:\node_modules` | 见 A5–A9 | 同 A 链 |
-| B7 | `C:\Users\lcl\.node_modules` / `.node_libraries` / `…\DSH Desktop\backend\lib\node` | ❌/❌/❌ | Node 全局目录（不存在） |
+| B6 | `…\AppData\Roaming\node_modules` / `…\AppData\node_modules` / `C:\Users\<user>\node_modules` / `C:\Users\node_modules` / `C:\node_modules` | 见 A5–A9 | 同 A 链 |
+| B7 | `C:\Users\<user>\.node_modules` / `.node_libraries` / `…\DSH Desktop\backend\lib\node` | ❌/❌/❌ | Node 全局目录（不存在） |
 
 B 链的实测来源：`createRequire('…\backend\dsh\node_modules\@deepseek-ai\dsh\package.json').resolve.paths('@deepseek-ai/dsh-mcp-client')`，与 `dsh-app-boot:976-982 packageDirFromAnchor` 完全同源。
 
@@ -318,7 +318,7 @@ B 链的实测来源：`createRequire('…\backend\dsh\node_modules\@deepseek-ai
 ```
 R1  …\DSH Desktop\dsh-home\profiles\web\node_modules          （profile 本地层 / localPackageNames）
 R2  …\DSH Desktop\dsh-home\node_modules                        （家级）
-R3  C:\Users\lcl\node_modules                                  （用户级全局残留）
+R3  C:\Users\<user>\node_modules                                  （用户级全局残留）
 R4  …\DSH Desktop\backend\dsh\node_modules                     （installation scope，539 包）★ 预检缺失
 R5  …\DSH Desktop\backend\node_modules                         （npm/corepack，无 dsh 包）
 ```
@@ -360,7 +360,7 @@ for (const searchPath of createRequire(parent).resolve.paths(name)) {
 
 ### 3.1 现有实现的问题定位
 
-`C:\Users\lcl\Desktop\DSH\updater-backend.js`
+`C:\Users\<user>\Desktop\DSH\updater-backend.js`
 
 ```js
 2884: /**
@@ -484,7 +484,7 @@ function resolvesFromProfileScope(name) {
 
 ### 4.1 当前 `dsh-home\cordis.patch.yml` 的禁用/注释条目（现状快照）
 
-文件：`C:\Users\lcl\AppData\Roaming\DSH Desktop\dsh-home\cordis.patch.yml`（482 行）
+文件：`C:\Users\<user>\AppData\Roaming\DSH Desktop\dsh-home\cordis.patch.yml`（482 行）
 
 **仍生效的条目（3 条）**
 
@@ -534,7 +534,7 @@ function resolvesFromProfileScope(name) {
 -      config:
 -        serverName: cli
 -        transport: stdio
--        command: 'C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe'
+-        command: 'C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe'
 -        args: ['…\dsh-home\profiles\web\node_modules\@luchenglong\cli-bridge\mcp\cli-bridge-mcp.mjs']
 -        toolCallTimeoutMs: 900000
 -      failOnStartupError: false
@@ -544,7 +544,7 @@ function resolvesFromProfileScope(name) {
 +#      config:
 +#        serverName: cli
 +#        transport: stdio
-+#        command: 'C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe'
++#        command: 'C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe'
 +#        args: ['…\dsh-home\profiles\web\node_modules\@luchenglong\cli-bridge\mcp\cli-bridge-mcp.mjs']
 +#        toolCallTimeoutMs: 900000
 +#      failOnStartupError: false
@@ -558,8 +558,8 @@ function resolvesFromProfileScope(name) {
 476: #      config:
 477: #        serverName: cli
 478: #        transport: stdio
-479: #        command: 'C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe'
-480: #        args: ['C:\Users\lcl\AppData\Roaming\DSH Desktop\dsh-home\profiles\web\node_modules\@luchenglong\cli-bridge\mcp\cli-bridge-mcp.mjs']
+479: #        command: 'C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe'
+480: #        args: ['C:\Users\<user>\AppData\Roaming\DSH Desktop\dsh-home\profiles\web\node_modules\@luchenglong\cli-bridge\mcp\cli-bridge-mcp.mjs']
 481: #        toolCallTimeoutMs: 900000
 482: #      failOnStartupError: false
 ```
@@ -580,7 +580,7 @@ function resolvesFromProfileScope(name) {
 
 ### 4.3 13 次 `.disabled-*.bak` 事件全表（2026-09-08 → 2026-10-20，跨 43 天）
 
-目录：`C:\Users\lcl\AppData\Roaming\DSH Desktop\dsh-home\`
+目录：`C:\Users\<user>\AppData\Roaming\DSH Desktop\dsh-home\`
 
 | # | 备份文件名 | 时间戳 | 该次事件**净禁用**的条目 | 归因 |
 |---|---|---|---|---|
@@ -642,11 +642,11 @@ $ git show -s --format="%H %ad %s" --date=iso 2e79613
 | 官方"能否解析"API | `…\dsh-app-boot\lib\index.js` | 2261–2271（`manifestOf`）、3544–3555（`packageOf`）、1762–1777（`packageDir`） |
 | 官方预检不判裸包名 | `…\dsh-app-boot\lib\index.js` | 2311–2388 |
 | patch 层合并（家级/profile/bundle 同树） | `…\dsh-app-boot\lib\index.js` | 1118–1137 |
-| 桌面预检：walk-up 判定 | `C:\Users\lcl\Desktop\DSH\updater-backend.js` | **2884–2902** |
-| 桌面预检：主函数 | `C:\Users\lcl\Desktop\DSH\updater-backend.js` | **2939–2994**（2946–2953 / 2959 / 2974 / 2976–2988 / 2990） |
-| 桌面：条目禁用 + 备份命名 | `C:\Users\lcl\Desktop\DSH\updater-backend.js` | 2654–2698（2674 / 2680–2683 / 2689–2690） |
-| 桌面：预检调用与自动禁用 | `C:\Users\lcl\Desktop\DSH\main.js` | **2375–2390** |
-| 安装锚点常量 | `C:\Users\lcl\Desktop\DSH\updater-backend.js` | 103–115（**114** `dshPkg`） |
+| 桌面预检：walk-up 判定 | `C:\Users\<user>\Desktop\DSH\updater-backend.js` | **2884–2902** |
+| 桌面预检：主函数 | `C:\Users\<user>\Desktop\DSH\updater-backend.js` | **2939–2994**（2946–2953 / 2959 / 2974 / 2976–2988 / 2990） |
+| 桌面：条目禁用 + 备份命名 | `C:\Users\<user>\Desktop\DSH\updater-backend.js` | 2654–2698（2674 / 2680–2683 / 2689–2690） |
+| 桌面：预检调用与自动禁用 | `C:\Users\<user>\Desktop\DSH\main.js` | **2375–2390** |
+| 安装锚点常量 | `C:\Users\<user>\Desktop\DSH\updater-backend.js` | 103–115（**114** `dshPkg`） |
 | dsh-base 内置 mcp-resources 行 | `…\backend\dsh\node_modules\@deepseek-ai\dsh-base\cordis.patch.yml` | **485–486** |
 
 ---
@@ -656,15 +656,15 @@ $ git show -s --format="%H %ad %s" --date=iso 2e79613
 ```
 $ node (backend\node.exe) --input-type=module -e '<probe>'
 === A. 无拦截 ===
-NATIVE node_modules chain from C:\Users\lcl\AppData\Roaming\DSH Desktop\dsh-home\profiles\web
+NATIVE node_modules chain from C:\Users\<user>\AppData\Roaming\DSH Desktop\dsh-home\profiles\web
   [ '…\dsh-home\profiles\web\node_modules', '…\dsh-home\profiles\node_modules',
     '…\dsh-home\node_modules', '…\DSH Desktop\node_modules', '…\Roaming\node_modules',
-    '…\AppData\node_modules', 'C:\Users\lcl\node_modules', 'C:\Users\node_modules', 'C:\node_modules' ]
+    '…\AppData\node_modules', 'C:\Users\<user>\node_modules', 'C:\Users\node_modules', 'C:\node_modules' ]
 NATIVE import FAILED -> ERR_MODULE_NOT_FOUND Cannot find package '@deepseek-ai/dsh-mcp-client' imported from …\dsh-home\profiles\web\
 NATIVE import FAILED -> ERR_MODULE_NOT_FOUND Cannot find package '@deepseek-ai/dsh-mcp-resources' imported from …\dsh-home\profiles\web\
 
 === B. 有拦截（真实运行时） ===
-installAnchor = C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\dsh\node_modules\@deepseek-ai\dsh\package.json
+installAnchor = C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\dsh\node_modules\@deepseek-ai\dsh\package.json
 resolution.entries count = 539
   @deepseek-ai/dsh-mcp-client    -> scope=installation dir=…\backend\dsh\node_modules\@deepseek-ai\dsh-mcp-client
   @deepseek-ai/dsh-mcp-resources -> scope=installation dir=…\backend\dsh\node_modules\@deepseek-ai\dsh-mcp-resources

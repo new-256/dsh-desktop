@@ -14,7 +14,7 @@ exit=0
 exit=0
 
 ----- node scripts/test-h04-quarantine-safety.js
-  · 资源监控已启动（独立进程 pid=4256）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-04-quarantine-safety_资源监控_20261104-012931.log
+  · 资源监控已启动（独立进程 pid=4256）→ C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-04-quarantine-safety_资源监控_20261104-012931.log
 
 ── 场景1 rename 成功（正常隔离）+ 隔离目录保留策略
 [backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-012931.json
@@ -43,12 +43,12 @@ exit=0
   ✓ 场景2 前置：profiles 里存在指向用户源码的 junction
 [backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-012932.json
 [diag] [2026-11-03T17:29:32.641Z] [backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-012932.json
-[backend-mgr] rename profiles to profiles.broken-20261104-012932 failed (EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles.broken-20261104-012932'); falling back to copy-then-verify quarantine (user data is never deleted first)
-[diag] [2026-11-03T17:29:32.642Z] [backend-mgr] rename profiles to profiles.broken-20261104-012932 failed (EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles.broken-20261104-012932'); falling back to copy-then-verify quarantine (user data is never deleted first)
+[backend-mgr] rename profiles to profiles.broken-20261104-012932 failed (EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles.broken-20261104-012932'); falling back to copy-then-verify quarantine (user data is never deleted first)
+[diag] [2026-11-03T17:29:32.642Z] [backend-mgr] rename profiles to profiles.broken-20261104-012932 failed (EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles.broken-20261104-012932'); falling back to copy-then-verify quarantine (user data is never deleted first)
 [backend-mgr] copied profiles to profiles.broken-20261104-012932 and verified (5 files / 7 dirs / 1 links / 10821 bytes)
 [diag] [2026-11-03T17:29:32.764Z] [backend-mgr] copied profiles to profiles.broken-20261104-012932 and verified (5 files / 7 dirs / 1 links / 10821 bytes)
-[backend-mgr] original profiles tree NOT fully removed (walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles\web'); restoring it from the verified copy
-[diag] [2026-11-03T17:29:32.774Z] [backend-mgr] original profiles tree NOT fully removed (walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles\web'); restoring it from the verified copy
+[backend-mgr] original profiles tree NOT fully removed (walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles\web'); restoring it from the verified copy
+[diag] [2026-11-03T17:29:32.774Z] [backend-mgr] original profiles tree NOT fully removed (walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home2\profiles\web'); restoring it from the verified copy
 [backend-mgr] 原 profiles 已从 profiles.broken-20261104-012932 还原（补回 4 文件 / 1 链接）
 [diag] [2026-11-03T17:29:32.893Z] [backend-mgr] 原 profiles 已从 profiles.broken-20261104-012932 还原（补回 4 文件 / 1 链接）
   ✓ 场景2 日志记录了 rename 失败根因
@@ -73,19 +73,19 @@ exit=0
   ✓ 场景2 还原后原树文件数回到删除前（实际 5） = 5
   ✓ 场景2 被半删的依赖实体已补回
   ✓ 场景2 junction 已补回为链接
-  · 场景2 源目录文件数=5 删除结果={"removed":false,"linksUnlinked":1,"reason":"walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-h04-9324-1793726971730\\userData\\home2\\profiles\\web'"} 还原={"ok":true,"reason":null,"restoredFiles":4,"restoredLinks":1}
+  · 场景2 源目录文件数=5 删除结果={"removed":false,"linksUnlinked":1,"reason":"walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-h04-9324-1793726971730\\userData\\home2\\profiles\\web'"} 还原={"ok":true,"reason":null,"restoredFiles":4,"restoredLinks":1}
   ✓ 场景2 被占用文件在原树中仍然存在（复制前绝不删）
 
 ── 场景3 复制失败（人为制造读取失败）→ 放弃隔离、保留原目录
   ✓ 场景3 前置：rename 会失败
 [backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-012933.json
 [diag] [2026-11-03T17:29:33.658Z] [backend-mgr] preserved 2 profile registration(s) to profiles-registry-20261104-012933.json
-[backend-mgr] rename profiles to profiles.broken-20261104-012933 failed (EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles.broken-20261104-012933'); falling back to copy-then-verify quarantine (user data is never deleted first)
-[diag] [2026-11-03T17:29:33.659Z] [backend-mgr] rename profiles to profiles.broken-20261104-012933 failed (EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles.broken-20261104-012933'); falling back to copy-then-verify quarantine (user data is never deleted first)
-[backend-mgr] copy-based quarantine to profiles.broken-20261104-012933 failed: EPERM: operation not permitted, scandir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles\web'（副本清理：removed）
-[diag] [2026-11-03T17:29:33.665Z] [backend-mgr] copy-based quarantine to profiles.broken-20261104-012933 failed: EPERM: operation not permitted, scandir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles\web'（副本清理：removed）
-[backend-mgr] 复制隔离失败，已放弃本轮隔离并保留原 profiles：EPERM: operation not permitted, scandir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles\web'
-[diag] [2026-11-03T17:29:33.665Z] [backend-mgr] 复制隔离失败，已放弃本轮隔离并保留原 profiles：EPERM: operation not permitted, scandir 'C:\Users\lcl\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles\web'
+[backend-mgr] rename profiles to profiles.broken-20261104-012933 failed (EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles.broken-20261104-012933'); falling back to copy-then-verify quarantine (user data is never deleted first)
+[diag] [2026-11-03T17:29:33.659Z] [backend-mgr] rename profiles to profiles.broken-20261104-012933 failed (EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles.broken-20261104-012933'); falling back to copy-then-verify quarantine (user data is never deleted first)
+[backend-mgr] copy-based quarantine to profiles.broken-20261104-012933 failed: EPERM: operation not permitted, scandir 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles\web'（副本清理：removed）
+[diag] [2026-11-03T17:29:33.665Z] [backend-mgr] copy-based quarantine to profiles.broken-20261104-012933 failed: EPERM: operation not permitted, scandir 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles\web'（副本清理：removed）
+[backend-mgr] 复制隔离失败，已放弃本轮隔离并保留原 profiles：EPERM: operation not permitted, scandir 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles\web'
+[diag] [2026-11-03T17:29:33.665Z] [backend-mgr] 复制隔离失败，已放弃本轮隔离并保留原 profiles：EPERM: operation not permitted, scandir 'C:\Users\<user>\AppData\Local\Temp\dsh-h04-9324-1793726971730\userData\home3\profiles\web'
   ✓ 场景3 abandoned（放弃本轮隔离） = true
   ✓ 场景3 quarantined=false（原目录没被移走） = false
   ✓ 场景3 copied=false（复制未成功） = false
@@ -103,7 +103,7 @@ exit=0
   ✓ 场景4 旧的 rimraf 兜底文案已消失
   ✓ 场景4 兜底分支不再直接 rimraf(profiles)
   ✓ 场景4 保留策略只认我方时间戳命名
-  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-04-quarantine-safety_资源监控_20261104-012931.log
+  · 资源监控日志：C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-04-quarantine-safety_资源监控_20261104-012931.log
 
 结果：53 通过 / 0 失败（耗时 2172ms）
 ✓ H-04-quarantine-safety 全部通过
@@ -111,13 +111,13 @@ exit=0
 exit=0
 
 ----- node scripts/test-h05-apply-marker.js
-  · 资源监控已启动（独立进程 pid=31332）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-05-apply-marker_资源监控_20261104-012934.log
+  · 资源监控已启动（独立进程 pid=31332）→ C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-05-apply-marker_资源监控_20261104-012934.log
 
 ── 场景1 正常路径：交换前落标记（含目标版本/开始时间/步骤名）→ 成功后清除
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud1\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T17:29:35.117Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud1\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud1\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T17:29:35.126Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud1\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud1\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T17:29:35.117Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud1\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud1\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T17:29:35.126Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud1\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
 [backend-mgr] applied staged dsh 0.2.2-alpha.1
 [diag] [2026-11-03T17:29:35.128Z] [backend-mgr] applied staged dsh 0.2.2-alpha.1
   ✓ 场景1 交换瞬间标记文件确实存在
@@ -137,8 +137,8 @@ exit=0
   ✓ 场景1 成功后不误报「更新被中断」 = false
 
 ── 场景2 标记写不进去 → 取消本次交换，dsh/dsh.new 原样保留
-[backend-mgr] 写入更新中断标记失败，取消本次 dsh 交换（dsh.new 保留，下次启动重试）：EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud2\backend\apply-in-progress.json.34916.tmp' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud2\backend\apply-in-progress.json'
-[diag] [2026-11-03T17:29:35.153Z] [backend-mgr] 写入更新中断标记失败，取消本次 dsh 交换（dsh.new 保留，下次启动重试）：EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud2\backend\apply-in-progress.json.34916.tmp' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud2\backend\apply-in-progress.json'
+[backend-mgr] 写入更新中断标记失败，取消本次 dsh 交换（dsh.new 保留，下次启动重试）：EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud2\backend\apply-in-progress.json.34916.tmp' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud2\backend\apply-in-progress.json'
+[diag] [2026-11-03T17:29:35.153Z] [backend-mgr] 写入更新中断标记失败，取消本次 dsh 交换（dsh.new 保留，下次启动重试）：EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud2\backend\apply-in-progress.json.34916.tmp' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-h05-34916-1793726974958\ud2\backend\apply-in-progress.json'
   ✓ 场景2 未执行交换（applied.dsh 为 null） = null
   ✓ 场景2 dsh 仍是旧版本 = "0.3.0"
   ✓ 场景2 dsh.new 原样保留（下次启动重试）
@@ -195,7 +195,7 @@ exit=0
   ✓ 场景4 ensureSeeded 在 seed 决定之前调用检测
   ✓ 场景4 检测发生在创建/写入活跃目录之前（真实时序）
   ✓ 场景4 没有另起一套 journal 状态（标记文件即信封，journal 仍是唯一台账）
-  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-05-apply-marker_资源监控_20261104-012934.log
+  · 资源监控日志：C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H-05-apply-marker_资源监控_20261104-012934.log
 
 结果：55 通过 / 0 失败（耗时 309ms）
 ✓ H-05-apply-marker 全部通过

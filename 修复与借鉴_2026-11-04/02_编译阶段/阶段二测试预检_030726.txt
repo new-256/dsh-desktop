@@ -1,10 +1,10 @@
 
 ##############################################################################
 # 阶段一 编译门禁  2026/11/4 03:07:26
-# 仓库根     : C:\Users\lcl\Desktop\DSH
+# 仓库根     : C:\Users\<user>\Desktop\DSH
 # node       : v24.21.0
 # 单项超时   : --check 120s / 测试 300s
-# 日志       : C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\02_编译阶段\阶段二测试预检_030726.txt
+# 日志       : C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\02_编译阶段\阶段二测试预检_030726.txt
 ##############################################################################
 
 
@@ -15,7 +15,7 @@
 
 ══════════════════════════════════════════════════════════════════════════════
   build.files 出包清单闭包门禁
-  仓库根 : C:\Users\lcl\Desktop\DSH
+  仓库根 : C:\Users\<user>\Desktop\DSH
   版本   : 0.3.48
   入口   : main.js + settings.html + splash.html
   白名单 : 4 条  黑名单 : 3 条
@@ -50,7 +50,7 @@
 
 ══════════════════════════════════════════════════════════════════════════════
   随包 appId 常量一致性门禁（H-08 / AUMID）
-  仓库根 : C:\Users\lcl\Desktop\DSH
+  仓库根 : C:\Users\<user>\Desktop\DSH
   版本   : 0.3.48
   期望 appId（package.json build.appId）: com.deepseek.dshdesktop
 ══════════════════════════════════════════════════════════════════════════════
@@ -93,9 +93,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:27.363+08:00
   label    : node --check app-identity.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\app-identity.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\app-identity.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:27.622+08:00 exit=0 reason=exit elapsed=0.3s label=node --check app-identity.js
@@ -104,9 +104,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:27.838+08:00
   label    : node --check crash-report.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\crash-report.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\crash-report.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:28.024+08:00 exit=0 reason=exit elapsed=0.2s label=node --check crash-report.js
@@ -115,9 +115,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:28.243+08:00
   label    : node --check diag-log.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\diag-log.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\diag-log.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:28.451+08:00 exit=0 reason=exit elapsed=0.2s label=node --check diag-log.js
@@ -126,9 +126,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:28.678+08:00
   label    : node --check ladder-policy.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\ladder-policy.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\ladder-policy.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:28.863+08:00 exit=0 reason=exit elapsed=0.2s label=node --check ladder-policy.js
@@ -137,9 +137,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:29.080+08:00
   label    : node --check lifecycle-log.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\lifecycle-log.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\lifecycle-log.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:29.266+08:00 exit=0 reason=exit elapsed=0.2s label=node --check lifecycle-log.js
@@ -148,9 +148,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:29.498+08:00
   label    : node --check main.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\main.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\main.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:29.683+08:00 exit=0 reason=exit elapsed=0.2s label=node --check main.js
@@ -159,9 +159,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:29.914+08:00
   label    : node --check patch-file.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\patch-file.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\patch-file.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:30.101+08:00 exit=0 reason=exit elapsed=0.2s label=node --check patch-file.js
@@ -170,9 +170,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:30.324+08:00
   label    : node --check plugin-journal.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\plugin-journal.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\plugin-journal.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:30.508+08:00 exit=0 reason=exit elapsed=0.2s label=node --check plugin-journal.js
@@ -181,9 +181,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:30.798+08:00
   label    : node --check plugin-resolution.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\plugin-resolution.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\plugin-resolution.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:31.022+08:00 exit=0 reason=exit elapsed=0.2s label=node --check plugin-resolution.js
@@ -192,9 +192,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:31.274+08:00
   label    : node --check preload.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\preload.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\preload.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:31.482+08:00 exit=0 reason=exit elapsed=0.2s label=node --check preload.js
@@ -203,9 +203,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:31.733+08:00
   label    : node --check quit-guard.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\quit-guard.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\quit-guard.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:31.925+08:00 exit=0 reason=exit elapsed=0.2s label=node --check quit-guard.js
@@ -214,9 +214,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:32.198+08:00
   label    : node --check session-hygiene.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\session-hygiene.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\session-hygiene.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:32.475+08:00 exit=0 reason=exit elapsed=0.3s label=node --check session-hygiene.js
@@ -225,9 +225,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:32.975+08:00
   label    : node --check settings-preload.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\settings-preload.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\settings-preload.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:33.330+08:00 exit=0 reason=exit elapsed=0.4s label=node --check settings-preload.js
@@ -236,9 +236,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:33.587+08:00
   label    : node --check settings-renderer.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\settings-renderer.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\settings-renderer.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:33.944+08:00 exit=0 reason=exit elapsed=0.4s label=node --check settings-renderer.js
@@ -247,9 +247,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:34.245+08:00
   label    : node --check startup-deadline.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\startup-deadline.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\startup-deadline.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:34.465+08:00 exit=0 reason=exit elapsed=0.2s label=node --check startup-deadline.js
@@ -258,9 +258,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:34.702+08:00
   label    : node --check update-schedule.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\update-schedule.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\update-schedule.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:34.906+08:00 exit=0 reason=exit elapsed=0.2s label=node --check update-schedule.js
@@ -269,9 +269,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:35.156+08:00
   label    : node --check updater-backend.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\updater-backend.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\updater-backend.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:35.353+08:00 exit=0 reason=exit elapsed=0.2s label=node --check updater-backend.js
@@ -280,9 +280,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:35.600+08:00
   label    : node --check url-policy.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\url-policy.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\url-policy.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:35.793+08:00 exit=0 reason=exit elapsed=0.2s label=node --check url-policy.js
@@ -307,9 +307,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:36.032+08:00
   label    : node scripts/test-b01-cookie-hygiene.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b01-cookie-hygiene.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\<user>\Desktop\DSH\scripts\test-b01-cookie-hygiene.js
   timeout  : 300s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 0.3.49 · B-01 旧后端 cookie 清理（session-hygiene.js）
 
@@ -378,11 +378,11 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:36.495+08:00
   label    : node scripts/test-b03-update-schedule.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b03-update-schedule.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\<user>\Desktop\DSH\scripts\test-b03-update-schedule.js
   timeout  : 300s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
-  · 资源监控已启动（独立进程 pid=41448）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-03-update-schedule_资源监控_20261104-030736.log
+  · 资源监控已启动（独立进程 pid=41448）→ C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-03-update-schedule_资源监控_20261104-030736.log
 
 ── 场景1 配置校验：非法值必须抛错（不静默修正）
   ✓ 拒绝非法配置 baseMs=0
@@ -452,7 +452,7 @@
 ── 场景8 status 快照不含墙钟语义
   ✓ lastCompletedTick 为单调 tick 字符串（不是 ISO 时间）
   ✓ status 中没有墙钟时间戳
-  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-03-update-schedule_资源监控_20261104-030736.log
+  · 资源监控日志：C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-03-update-schedule_资源监控_20261104-030736.log
 
 结果：51 通过 / 0 失败（耗时 121ms）
 ✓ B-03-update-schedule 全部通过
@@ -463,29 +463,29 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:37.151+08:00
   label    : electron scripts/test-b04-crash-report-electron.js
-  command  : C:\Users\lcl\Desktop\DSH\node_modules\electron\dist\electron.exe C:\Users\lcl\Desktop\DSH\scripts\test-b04-crash-report-electron.js
+  command  : C:\Users\<user>\Desktop\DSH\node_modules\electron\dist\electron.exe C:\Users\<user>\Desktop\DSH\scripts\test-b04-crash-report-electron.js
   timeout  : 300s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 
 [36756:1104/030737.626:ERROR:net\base\network_change_notifier_win.cc:213] WSALookupServiceBegin failed with: 10108
 [diag] [2026-11-03T19:07:37.657Z] 插件台账 关键操作失败 isolate plugin=bad-plugin version=9.9.9 reason=EISOLATE phase=startup
-[PASS] 真机：crash-report 在真实 Electron 里落盘成功 — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756\crash\crash-2026-11-03T19-07-37-664Z-main.log
-[PASS] 真机：报告目录来自 crashDir()（真实路径契约） — 实际目录=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756\crash
+[PASS] 真机：crash-report 在真实 Electron 里落盘成功 — 实际：C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-36756\crash\crash-2026-11-03T19-07-37-664Z-main.log
+[PASS] 真机：报告目录来自 crashDir()（真实路径契约） — 实际目录=C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-36756\crash
 [PASS] 真机：含 context, not proof of cause 标题（官方原话） — 实际：----- recent plugin operations (context, not proof of cause) -----
 [PASS] 真机：四个动作都出现在报告里 — 实际：[]
 [PASS] 真机：失败原因码可见（可归因） — 实际：有
-[PASS] 真机：含收集完成标记 — 实际：[collection complete] records=4 dropped=0 ledger=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756\diag\logs\plugin-operations
+[PASS] 真机：含收集完成标记 — 实际：[collection complete] records=4 dropped=0 ledger=C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-36756\diag\logs\plugin-operations
 [PASS] 真机：基础报告段完好（error / backend tail / renderer console 都在） — 实际：{"error":true,"tail":true,"renderer":true}
 [PASS] 真机：附加段在基础报告之后（追加而非插入） — 实际：error@185 ops@452
 [PASS] 真机：报告里没有凭据样式内容 — 实际：干净
-[PASS] 真机：台账段文件已落盘（≤2 段） — 实际：["plugin-operations-1.log"] dir=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756\diag\logs\plugin-operations
-[PASS] 真机：台账目录与诊断日志同域（logs/plugin-operations） — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756\diag\logs\plugin-operations
-[PASS] 真机：writeCrashReportBounded 在 1s 预算内返回路径 — 实际：7ms file=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756\crash\crash-2026-11-03T19-07-37-674Z-main.log
+[PASS] 真机：台账段文件已落盘（≤2 段） — 实际：["plugin-operations-1.log"] dir=C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-36756\diag\logs\plugin-operations
+[PASS] 真机：台账目录与诊断日志同域（logs/plugin-operations） — 实际：C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-36756\diag\logs\plugin-operations
+[PASS] 真机：writeCrashReportBounded 在 1s 预算内返回路径 — 实际：7ms file=C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-36756\crash\crash-2026-11-03T19-07-37-674Z-main.log
 [PASS] 真机：bounded 路径写出的报告同样带插件操作段 — 实际：有
 
 [test-b04-electron] 共 13 项，通过 13，失败 0
-[test-b04-electron] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-36756
+[test-b04-electron] 临时目录：C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-36756
 [test-b04-electron] 全部通过
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:37.843+08:00 exit=0 reason=exit elapsed=0.7s label=electron scripts/test-b04-crash-report-electron.js
@@ -494,9 +494,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:38.087+08:00
   label    : node scripts/test-b04-plugin-journal.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b04-plugin-journal.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\<user>\Desktop\DSH\scripts\test-b04-plugin-journal.js
   timeout  : 300s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 [PASS] ① 入队 120 条（行级零 fs：队列里确实攒住了） — 实际 queued=120
 [PASS] ① flush 报告排空条数与入队一致 — 实际：{"flushed":120,"deferred":0}
@@ -517,9 +517,9 @@
 [PASS] ③ 丢弃说明也写进了诊断日志正文（主日志可搜到） — 实际主日志片段：[2026-11-03T19:07:38.316Z] 插件台账：排队触顶丢弃 55 条（已写入台账正文，丢弃时排队字节= 878 ）
 [PASS] ③ 状态里 droppedWritten 已追上 dropped（不重复写说明） — 实际：{"dropped":55,"droppedWritten":55}
 [PASS] ③ 内存环仍保留被丢弃的记录（崩溃报告可用） — 实际：未被丢弃标记的条数=55
-[plugin-journal] EEXIST: file already exists, mkdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b04-16772\fail\blocked-as-file'
-[PASS] ④ 写失败后 status().disabled = true — 实际：{"disabled":true,"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b04-16772\\fail\\blocked-as-file'"}
-[PASS] ④ 失败计数与错误信息都曝光（不静默） — 实际：{"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b04-16772\\fail\\blocked-as-file'"}
+[plugin-journal] EEXIST: file already exists, mkdir 'C:\Users\<user>\AppData\Local\Temp\dsh-b04-16772\fail\blocked-as-file'
+[PASS] ④ 写失败后 status().disabled = true — 实际：{"disabled":true,"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-b04-16772\\fail\\blocked-as-file'"}
+[PASS] ④ 失败计数与错误信息都曝光（不静默） — 实际：{"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-b04-16772\\fail\\blocked-as-file'"}
 [PASS] ④ 停用后不再尝试写入（调用计数 = 0） — 实际 attempts=0
 [PASS] ④ 停用后仍然能给出内存环快照（崩溃报告用它） — 实际 recent=1
 [PASS] ④ 停用后 flush 返回 disabled 且不假装成功 — 实际：{"flushed":0,"dropped":0,"failed":1,"remaining":1,"deferred":1,"disabled":true,"ms":0}
@@ -531,12 +531,12 @@
 [PASS] ⑤ recent(1e6) 返回全部（30 条） — 实际：30
 [PASS] ⑤ renderRecent(10) 给出省略计数（30-10=20） — 实际：{"omitted":20,"lines":10}
 [PASS] ⑤ 渲染行包含动作/插件/结果/阶段 — 实际末行：#30 2026-11-03T19:07:38.324Z +0.364ms enable r-29 source=profile ok phase=running
-[PASS] ⑥ 崩溃报告已落盘 — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-16772\crash\logs\crash-2026-11-03T19-07-38-335Z-main.log
+[PASS] ⑥ 崩溃报告已落盘 — 实际：C:\Users\<user>\AppData\Local\Temp\dsh-b04-16772\crash\logs\crash-2026-11-03T19-07-38-335Z-main.log
 [PASS] ⑥ 附加段标题逐字含 context, not proof of cause — 实际标题行：----- recent plugin operations (context, not proof of cause) -----
 [PASS] ⑥ 基础报告字节未被重写（除时间戳外与原文逐字节一致，附加段只追加） — 实际：基础=904B 前缀=904B 完全一致=true 归一后一致=true
 [PASS] ⑥ 附加段含我们的插件操作行 — 实际：#16 2026-11-03T19:07:38.329Z +4.058ms install crashplug-15@2.0.15 source=registry ok phase=startup
 [PASS] ⑥ 超过 40 条时有省略计数 — 实际：省略 15 条更早记录
-[PASS] ⑥ 有收集完成标记（含 records/dropped/ledger） — 实际：[collection complete] records=55 dropped=0 ledger=C:\Users\lcl\AppData\Local\Temp\dsh-b04-16772\crash\logs\plugin-operations
+[PASS] ⑥ 有收集完成标记（含 records/dropped/ledger） — 实际：[collection complete] records=55 dropped=0 ledger=C:\Users\<user>\AppData\Local\Temp\dsh-b04-16772\crash\logs\plugin-operations
 [PASS] ⑥ 基础报告字节未被重写（时间戳归一后 sha256 完全一致 = 逐字节只追加） — 实际：前缀 sha256=c340309a04809f1a82afb78674d615abbd5928f61abd621298ce23fe240bbe69 期望=c340309a04809f1a82afb78674d615abbd5928f61abd621298ce23fe240bbe69
 [PASS] ⑥ 非白名单字段未被持久化（token 值不出现） — 实际：已丢弃
 [PASS] ⑥ 附加段不含凭据类键名（token/password/secret/authorization） — 实际命中：[]
@@ -556,7 +556,7 @@
 [PASS] ⑨ 继承预算后最终全部落盘（两次调用合计 = 200 条） — 实际：{"first":85,"second":115,"queued":0}
 
 [test-b04] 共 54 项，通过 54，失败 0
-[test-b04] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-b04-16772
+[test-b04] 临时目录：C:\Users\<user>\AppData\Local\Temp\dsh-b04-16772
 [test-b04] 全部通过
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:39.047+08:00 exit=0 reason=exit elapsed=1.0s label=node scripts/test-b04-plugin-journal.js
@@ -565,12 +565,12 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:39.364+08:00
   label    : node scripts/test-b05-b01-wiring.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b05-b01-wiring.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\<user>\Desktop\DSH\scripts\test-b05-b01-wiring.js
   timeout  : 300s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 0.3.49 · B-05/B-01 接线回归（真实 main.js + 桩 Electron）
-沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-b05w-vXYDXH
+沙箱：C:\Users\<user>\AppData\Local\Temp\dsh-b05w-vXYDXH
 
 ① 窗口安全配置
   ✓ main.js 里不再有任何 sandbox:false
@@ -707,7 +707,7 @@
 ────────────────────────────────────────
 断言 59 项，失败 0 项
 
-沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-b05w-vXYDXH
+沙箱目录（可删除）：C:\Users\<user>\AppData\Local\Temp\dsh-b05w-vXYDXH
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:43.058+08:00 exit=0 reason=exit elapsed=3.7s label=node scripts/test-b05-b01-wiring.js
 ==============================================================================
@@ -715,9 +715,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:43.323+08:00
   label    : node scripts/test-b05-url-policy.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b05-url-policy.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\<user>\Desktop\DSH\scripts\test-b05-url-policy.js
   timeout  : 300s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 0.3.49 · B-05/B-11 导航与开窗判定（url-policy.js，纯函数）
 
@@ -795,11 +795,11 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:43.775+08:00
   label    : node scripts/test-b08-b06-revision.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b08-b06-revision.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\<user>\Desktop\DSH\scripts\test-b08-b06-revision.js
   timeout  : 300s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
-  · 资源监控已启动（独立进程 pid=36448）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-08-B-06-revision_资源监控_20261104-030743.log
+  · 资源监控已启动（独立进程 pid=36448）→ C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-08-B-06-revision_资源监控_20261104-030743.log
 
 ── B-06-1 代次：切路线自增，重复写同值不自增
   ✓ 初始 revision = 0
@@ -894,32 +894,32 @@
 [backend-mgr] apply 闸门探针已注册: true
 [diag] [2026-11-03T19:07:45.063Z] [backend-mgr] apply 闸门探针已注册: true
   ✓ 前置：dsh.new 已被占用（rename 会失败）
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T19:07:45.452Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] apply staged dsh attempt 1 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
-[diag] [2026-11-03T19:07:45.458Z] [backend-mgr] apply staged dsh attempt 1 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T19:07:46.363Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] apply staged dsh attempt 2 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
-[diag] [2026-11-03T19:07:46.367Z] [backend-mgr] apply staged dsh attempt 2 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T19:07:47.278Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] apply staged dsh attempt 3 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
-[diag] [2026-11-03T19:07:47.281Z] [backend-mgr] apply staged dsh attempt 3 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T19:07:48.191Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] apply staged dsh attempt 4 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
-[diag] [2026-11-03T19:07:48.194Z] [backend-mgr] apply staged dsh attempt 4 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T19:07:48.197Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T19:07:48.197Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T19:07:48.414Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T19:07:48.416Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T19:07:48.419Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:45.452Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] apply staged dsh attempt 1 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[diag] [2026-11-03T19:07:45.458Z] [backend-mgr] apply staged dsh attempt 1 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:46.363Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] apply staged dsh attempt 2 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[diag] [2026-11-03T19:07:46.367Z] [backend-mgr] apply staged dsh attempt 2 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:47.278Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] apply staged dsh attempt 3 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[diag] [2026-11-03T19:07:47.281Z] [backend-mgr] apply staged dsh attempt 3 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.191Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] apply staged dsh attempt 4 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[diag] [2026-11-03T19:07:48.194Z] [backend-mgr] apply staged dsh attempt 4 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh'
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.197Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.197Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.414Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.416Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.419Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
 [backend-mgr] 已把 dsh.new 标记为不可应用（copy fallback 后暂存目录未删净（被占用））：下次启动不会拿它去交换
 [diag] [2026-11-03T19:07:48.423Z] [backend-mgr] 已把 dsh.new 标记为不可应用（copy fallback 后暂存目录未删净（被占用））：下次启动不会拿它去交换
 [backend-mgr] applied staged dsh via copy fallback (version 0.4.1, previous retained)
@@ -934,8 +934,8 @@
   ✓ 删不净的暂存树已被标记为不可应用（dsh.new.invalid.json）
   ✓ stagedVersions 不再报告这个坏暂存版本 = null
   ✓ stagedVersions 显式标记 dshInvalidated = true
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T19:07:48.431Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.431Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
 [backend-mgr] dsh.new 已被标记为不可应用：本次跳过（文件仍被占用，稍后再清）
 [diag] [2026-11-03T19:07:48.433Z] [backend-mgr] dsh.new 已被标记为不可应用：本次跳过（文件仍被占用，稍后再清）
   ✓ ★ 再次应用不会拿坏暂存去交换（dsh 保持 0.4.1） = null
@@ -945,8 +945,8 @@
 ── B-08-6 回滚台账：applied → rolled-back，versions.json 重写，中断标记清掉
   ✓ 前置：journal 有 1 条 applied（坏版本未验证） = 1
   ✓ 前置：存在 H-05 中断标记
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-rollback\backend\dsh.failed: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T19:07:48.465Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-rollback\backend\dsh.failed: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-rollback\backend\dsh.failed: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T19:07:48.465Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-13012-1793732863950\ud-rollback\backend\dsh.failed: missing（已保留现场，不会跟随链接删除）
 [backend-mgr] rolled back dsh: 0.5.0 → 0.4.9（journal 修正 1 条 applied 记录）
 [diag] [2026-11-03T19:07:48.495Z] [backend-mgr] rolled back dsh: 0.5.0 → 0.4.9（journal 修正 1 条 applied 记录）
   ✓ 回滚执行成功（返回 true，main.js 契约不变） = true
@@ -964,7 +964,7 @@
 [diag] [2026-11-03T19:07:48.499Z] [backend-mgr] 回滚被拒绝：dsh.previous 里没有可用的后端（缺 lib/bin.js）
   ✓ dsh.previous 缺失 → 返回 false（不假装成功） = false
   ✓ 活跃版本原样保留 = "0.6.0"
-  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-08-B-06-revision_资源监控_20261104-030743.log
+  · 资源监控日志：C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-08-B-06-revision_资源监控_20261104-030743.log
 
 结果：64 通过 / 0 失败（耗时 4574ms）
 ✓ B-08-B-06-revision 全部通过
@@ -975,13 +975,13 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:48.844+08:00
   label    : node scripts/test-b12-plugin-journal-wiring.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b12-plugin-journal-wiring.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\<user>\Desktop\DSH\scripts\test-b12-plugin-journal-wiring.js
   timeout  : 300s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 0.3.49 · plugin-journal 接线端到端（真实 main.js 处理器 + 真实台账模块）
-沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe
-台账目录：C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\plugin-ops
+沙箱：C:\Users\<user>\AppData\Local\Temp\dsh-b12-9dGZQe
+台账目录：C:\Users\<user>\AppData\Local\Temp\dsh-b12-9dGZQe\plugin-ops
 
 ① spec → 台账字段（不泄漏本地路径）
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
@@ -996,8 +996,8 @@
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:07:49.126Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
 [diag] [2026-11-03T19:07:49.126Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
-[dsh-backend] [plugin] 开始安装 dsh-plugin-ok@2.0.0（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
-[diag] [2026-11-03T19:07:49.126Z] 后端输出 [plugin] 开始安装 dsh-plugin-ok@2.0.0（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
+[dsh-backend] [plugin] 开始安装 dsh-plugin-ok@2.0.0（profile=web，DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
+[diag] [2026-11-03T19:07:49.126Z] 后端输出 [plugin] 开始安装 dsh-plugin-ok@2.0.0（profile=web，DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
 
 [diag] [2026-11-03T19:07:49.126Z] 插件安装结果: {"spec":"dsh-plugin-ok@2.0.0","profile":"web","ok":true,"code":"OK"}
 [diag] [2026-11-03T19:07:49.127Z] restartApp：准备重启（更新应用流程）
@@ -1008,8 +1008,8 @@
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:07:49.131Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
 [diag] [2026-11-03T19:07:49.131Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
-[dsh-backend] [plugin] 开始安装 dsh-plugin-bad（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
-[diag] [2026-11-03T19:07:49.131Z] 后端输出 [plugin] 开始安装 dsh-plugin-bad（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
+[dsh-backend] [plugin] 开始安装 dsh-plugin-bad（profile=web，DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
+[diag] [2026-11-03T19:07:49.131Z] 后端输出 [plugin] 开始安装 dsh-plugin-bad（profile=web，DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
 
 [diag] [2026-11-03T19:07:49.131Z] 插件安装结果: {"spec":"dsh-plugin-bad","profile":"web","ok":false,"code":"EBADSPEC"}
   ✓ 失败安装如实返回 ok=false
@@ -1018,8 +1018,8 @@
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:07:49.134Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
 [diag] [2026-11-03T19:07:49.134Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
-[dsh-backend] [plugin] 开始安装 dsh-plugin-slow（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
-[diag] [2026-11-03T19:07:49.134Z] 后端输出 [plugin] 开始安装 dsh-plugin-slow（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
+[dsh-backend] [plugin] 开始安装 dsh-plugin-slow（profile=web，DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
+[diag] [2026-11-03T19:07:49.134Z] 后端输出 [plugin] 开始安装 dsh-plugin-slow（profile=web，DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-b12-9dGZQe\backend\dsh-home）
 
 [diag] [2026-11-03T19:07:49.134Z] 插件安装结果: {"spec":"dsh-plugin-slow","profile":"web","ok":false,"code":"ETIMEDOUT"}
   ✓ 超时安装的 reason=ETIMEDOUT（与普通失败区分）
@@ -1062,7 +1062,7 @@
 ────────────────────────────────────────
 断言 26 项，失败 0 项
 
-沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-b12-9dGZQe
+沙箱目录（可删除）：C:\Users\<user>\AppData\Local\Temp\dsh-b12-9dGZQe
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:07:50.593+08:00 exit=0 reason=exit elapsed=1.7s label=node scripts/test-b12-plugin-journal-wiring.js
 ==============================================================================
@@ -1070,11 +1070,11 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T03:07:50.854+08:00
   label    : node scripts/test-b17-integrity.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\lcl\Desktop\DSH\scripts\test-b17-integrity.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe C:\Users\<user>\Desktop\DSH\scripts\test-b17-integrity.js
   timeout  : 300s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
-  · 资源监控已启动（独立进程 pid=13400）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-17-integrity_资源监控_20261104-030751.log
+  · 资源监控已启动（独立进程 pid=13400）→ C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-17-integrity_资源监控_20261104-030751.log
 
 ── 路径1 正常：sha512(SRI) 匹配 → 通过，报告算法与来源
   ✓ sha512 一致 → ok = true
@@ -1129,7 +1129,7 @@
   ✓ journal 新增 1 条 = 1
   ✓ journal 只落分类码（不落原文/URL） = "ERR_UPDATER_CHECKSUM_MISMATCH"
   ✓ journal 记录目标版本 = "9.9.9"
-  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-17-integrity_资源监控_20261104-030751.log
+  · 资源监控日志：C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-17-integrity_资源监控_20261104-030751.log
 
 结果：40 通过 / 0 失败（耗时 156ms）
 ✓ B-17-integrity 全部通过

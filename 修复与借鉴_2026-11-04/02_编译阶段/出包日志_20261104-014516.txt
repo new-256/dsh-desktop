@@ -4,7 +4,7 @@
   label    : npm run dist
   command  : npm run dist
   timeout  : 2400s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 npm warn Unknown project config "electron_mirror". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
 npm warn Unknown project config "electron_builder_binaries_mirror". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
@@ -15,7 +15,7 @@ npm warn Unknown project config "electron_builder_binaries_mirror". This will st
 
 ══════════════════════════════════════════════════════════════════════════════
   build.files 出包清单闭包门禁
-  仓库根 : C:\Users\lcl\Desktop\DSH
+  仓库根 : C:\Users\<user>\Desktop\DSH
   版本   : 0.3.48
   入口   : main.js + settings.html + splash.html
   白名单 : 4 条  黑名单 : 3 条
@@ -40,17 +40,17 @@ npm warn Unknown project config "electron_builder_binaries_mirror". This will st
 
 [vendor-manifest] dsh=0.2.1-alpha.5 node=24.4.0 parts=8
 [vendor-manifest] files: runtime=2315 dsh=63581（合计 65896）
-[vendor-manifest] written: C:\Users\lcl\Desktop\DSH\build\payload\vendor-manifest.json (2644 bytes)
+[vendor-manifest] written: C:\Users\<user>\Desktop\DSH\build\payload\vendor-manifest.json (2644 bytes)
 [pack-vendor] 已是最新的 8 个分卷（均比所有输入文件新），跳过重打包。合计=121.1 MB
   • electron-builder  version=26.15.3 os=10.0.22631
   • loaded configuration  file=package.json ("build" field)
-  • executing @electron/rebuild  electronVersion=44.3.0 arch=x64 buildFromSource=false workspaceRoot=C:\Users\lcl\Desktop\DSH projectDir=./ appDir=./
+  • executing @electron/rebuild  electronVersion=44.3.0 arch=x64 buildFromSource=false workspaceRoot=C:\Users\<user>\Desktop\DSH projectDir=./ appDir=./
   • installing native dependencies  arch=x64
   • completed installing native dependencies
   • packaging       platform=win32 arch=x64 electron=44.3.0 appOutDir=release\win-unpacked
   • downloaded      label=electron progress=100%
-  • downloaded electron zip extracted successfully  output=C:\Users\lcl\Desktop\DSH\release\win-unpacked
-  • searching for node modules  pm=npm searchDir=C:\Users\lcl\Desktop\DSH
+  • downloaded electron zip extracted successfully  output=C:\Users\<user>\Desktop\DSH\release\win-unpacked
+  • searching for node modules  pm=npm searchDir=C:\Users\<user>\Desktop\DSH
   • updating asar integrity executable resource  executablePath=release\win-unpacked\DSH Desktop.exe
   • signing with signtool.exe  path=release\win-unpacked\DSH Desktop.exe
   • building        target=nsis file=release\DSH Desktop Setup 0.3.48.exe archs=x64 oneClick=false perMachine=true

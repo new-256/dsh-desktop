@@ -1,7 +1,7 @@
 
 ══════════════════════════════════════════════════════════════════════
   app.asar 实物清单
-  文件      : C:\Users\lcl\Desktop\DSH\release\win-unpacked\resources\app.asar
+  文件      : C:\Users\<user>\Desktop\DSH\release\win-unpacked\resources\app.asar
   字节      : 2652265
   头部长度  : 69848 字节
   条目总数  : 269（asar 内 269 / 标记 unpacked 0）
@@ -25,7 +25,7 @@
   · updater-backend.js  (218513 B)
 
 【闭包对账】门禁闭包 vs asar 实物
-  门禁记录 : C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\02_编译阶段\evidence\build-files-gate_绿.json
+  门禁记录 : C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\02_编译阶段\evidence\build-files-gate_绿.json
   闭包文件 : 16
   ✖ asar 内缺失 1 项：
     ✖ settings-renderer.js

@@ -32,8 +32,8 @@
       "detail": "宿主 4 个，仍存活 4"
     }
   },
-  "visualShot": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.49_首帧.png",
-  "visualShotMeta": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.49_首帧.json",
+  "visualShot": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.49_首帧.png",
+  "visualShotMeta": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.49_首帧.json",
   "u02": {
     "dialogSeen": false,
     "trayLogLine": "[2026-11-03T19:40:58.834Z] 托盘气泡已由系统确认显示（balloon-show 已触发）: {\"title\":\"DSH 有可用更新\",\"content\":\"DSH 后端 0.2.1-alpha.5 → 0.2.2-alpha.3\\n打开托盘菜单中的「设置」可确认下载。\",\"aumid\":\"com.deepseek.dshdesktop\",\"platform\":\"win32\"}",
@@ -61,7 +61,7 @@
     "reason": "托盘图标支持模式=；尝试了 无可用模式，但未出现托盘菜单窗口（#32768），因此无法点到「设置…」",
     "supportedPatterns": []
   },
-  "savedLogs": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\补充验收日志_supp4-0.3.49-20261104-0349",
+  "savedLogs": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\补充验收日志_supp4-0.3.49-20261104-0349",
   "counts": {
     "notVerified": 1,
     "pass": 5,

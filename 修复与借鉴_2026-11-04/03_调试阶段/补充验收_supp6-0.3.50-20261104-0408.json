@@ -32,8 +32,8 @@
       "detail": "宿主 4 个，仍存活 4"
     }
   },
-  "visualShot": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_.png",
-  "visualShotMeta": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_.json",
+  "visualShot": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_.png",
+  "visualShotMeta": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_.json",
   "u02": {
     "dialogSeen": false,
     "windowHidden": true,
@@ -60,7 +60,7 @@
     "settingsWindow": false,
     "reason": "UIA 未枚举到 DSH 托盘图标（溢出区未出现或图标未被暴露）"
   },
-  "savedLogs": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\补充验收日志_supp6-0.3.50-20261104-0408",
+  "savedLogs": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\补充验收日志_supp6-0.3.50-20261104-0408",
   "counts": {
     "notVerified": 1,
     "fail": 0,

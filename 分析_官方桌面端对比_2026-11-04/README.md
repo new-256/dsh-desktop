@@ -1,7 +1,7 @@
 # 分析索引：官方 DSH 桌面端 vs 我们的 DSH Desktop
 
 > 分析日期：2026-11-04 ｜ 上游快照：`deepseek-ai/deepseek-harness@8bd0733`（master，2026-11-03）
-> 被测对象：本地外壳 `C:\Users\lcl\Desktop\DSH`（DSH Desktop v0.3.47）
+> 被测对象：本地外壳 `C:\Users\<user>\Desktop\DSH`（DSH Desktop v0.3.47）
 > 结论：**官方零正式版（36 个 release 全 prerelease），形态是「薄壳 + 协议反代」，我们是「厚壳 + 自愈」；可借鉴 17 项，其中 6 项 P0，但最该先修的是既有隐患 H-04。**
 
 ## 目录用途

@@ -4,7 +4,7 @@
   "durationSec": 32.4,
   "samples": 31,
   "intervalSec": 1,
-  "reason": "检测到停止文件 C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\H08_复修_监控.stop",
+  "reason": "检测到停止文件 C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\H08_复修_监控.stop",
   "filters": [
     "node.exe",
     "pwsh.exe"
@@ -20,5 +20,5 @@
     "gpuTemp": 69,
     "gpu": "NVIDIA GeForce RTX 5060 Ti"
   },
-  "csv": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\H08-复修_资源监控.csv"
+  "csv": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\H08-复修_资源监控.csv"
 }

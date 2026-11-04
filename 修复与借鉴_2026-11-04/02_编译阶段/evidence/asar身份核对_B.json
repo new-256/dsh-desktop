@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-11-03T18:09:03.977Z",
-  "asar": "C:\\Users\\lcl\\Desktop\\DSH\\release\\win-unpacked\\resources\\app.asar",
+  "asar": "C:\\Users\\<user>\\Desktop\\DSH\\release\\win-unpacked\\resources\\app.asar",
   "checks": [
     {
       "name": "代码里不再 require ./package.json",

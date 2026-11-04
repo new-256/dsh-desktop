@@ -1,7 +1,7 @@
 {
   "startedAt": "2026-11-03T17:45:08.280Z",
   "version": "0.3.48",
-  "log": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\02_编译阶段\\编译日志_20261104-014439.txt",
+  "log": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\02_编译阶段\\编译日志_20261104-014439.txt",
   "total": 26,
   "failed": 0,
   "timedOut": 0,
@@ -104,91 +104,91 @@
       "target": "scripts/test-h01-rollback.js",
       "exit": 0,
       "label": "node scripts/test-h01-rollback.js",
-      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+      "runner": "C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
     },
     {
       "kind": "test",
       "target": "scripts/test-h02-spawn-sync.js",
       "exit": 0,
       "label": "node scripts/test-h02-spawn-sync.js",
-      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+      "runner": "C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
     },
     {
       "kind": "test",
       "target": "scripts/test-h03-startup-deadline.js",
       "exit": 0,
       "label": "node scripts/test-h03-startup-deadline.js",
-      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+      "runner": "C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
     },
     {
       "kind": "test",
       "target": "scripts/test-h04-h05-harness.js",
       "exit": 0,
       "label": "node scripts/test-h04-h05-harness.js",
-      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+      "runner": "C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
     },
     {
       "kind": "test",
       "target": "scripts/test-h04-quarantine-safety.js",
       "exit": 0,
       "label": "node scripts/test-h04-quarantine-safety.js",
-      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+      "runner": "C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
     },
     {
       "kind": "test",
       "target": "scripts/test-h05-apply-marker.js",
       "exit": 0,
       "label": "node scripts/test-h05-apply-marker.js",
-      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+      "runner": "C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
     },
     {
       "kind": "test",
       "target": "scripts/test-h06-csp-electron.js",
       "exit": 0,
       "label": "electron scripts/test-h06-csp-electron.js",
-      "runner": "C:\\Users\\lcl\\Desktop\\DSH\\node_modules\\electron\\dist\\electron.exe"
+      "runner": "C:\\Users\\<user>\\Desktop\\DSH\\node_modules\\electron\\dist\\electron.exe"
     },
     {
       "kind": "test",
       "target": "scripts/test-h06-settings-dom.js",
       "exit": 0,
       "label": "node scripts/test-h06-settings-dom.js",
-      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+      "runner": "C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
     },
     {
       "kind": "test",
       "target": "scripts/test-h08-aumid.js",
       "exit": 0,
       "label": "node scripts/test-h08-aumid.js",
-      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+      "runner": "C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
     },
     {
       "kind": "test",
       "target": "scripts/test-h10-durability-layering.js",
       "exit": 0,
       "label": "node scripts/test-h10-durability-layering.js",
-      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+      "runner": "C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
     },
     {
       "kind": "test",
       "target": "scripts/test-h10-electron-exit-flush.js",
       "exit": 0,
       "label": "node scripts/test-h10-electron-exit-flush.js",
-      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+      "runner": "C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
     },
     {
       "kind": "test",
       "target": "scripts/test-h10-log-throughput.js",
       "exit": 0,
       "label": "node scripts/test-h10-log-throughput.js",
-      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+      "runner": "C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
     },
     {
       "kind": "test",
       "target": "scripts/test-047-desktop-report.js",
       "exit": 0,
       "label": "node scripts/test-047-desktop-report.js",
-      "runner": "C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
+      "runner": "C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\backend\\node.exe"
     }
   ]
 }

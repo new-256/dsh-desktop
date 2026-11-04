@@ -1,7 +1,7 @@
 
 ══════════════════════════════════════════════════════════════════════════════
   build.files 出包清单闭包门禁
-  仓库根 : C:\Users\lcl\Desktop\DSH
+  仓库根 : C:\Users\<user>\Desktop\DSH
   版本   : 0.3.47
   入口   : main.js + settings.html + splash.html
   白名单 : 14 条  黑名单 : 3 条

@@ -91,7 +91,7 @@ node --check scripts/test-h10-log-throughput.js -> exit code 0
 
 [test-h10] 共 20 项，通过 20，失败 0
 [test-h10] 数据：{"phase1":{"perLineUs":2.474882,"baselinePerLineUs":331.915155,"flushMs":44.968,"io":{"appendFileSync":26,"statSync":26,"renameSync":0,"writeFileSync":26,"existsSync":2}},"phase2":{"archives":6,"files":7},"phase3":{"expectedDropped":901,"lines":101},"phase4":{"lines":501}}
-[test-h10] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-h10-test-14160
+[test-h10] 临时目录：C:\Users\<user>\AppData\Local\Temp\dsh-h10-test-14160
 [test-h10] 全部通过
 [exit code: 0]
 
@@ -102,10 +102,10 @@ node --check scripts/test-h10-log-throughput.js -> exit code 0
 [19560:1104/012106.787:ERROR:net\base\network_change_notifier_win.cc:213] WSALookupServiceBegin failed with: 10108
 [diag] [2026-11-03T17:21:06.806Z] 集成冒烟 1 {"pid":19560,"electron":"44.3.0"}
 [diag] [2026-11-03T17:21:06.811Z] 集成冒烟 2 错误示例 error simulated
-{"queuedBeforeExit":3,"logPath":"C:\\Users\\lcl\\Desktop\\DSH\\.tmp-h06-h10\\smoke-base\\logs\\DSH-Desktop-日志.txt","errPath":"C:\\Users\\lcl\\Desktop\\DSH\\.tmp-h06-h10\\smoke-base\\logs\\DSH-Desktop-错误清单.txt","reportPath":null,"existsBeforeExit":{"log":false,"err":false,"report":false}}
+{"queuedBeforeExit":3,"logPath":"C:\\Users\\<user>\\Desktop\\DSH\\.tmp-h06-h10\\smoke-base\\logs\\DSH-Desktop-日志.txt","errPath":"C:\\Users\\<user>\\Desktop\\DSH\\.tmp-h06-h10\\smoke-base\\logs\\DSH-Desktop-错误清单.txt","reportPath":null,"existsBeforeExit":{"log":false,"err":false,"report":false}}
 --- 落盘主日志 ---
 
-===== 会话开始 PID=19560 版本=44.3.0 日志目录=C:\Users\lcl\Desktop\DSH\.tmp-h06-h10\smoke-base\logs 2026-11-03T17:21:06.808Z =====
+===== 会话开始 PID=19560 版本=44.3.0 日志目录=C:\Users\<user>\Desktop\DSH\.tmp-h06-h10\smoke-base\logs 2026-11-03T17:21:06.808Z =====
 [2026-11-03T17:21:06.806Z] 集成冒烟 1 {"pid":19560,"electron":"44.3.0"}
 [2026-11-03T17:21:06.811Z] 集成冒烟 2 错误示例 error simulated
 --- 落盘错误清单 ---
@@ -126,7 +126,7 @@ node --check scripts/test-h10-log-throughput.js -> exit code 0
 [PASS] 未触发「退出刷盘超预算」
 
 [test-h10-electron] 共 8 项，通过 8，失败 0
-[test-h10-electron] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-h10-electron-35484
+[test-h10-electron] 临时目录：C:\Users\<user>\AppData\Local\Temp\dsh-h10-electron-35484
 [test-h10-electron] 全部通过
 
 ===== 汇总：失败项 0 =====

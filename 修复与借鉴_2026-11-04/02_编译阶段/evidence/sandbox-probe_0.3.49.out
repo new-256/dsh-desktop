@@ -2,7 +2,7 @@
 
 ══════════════════════════════════════════════════════════════════
   sandbox:true 下的设置窗探针（成品 asar + 真 Electron）
-  asar      : C:\Users\lcl\Desktop\DSH\release\win-unpacked\resources\app.asar
+  asar      : C:\Users\<user>\Desktop\DSH\release\win-unpacked\resources\app.asar
   electron  : 44.3.0
 ══════════════════════════════════════════════════════════════════
 [info] 已为 22 条白名单通道注册桩 handler

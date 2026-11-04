@@ -24,13 +24,13 @@ node --check scripts/test-b04-crash-report-electron.js -> exit code 0
 [PASS] ③ 丢弃说明也写进了诊断日志正文（主日志可搜到） — 实际主日志片段：[2026-11-03T18:28:43.221Z] 插件台账：排队触顶丢弃 55 条（已写入台账正文，丢弃时排队字节= 880 ）
 [PASS] ③ 状态里 droppedWritten 已追上 dropped（不重复写说明） — 实际：{"dropped":55,"droppedWritten":55}
 [PASS] ③ 内存环仍保留被丢弃的记录（崩溃报告可用） — 实际：未被丢弃标记的条数=55
-[PASS] ④ 写失败后 status().disabled = true — 实际：{"disabled":true,"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b04-40272\\fail\\blocked-as-file'"}
-[PASS] ④ 失败计数与错误信息都曝光（不静默） — 实际：{"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-b04-40272\\fail\\blocked-as-file'"}
+[PASS] ④ 写失败后 status().disabled = true — 实际：{"disabled":true,"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-b04-40272\\fail\\blocked-as-file'"}
+[PASS] ④ 失败计数与错误信息都曝光（不静默） — 实际：{"failed":1,"lastError":"EEXIST: file already exists, mkdir 'C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-b04-40272\\fail\\blocked-as-file'"}
 [PASS] ④ 停用后不再尝试写入（调用计数 = 0） — 实际 attempts=0
 [PASS] ④ 停用后仍然能给出内存环快照（崩溃报告用它） — 实际 recent=1
 [PASS] ④ 停用后 flush 返回 disabled 且不假装成功 — 实际：{"flushed":0,"dropped":0,"failed":1,"remaining":1,"deferred":1,"disabled":true,"ms":0}
 [PASS] ④ 首次 flush 也未抛出（本模块对外永不抛错） — 实际：{"flushed":0,"dropped":0,"failed":1,"remaining":1,"deferred":1,"disabled":true,"ms":1}
-[plugin-journal] EEXIST: file already exists, mkdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b04-40272\fail\blocked-as-file'
+[plugin-journal] EEXIST: file already exists, mkdir 'C:\Users\<user>\AppData\Local\Temp\dsh-b04-40272\fail\blocked-as-file'
 [PASS] ⑤ recent(0) = [] — 实际：[]
 [PASS] ⑤ recent(-5) = [] — 实际：0
 [PASS] ⑤ recent() 缺省 20 条 — 实际：20
@@ -38,12 +38,12 @@ node --check scripts/test-b04-crash-report-electron.js -> exit code 0
 [PASS] ⑤ recent(1e6) 返回全部（30 条） — 实际：30
 [PASS] ⑤ renderRecent(10) 给出省略计数（30-10=20） — 实际：{"omitted":20,"lines":10}
 [PASS] ⑤ 渲染行包含动作/插件/结果/阶段 — 实际末行：#30 2026-11-03T18:28:43.230Z +1.145ms enable r-29 source=profile ok phase=running
-[PASS] ⑥ 崩溃报告已落盘 — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-40272\crash\logs\crash-2026-11-03T18-28-43-252Z-main.log
+[PASS] ⑥ 崩溃报告已落盘 — 实际：C:\Users\<user>\AppData\Local\Temp\dsh-b04-40272\crash\logs\crash-2026-11-03T18-28-43-252Z-main.log
 [PASS] ⑥ 附加段标题逐字含 context, not proof of cause — 实际标题行：----- recent plugin operations (context, not proof of cause) -----
 [PASS] ⑥ 基础报告字节未被重写（除时间戳外与原文逐字节一致，附加段只追加） — 实际：基础=904B 前缀=904B 完全一致=false 归一后一致=true
 [PASS] ⑥ 附加段含我们的插件操作行 — 实际：#16 2026-11-03T18:28:43.239Z +6.741ms install crashplug-15@2.0.15 source=registry ok phase=startup
 [PASS] ⑥ 超过 40 条时有省略计数 — 实际：省略 15 条更早记录
-[PASS] ⑥ 有收集完成标记（含 records/dropped/ledger） — 实际：[collection complete] records=55 dropped=0 ledger=C:\Users\lcl\AppData\Local\Temp\dsh-b04-40272\crash\logs\plugin-operations
+[PASS] ⑥ 有收集完成标记（含 records/dropped/ledger） — 实际：[collection complete] records=55 dropped=0 ledger=C:\Users\<user>\AppData\Local\Temp\dsh-b04-40272\crash\logs\plugin-operations
 [PASS] ⑥ 基础报告字节未被重写（时间戳归一后 sha256 完全一致 = 逐字节只追加） — 实际：前缀 sha256=95dc6c8f60e1052fd5932ac3d646a57538a08bac0192d09b730b95b9640e8ba9 期望=95dc6c8f60e1052fd5932ac3d646a57538a08bac0192d09b730b95b9640e8ba9
 [PASS] ⑥ 非白名单字段未被持久化（token 值不出现） — 实际：已丢弃
 [PASS] ⑥ 附加段不含凭据类键名（token/password/secret/authorization） — 实际命中：[]
@@ -63,7 +63,7 @@ node --check scripts/test-b04-crash-report-electron.js -> exit code 0
 [PASS] ⑨ 继承预算后最终全部落盘（两次调用合计 = 200 条） — 实际：{"first":85,"second":115,"queued":0}
 
 [test-b04] 共 54 项，通过 54，失败 0
-[test-b04] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-b04-40272
+[test-b04] 临时目录：C:\Users\<user>\AppData\Local\Temp\dsh-b04-40272
 [test-b04] 全部通过
 [exit code: 0]
 
@@ -71,21 +71,21 @@ node --check scripts/test-b04-crash-report-electron.js -> exit code 0
 # Electron 直写控制台，PowerShell 变量捕获会丢（退出码仍为 0）——以下为该测试单独落盘的全文：
 [39596:1104/022935.437:ERROR:net\base\network_change_notifier_win.cc:213] WSALookupServiceBegin failed with: 10108
 [diag] [2026-11-03T18:29:35.467Z] 插件台账 关键操作失败 isolate plugin=bad-plugin version=9.9.9 reason=EISOLATE phase=startup
-[PASS] 真机：crash-report 在真实 Electron 里落盘成功 — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\crash\crash-2026-11-03T18-29-35-494Z-main.log
-[PASS] 真机：报告目录来自 crashDir()（真实路径契约） — 实际目录=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\crash
+[PASS] 真机：crash-report 在真实 Electron 里落盘成功 — 实际：C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-39596\crash\crash-2026-11-03T18-29-35-494Z-main.log
+[PASS] 真机：报告目录来自 crashDir()（真实路径契约） — 实际目录=C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-39596\crash
 [PASS] 真机：含 context, not proof of cause 标题（官方原话） — 实际：----- recent plugin operations (context, not proof of cause) -----
 [PASS] 真机：四个动作都出现在报告里 — 实际：[]
 [PASS] 真机：失败原因码可见（可归因） — 实际：有
-[PASS] 真机：含收集完成标记 — 实际：[collection complete] records=4 dropped=0 ledger=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\diag\logs\plugin-operations
+[PASS] 真机：含收集完成标记 — 实际：[collection complete] records=4 dropped=0 ledger=C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-39596\diag\logs\plugin-operations
 [PASS] 真机：基础报告段完好（error / backend tail / renderer console 都在） — 实际：{"error":true,"tail":true,"renderer":true}
 [PASS] 真机：附加段在基础报告之后（追加而非插入） — 实际：error@185 ops@452
 [PASS] 真机：报告里没有凭据样式内容 — 实际：干净
-[PASS] 真机：台账段文件已落盘（≤2 段） — 实际：["plugin-operations-1.log"] dir=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\diag\logs\plugin-operations
-[PASS] 真机：台账目录与诊断日志同域（logs/plugin-operations） — 实际：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\diag\logs\plugin-operations
-[PASS] 真机：writeCrashReportBounded 在 1s 预算内返回路径 — 实际：22ms file=C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596\crash\crash-2026-11-03T18-29-35-505Z-main.log
+[PASS] 真机：台账段文件已落盘（≤2 段） — 实际：["plugin-operations-1.log"] dir=C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-39596\diag\logs\plugin-operations
+[PASS] 真机：台账目录与诊断日志同域（logs/plugin-operations） — 实际：C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-39596\diag\logs\plugin-operations
+[PASS] 真机：writeCrashReportBounded 在 1s 预算内返回路径 — 实际：22ms file=C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-39596\crash\crash-2026-11-03T18-29-35-505Z-main.log
 [PASS] 真机：bounded 路径写出的报告同样带插件操作段 — 实际：有
 [test-b04-electron] 共 13 项，通过 13，失败 0
-[test-b04-electron] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-b04-electron-39596
+[test-b04-electron] 临时目录：C:\Users\<user>\AppData\Local\Temp\dsh-b04-electron-39596
 [test-b04-electron] 全部通过
 
 ===== 3) 阶段一门禁回归 =====
@@ -94,7 +94,7 @@ node --check scripts/test-b04-crash-report-electron.js -> exit code 0
 --- scripts/test-h10-log-throughput.js (exit 0) ---
 [test-h10] 共 20 项，通过 20，失败 0
 [test-h10] 数据：{"phase1":{"perLineUs":3.4978200000000004,"baselinePerLineUs":456.221185,"flushMs":67.7543,"io":{"appendFileSync":26,"statSync":26,"renameSync":0,"writeFileSync":26,"existsSync":2}},"phase2":{"archives":6,"files":7},"phase3":{"expectedDropped":901,"lines":101},"phase4":{"lines":501}}
-[test-h10] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-h10-test-33532
+[test-h10] 临时目录：C:\Users\<user>\AppData\Local\Temp\dsh-h10-test-33532
 [test-h10] 全部通过
 --- scripts/test-h10-durability-layering.js (exit 0) ---
 [test-h10-durability] 共 18 项，通过 18，失败 0

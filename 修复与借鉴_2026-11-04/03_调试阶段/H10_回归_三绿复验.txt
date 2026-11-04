@@ -9,7 +9,7 @@ node --check scripts/test-h10-electron-exit-flush.js -> exit code 0
 
 ===== 1) node scripts/test-047-desktop-report.js（lead 退回的门禁）=====
 0.3.47 桌面报告纪律回归
-沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-047-HCkVIY
+沙箱：C:\Users\<user>\AppData\Local\Temp\dsh-047-HCkVIY
 
 ① 启动即归档：桌面只留当前这一份
   ✓ 启动归档前：桌面上有两份历史报告（复现现场）
@@ -69,7 +69,7 @@ node --check scripts/test-h10-electron-exit-flush.js -> exit code 0
 
 [test-h10] 共 20 项，通过 20，失败 0
 [test-h10] 数据：{"phase1":{"perLineUs":1.84801,"baselinePerLineUs":228.075445,"flushMs":42.7828,"io":{"appendFileSync":26,"statSync":26,"renameSync":0,"writeFileSync":26,"existsSync":2}},"phase2":{"archives":6,"files":7},"phase3":{"expectedDropped":901,"lines":101},"phase4":{"lines":501}}
-[test-h10] 临时目录：C:\Users\lcl\AppData\Local\Temp\dsh-h10-test-32996
+[test-h10] 临时目录：C:\Users\<user>\AppData\Local\Temp\dsh-h10-test-32996
 [test-h10] 全部通过
 [exit code: 0]
 

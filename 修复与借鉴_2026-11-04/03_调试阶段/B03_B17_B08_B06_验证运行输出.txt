@@ -14,7 +14,7 @@ exit=0
 exit=0
 
 ----- node scripts/test-b03-update-schedule.js
-  · 资源监控已启动（独立进程 pid=38380）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-03-update-schedule_资源监控_20261104-022919.log
+  · 资源监控已启动（独立进程 pid=38380）→ C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-03-update-schedule_资源监控_20261104-022919.log
 
 ── 场景1 配置校验：非法值必须抛错（不静默修正）
   ✓ 拒绝非法配置 baseMs=0
@@ -84,7 +84,7 @@ exit=0
 ── 场景8 status 快照不含墙钟语义
   ✓ lastCompletedTick 为单调 tick 字符串（不是 ISO 时间）
   ✓ status 中没有墙钟时间戳
-  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-03-update-schedule_资源监控_20261104-022919.log
+  · 资源监控日志：C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-03-update-schedule_资源监控_20261104-022919.log
 
 结果：51 通过 / 0 失败（耗时 151ms）
 ✓ B-03-update-schedule 全部通过
@@ -92,7 +92,7 @@ exit=0
 exit=0
 
 ----- node scripts/test-b17-integrity.js
-  · 资源监控已启动（独立进程 pid=29548）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-17-integrity_资源监控_20261104-022919.log
+  · 资源监控已启动（独立进程 pid=29548）→ C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-17-integrity_资源监控_20261104-022919.log
 
 ── 路径1 正常：sha512(SRI) 匹配 → 通过，报告算法与来源
   ✓ sha512 一致 → ok = true
@@ -147,7 +147,7 @@ exit=0
   ✓ journal 新增 1 条 = 1
   ✓ journal 只落分类码（不落原文/URL） = "ERR_UPDATER_CHECKSUM_MISMATCH"
   ✓ journal 记录目标版本 = "9.9.9"
-  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-17-integrity_资源监控_20261104-022919.log
+  · 资源监控日志：C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-17-integrity_资源监控_20261104-022919.log
 
 结果：40 通过 / 0 失败（耗时 142ms）
 ✓ B-17-integrity 全部通过
@@ -155,7 +155,7 @@ exit=0
 exit=0
 
 ----- node scripts/test-b08-b06-revision.js
-  · 资源监控已启动（独立进程 pid=37828）→ C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-08-B-06-revision_资源监控_20261104-022920.log
+  · 资源监控已启动（独立进程 pid=37828）→ C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-08-B-06-revision_资源监控_20261104-022920.log
 
 ── B-06-1 代次：切路线自增，重复写同值不自增
   ✓ 初始 revision = 0
@@ -250,32 +250,32 @@ exit=0
 [backend-mgr] apply 闸门探针已注册: true
 [diag] [2026-11-03T18:29:21.162Z] [backend-mgr] apply 闸门探针已注册: true
   ✓ 前置：dsh.new 已被占用（rename 会失败）
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T18:29:21.540Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] apply staged dsh attempt 1 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
-[diag] [2026-11-03T18:29:21.544Z] [backend-mgr] apply staged dsh attempt 1 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T18:29:22.449Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] apply staged dsh attempt 2 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
-[diag] [2026-11-03T18:29:22.453Z] [backend-mgr] apply staged dsh attempt 2 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T18:29:23.361Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] apply staged dsh attempt 3 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
-[diag] [2026-11-03T18:29:23.364Z] [backend-mgr] apply staged dsh attempt 3 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T18:29:24.272Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] apply staged dsh attempt 4 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
-[diag] [2026-11-03T18:29:24.275Z] [backend-mgr] apply staged dsh attempt 4 failed: EPERM: operation not permitted, rename 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T18:29:24.278Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T18:29:24.279Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T18:29:24.483Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T18:29:24.484Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T18:29:24.487Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T18:29:21.540Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] apply staged dsh attempt 1 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
+[diag] [2026-11-03T18:29:21.544Z] [backend-mgr] apply staged dsh attempt 1 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T18:29:22.449Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] apply staged dsh attempt 2 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
+[diag] [2026-11-03T18:29:22.453Z] [backend-mgr] apply staged dsh attempt 2 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T18:29:23.361Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] apply staged dsh attempt 3 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
+[diag] [2026-11-03T18:29:23.364Z] [backend-mgr] apply staged dsh attempt 3 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T18:29:24.272Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] apply staged dsh attempt 4 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
+[diag] [2026-11-03T18:29:24.275Z] [backend-mgr] apply staged dsh attempt 4 failed: EPERM: operation not permitted, rename 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new' -> 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh'
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T18:29:24.278Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T18:29:24.279Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.copy: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T18:29:24.483Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.old: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T18:29:24.484Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.previous: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T18:29:24.487Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
 [backend-mgr] 已把 dsh.new 标记为不可应用（copy fallback 后暂存目录未删净（被占用））：下次启动不会拿它去交换
 [diag] [2026-11-03T18:29:24.492Z] [backend-mgr] 已把 dsh.new 标记为不可应用（copy fallback 后暂存目录未删净（被占用））：下次启动不会拿它去交换
 [backend-mgr] applied staged dsh via copy fallback (version 0.4.1, previous retained)
@@ -290,8 +290,8 @@ exit=0
   ✓ 删不净的暂存树已被标记为不可应用（dsh.new.invalid.json）
   ✓ stagedVersions 不再报告这个坏暂存版本 = null
   ✓ stagedVersions 显式标记 dshInvalidated = true
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T18:29:24.502Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T18:29:24.502Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new: walk-failed: ENOTEMPTY: directory not empty, rmdir 'C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-copy-path\backend\dsh.new\node_modules\@deepseek-ai\dsh'（已保留现场，不会跟随链接删除）
 [backend-mgr] dsh.new 已被标记为不可应用：本次跳过（文件仍被占用，稍后再清）
 [diag] [2026-11-03T18:29:24.504Z] [backend-mgr] dsh.new 已被标记为不可应用：本次跳过（文件仍被占用，稍后再清）
   ✓ ★ 再次应用不会拿坏暂存去交换（dsh 保持 0.4.1） = null
@@ -301,8 +301,8 @@ exit=0
 ── B-08-6 回滚台账：applied → rolled-back，versions.json 重写，中断标记清掉
   ✓ 前置：journal 有 1 条 applied（坏版本未验证） = 1
   ✓ 前置：存在 H-05 中断标记
-[backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-rollback\backend\dsh.failed: missing（已保留现场，不会跟随链接删除）
-[diag] [2026-11-03T18:29:24.553Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\lcl\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-rollback\backend\dsh.failed: missing（已保留现场，不会跟随链接删除）
+[backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-rollback\backend\dsh.failed: missing（已保留现场，不会跟随链接删除）
+[diag] [2026-11-03T18:29:24.553Z] [backend-mgr] rimraf(safe) 未完成 C:\Users\<user>\AppData\Local\Temp\dsh-b0806-5176-1793730560078\ud-rollback\backend\dsh.failed: missing（已保留现场，不会跟随链接删除）
 [backend-mgr] rolled back dsh: 0.5.0 → 0.4.9（journal 修正 1 条 applied 记录）
 [diag] [2026-11-03T18:29:24.576Z] [backend-mgr] rolled back dsh: 0.5.0 → 0.4.9（journal 修正 1 条 applied 记录）
   ✓ 回滚执行成功（返回 true，main.js 契约不变） = true
@@ -320,7 +320,7 @@ exit=0
 [diag] [2026-11-03T18:29:24.580Z] [backend-mgr] 回滚被拒绝：dsh.previous 里没有可用的后端（缺 lib/bin.js）
   ✓ dsh.previous 缺失 → 返回 false（不假装成功） = false
   ✓ 活跃版本原样保留 = "0.6.0"
-  · 资源监控日志：C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-08-B-06-revision_资源监控_20261104-022920.log
+  · 资源监控日志：C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\B-08-B-06-revision_资源监控_20261104-022920.log
 
 结果：64 通过 / 0 失败（耗时 4527ms）
 ✓ B-08-B-06-revision 全部通过

@@ -33,10 +33,10 @@ timestamp,elapsed_s,cpu_total_pct,proc_count,proc_ws_mb,proc_pb_mb,sys_mem_used_
 2026-11-04 01:59:28,31.7,14.3,21,2517,2005,81.1,6149,32607,98,8416,16311,68,NVIDIA GeForce RTX 5060 Ti,
 ==== stage1 资源监控峰值摘要 ====
   采样区间   : 开始=2026-11-04 01:58:57  间隔=1s  过滤进程=node.exe|pwsh.exe  pid=-  label=H-08 打包后失效复修验证
-  采样数     : 31（间隔 1s，持续 32.4s，结束原因：检测到停止文件 C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H08_复修_监控.stop）
+  采样数     : 31（间隔 1s，持续 32.4s，结束原因：检测到停止文件 C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H08_复修_监控.stop）
   CPU 峰值   : 31.4%（全核加权，区间均值）
   进程内存峰值: WS 2653 MB / Private 2066 MB
   系统内存   : 已用峰值 81.3%
   GPU        : NVIDIA GeForce RTX 5060 Ti
   GPU 峰值   : 使用率 99% / 显存 8520 MB / 温度 69°C
-  CSV        : C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H08-复修_资源监控.csv
+  CSV        : C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\H08-复修_资源监控.csv

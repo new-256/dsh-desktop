@@ -13,7 +13,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$InstallerPath,
   [Parameter(Mandatory = $true)][string]$RunId,
-  [string]$RepoRoot = 'C:\Users\lcl\Desktop\DSH',
+  [string]$RepoRoot = 'C:\Users\<user>\Desktop\DSH',
   [string]$FreezeId = 'FREEZE-2026-11-04-A',
   [string]$ExpectedVersion = '0.3.48',
   [string]$TaskName = '',

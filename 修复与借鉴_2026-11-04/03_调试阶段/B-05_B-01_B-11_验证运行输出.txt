@@ -4,7 +4,7 @@
   label    : check main.js
   command  : node --check main.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:08:01.879+08:00 exit=0 reason=exit elapsed=0.4s label=check main.js
@@ -15,7 +15,7 @@
   label    : check url-policy.js
   command  : node --check url-policy.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:08:02.392+08:00 exit=0 reason=exit elapsed=0.3s label=check url-policy.js
@@ -26,7 +26,7 @@
   label    : check session-hygiene.js
   command  : node --check session-hygiene.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:08:02.883+08:00 exit=0 reason=exit elapsed=0.3s label=check session-hygiene.js
@@ -37,12 +37,12 @@
   label    : gate build-files
   command  : node scripts/build-files-gate.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 
 ══════════════════════════════════════════════════════════════════════════════
   build.files 出包清单闭包门禁
-  仓库根 : C:\Users\lcl\Desktop\DSH
+  仓库根 : C:\Users\<user>\Desktop\DSH
   版本   : 0.3.48
   入口   : main.js + settings.html + splash.html
   白名单 : 4 条  黑名单 : 3 条
@@ -77,12 +77,12 @@
   label    : gate app-identity
   command  : node scripts/app-identity-gate.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 
 ══════════════════════════════════════════════════════════════════════════════
   随包 appId 常量一致性门禁（H-08 / AUMID）
-  仓库根 : C:\Users\lcl\Desktop\DSH
+  仓库根 : C:\Users\<user>\Desktop\DSH
   版本   : 0.3.48
   期望 appId（package.json build.appId）: com.deepseek.dshdesktop
 ══════════════════════════════════════════════════════════════════════════════
@@ -124,7 +124,7 @@
   label    : B-05 url-policy
   command  : node scripts/test-b05-url-policy.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 0.3.49 · B-05/B-11 导航与开窗判定（url-policy.js，纯函数）
 
@@ -204,7 +204,7 @@
   label    : B-01 cookie
   command  : node scripts/test-b01-cookie-hygiene.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 0.3.49 · B-01 旧后端 cookie 清理（session-hygiene.js）
 
@@ -275,10 +275,10 @@
   label    : B-05/B-01 接线
   command  : node scripts/test-b05-b01-wiring.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 0.3.49 · B-05/B-01 接线回归（真实 main.js + 桩 Electron）
-沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-b05w-0DA4An
+沙箱：C:\Users\<user>\AppData\Local\Temp\dsh-b05w-0DA4An
 
 ① 窗口安全配置
   ✓ main.js 里不再有任何 sandbox:false
@@ -415,7 +415,7 @@
 ────────────────────────────────────────
 断言 59 项，失败 0 项
 
-沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-b05w-0DA4An
+沙箱目录（可删除）：C:\Users\<user>\AppData\Local\Temp\dsh-b05w-0DA4An
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:08:08.976+08:00 exit=0 reason=exit elapsed=3.7s label=B-05/B-01 接线
 ==============================================================================
@@ -425,11 +425,11 @@
   label    : plugin-journal 端到端
   command  : node scripts/test-b12-plugin-journal-wiring.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 0.3.49 · plugin-journal 接线端到端（真实 main.js 处理器 + 真实台账模块）
-沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-b12-nuhsz6
-台账目录：C:\Users\lcl\AppData\Local\Temp\dsh-b12-nuhsz6\plugin-ops
+沙箱：C:\Users\<user>\AppData\Local\Temp\dsh-b12-nuhsz6
+台账目录：C:\Users\<user>\AppData\Local\Temp\dsh-b12-nuhsz6\plugin-ops
 
 ① spec → 台账字段（不泄漏本地路径）
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
@@ -444,8 +444,8 @@
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:08:09.562Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
 [diag] [2026-11-03T19:08:09.562Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
-[dsh-backend] [plugin] 开始安装 dsh-plugin-ok@2.0.0（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-nuhsz6\backend\dsh-home）
-[diag] [2026-11-03T19:08:09.562Z] 后端输出 [plugin] 开始安装 dsh-plugin-ok@2.0.0（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-nuhsz6\backend\dsh-home）
+[dsh-backend] [plugin] 开始安装 dsh-plugin-ok@2.0.0（profile=web，DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-b12-nuhsz6\backend\dsh-home）
+[diag] [2026-11-03T19:08:09.562Z] 后端输出 [plugin] 开始安装 dsh-plugin-ok@2.0.0（profile=web，DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-b12-nuhsz6\backend\dsh-home）
 
 [diag] [2026-11-03T19:08:09.563Z] 插件安装结果: {"spec":"dsh-plugin-ok@2.0.0","profile":"web","ok":true,"code":"OK"}
 [diag] [2026-11-03T19:08:09.563Z] restartApp：准备重启（更新应用流程）
@@ -456,8 +456,8 @@
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:08:09.567Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
 [diag] [2026-11-03T19:08:09.567Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
-[dsh-backend] [plugin] 开始安装 dsh-plugin-bad（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-nuhsz6\backend\dsh-home）
-[diag] [2026-11-03T19:08:09.567Z] 后端输出 [plugin] 开始安装 dsh-plugin-bad（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-nuhsz6\backend\dsh-home）
+[dsh-backend] [plugin] 开始安装 dsh-plugin-bad（profile=web，DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-b12-nuhsz6\backend\dsh-home）
+[diag] [2026-11-03T19:08:09.567Z] 后端输出 [plugin] 开始安装 dsh-plugin-bad（profile=web，DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-b12-nuhsz6\backend\dsh-home）
 
 [diag] [2026-11-03T19:08:09.567Z] 插件安装结果: {"spec":"dsh-plugin-bad","profile":"web","ok":false,"code":"EBADSPEC"}
   ✓ 失败安装如实返回 ok=false
@@ -466,8 +466,8 @@
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:08:09.570Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
 [diag] [2026-11-03T19:08:09.570Z] 窗口安全配置（读回 Electron 实际生效值）: {"window":"settings","sandbox":true,"contextIsolation":true,"nodeIntegration":false,"webSecurity":true}
-[dsh-backend] [plugin] 开始安装 dsh-plugin-slow（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-nuhsz6\backend\dsh-home）
-[diag] [2026-11-03T19:08:09.570Z] 后端输出 [plugin] 开始安装 dsh-plugin-slow（profile=web，DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-b12-nuhsz6\backend\dsh-home）
+[dsh-backend] [plugin] 开始安装 dsh-plugin-slow（profile=web，DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-b12-nuhsz6\backend\dsh-home）
+[diag] [2026-11-03T19:08:09.570Z] 后端输出 [plugin] 开始安装 dsh-plugin-slow（profile=web，DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-b12-nuhsz6\backend\dsh-home）
 
 [diag] [2026-11-03T19:08:09.571Z] 插件安装结果: {"spec":"dsh-plugin-slow","profile":"web","ok":false,"code":"ETIMEDOUT"}
   ✓ 超时安装的 reason=ETIMEDOUT（与普通失败区分）
@@ -510,7 +510,7 @@
 ────────────────────────────────────────
 断言 26 项，失败 0 项
 
-沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-b12-nuhsz6
+沙箱目录（可删除）：C:\Users\<user>\AppData\Local\Temp\dsh-b12-nuhsz6
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:08:11.065+08:00 exit=0 reason=exit elapsed=1.8s label=plugin-journal 端到端
 ==============================================================================
@@ -520,10 +520,10 @@
   label    : H-01 回归
   command  : node scripts/test-h01-rollback.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 0.3.48 · H-01 回归：回滚接电 + 自动回滚防死循环
-沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-h01-ijG8hK
+沙箱：C:\Users\<user>\AppData\Local\Temp\dsh-h01-ijG8hK
 
 ① 首次启动失败：只计数、只弹窗（不越级自动回滚）
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
@@ -531,8 +531,8 @@
   ✓ 磁盘上的 dsh.previous 被识别为可用回滚目标
   ✓ 初始台账为零
 [diag] [2026-11-03T19:08:11.649Z] 启动失败（fatal）: Error: 后端进程提前退出（code=1 signal=null）。
-    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:121:25
-    at Object.<anonymous> (C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:277:3)
+    at C:\Users\<user>\Desktop\DSH\scripts\test-h01-rollback.js:121:25
+    at Object.<anonymous> (C:\Users\<user>\Desktop\DSH\scripts\test-h01-rollback.js:277:3)
     at Module._compile (node:internal/modules/cjs/loader:1929:14)
     at Object..js (node:internal/modules/cjs/loader:2060:10)
     at Module.load (node:internal/modules/cjs/loader:1651:32)
@@ -542,47 +542,47 @@
     at node:internal/main/run_main_module:33:47
 [diag] [2026-11-03T19:08:11.653Z] 启动阶段打点: []
 [diag] [2026-11-03T19:08:11.654Z] 启动失败计数: {"consecutiveFailures":1,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
-[diag] [2026-11-03T19:08:11.660Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-11-658Z-host.log
+[diag] [2026-11-03T19:08:11.660Z] 崩溃报告已写入: C:\Users\<user>\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-11-658Z-host.log
 [diag] [2026-11-03T19:08:11.662Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
 [dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
 [diag] [2026-11-03T19:08:11.663Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
 
-[diag] [2026-11-03T19:08:11.664Z] 启动恢复决策: {"action":"none","reason":"below-threshold","recommendRollback":false,"rollbackTarget":{"available":true,"source":"previous","dir":"C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}}
+[diag] [2026-11-03T19:08:11.664Z] 启动恢复决策: {"action":"none","reason":"below-threshold","recommendRollback":false,"rollbackTarget":{"available":true,"source":"previous","dir":"C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}}
   ✓ 弹了且只弹了一次恢复弹窗
   ✓ 只有 1 次失败时不提供回滚按钮（阈值是连续 2 次）
   ✓ 非端口占用场景仍是 6 个动作（保持既有风格）
   ✓ 失败次数已落盘为 1
   ✓ 这次没有任何重启（用户选了留在托盘）
 [diag] [2026-11-03T19:08:11.665Z] 启动失败（fatal）: Error: 后端进程提前退出（code=1 signal=null）。
-    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:131:25
+    at C:\Users\<user>\Desktop\DSH\scripts\test-h01-rollback.js:131:25
 [diag] [2026-11-03T19:08:11.666Z] 启动阶段打点: []
-[diag] [2026-11-03T19:08:11.668Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-11-667Z-host.log
+[diag] [2026-11-03T19:08:11.668Z] 崩溃报告已写入: C:\Users\<user>\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-11-667Z-host.log
 [diag] [2026-11-03T19:08:11.670Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
 [dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
 [diag] [2026-11-03T19:08:11.671Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
 
-[diag] [2026-11-03T19:08:11.672Z] 启动恢复决策: {"action":"none","reason":"below-threshold","recommendRollback":false,"rollbackTarget":{"available":true,"source":"previous","dir":"C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}}
+[diag] [2026-11-03T19:08:11.672Z] 启动恢复决策: {"action":"none","reason":"below-threshold","recommendRollback":false,"rollbackTarget":{"available":true,"source":"previous","dir":"C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}}
   ✓ 同一次启动内重复进入 showFatal 不重复计数
 
 ② 连续第 2 次失败：自动回滚 + 暂存"已回滚"提示
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:08:11.675Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
 [diag] [2026-11-03T19:08:11.676Z] 启动失败（fatal）: Error: 后端进程提前退出（code=1 signal=null）。
-    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:142:25
+    at C:\Users\<user>\Desktop\DSH\scripts\test-h01-rollback.js:142:25
 [diag] [2026-11-03T19:08:11.677Z] 启动阶段打点: []
 [diag] [2026-11-03T19:08:11.678Z] 启动失败计数: {"consecutiveFailures":2,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
-[diag] [2026-11-03T19:08:11.682Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-11-680Z-host.log
+[diag] [2026-11-03T19:08:11.682Z] 崩溃报告已写入: C:\Users\<user>\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-11-680Z-host.log
 [diag] [2026-11-03T19:08:11.683Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
 [dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
 [diag] [2026-11-03T19:08:11.684Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
 
-[diag] [2026-11-03T19:08:11.685Z] 启动恢复决策: {"action":"auto-rollback","reason":"consecutive-failures","recommendRollback":true,"rollbackTarget":{"available":true,"source":"previous","dir":"C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}}
+[diag] [2026-11-03T19:08:11.685Z] 启动恢复决策: {"action":"auto-rollback","reason":"consecutive-failures","recommendRollback":true,"rollbackTarget":{"available":true,"source":"previous","dir":"C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}}
 [diag] [2026-11-03T19:08:11.686Z] 触发自动回滚: {"reason":"consecutive-failures"}
 [dsh-backend] 连续启动失败，正在自动回滚到上一个版本…
 [diag] [2026-11-03T19:08:11.687Z] 后端输出 连续启动失败，正在自动回滚到上一个版本…
 
 [diag] [2026-11-03T19:08:11.689Z] 回滚（auto）：后端已停止 {"stopped":true,"forced":false,"ms":0,"how":"no-backend"}
-[diag] [2026-11-03T19:08:11.689Z] 回滚（auto）：目标来源 {"available":true,"source":"previous","dir":"C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}
+[diag] [2026-11-03T19:08:11.689Z] 回滚（auto）：目标来源 {"available":true,"source":"previous","dir":"C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}
 [diag] [2026-11-03T19:08:11.689Z] 回滚（auto）完成：1.0.0-test → 0.9.0-previous（来源 previous）
 [dsh-backend] 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（来源 dsh.previous；只替换 backend 里的 dsh 程序目录，插件与数据未改动）
 [diag] [2026-11-03T19:08:11.689Z] 后端输出 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（来源 dsh.previous；只替换 backend 里的 dsh 程序目录，插件与数据未改动）
@@ -622,18 +622,18 @@
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:08:12.236Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
 [diag] [2026-11-03T19:08:12.237Z] 启动失败（fatal）: Error: 又一次启动失败
-    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:208:25
+    at C:\Users\<user>\Desktop\DSH\scripts\test-h01-rollback.js:208:25
 [diag] [2026-11-03T19:08:12.238Z] 启动阶段打点: []
 [diag] [2026-11-03T19:08:12.239Z] 启动失败计数: {"consecutiveFailures":2,"rollbacksInChain":1,"threshold":2,"autoRollbackLimit":1}
-[diag] [2026-11-03T19:08:12.242Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-12-241Z-host.log
+[diag] [2026-11-03T19:08:12.242Z] 崩溃报告已写入: C:\Users\<user>\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-12-241Z-host.log
 [diag] [2026-11-03T19:08:12.243Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
 [dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
 [diag] [2026-11-03T19:08:12.244Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
 
-[diag] [2026-11-03T19:08:12.246Z] 启动恢复决策: {"action":"none","reason":"auto-rollback-limit-reached","recommendRollback":true,"rollbackTarget":{"available":true,"source":"previous","dir":"C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}}
+[diag] [2026-11-03T19:08:12.246Z] 启动恢复决策: {"action":"none","reason":"auto-rollback-limit-reached","recommendRollback":true,"rollbackTarget":{"available":true,"source":"previous","dir":"C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}}
 [diag] [2026-11-03T19:08:12.246Z] 用户请求回滚到上一个版本: fatal-dialog
 [diag] [2026-11-03T19:08:12.248Z] 回滚（manual）：后端已停止 {"stopped":true,"forced":false,"ms":0,"how":"no-backend"}
-[diag] [2026-11-03T19:08:12.248Z] 回滚（manual）：目标来源 {"available":true,"source":"previous","dir":"C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}
+[diag] [2026-11-03T19:08:12.248Z] 回滚（manual）：目标来源 {"available":true,"source":"previous","dir":"C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}
 [diag] [2026-11-03T19:08:12.248Z] 回滚（manual）完成：1.0.0-test → 0.9.0-previous（来源 previous）
 [dsh-backend] 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（来源 dsh.previous；只替换 backend 里的 dsh 程序目录，插件与数据未改动）
 [diag] [2026-11-03T19:08:12.248Z] 后端输出 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（来源 dsh.previous；只替换 backend 里的 dsh 程序目录，插件与数据未改动）
@@ -651,18 +651,18 @@
 [diag] [2026-11-03T19:08:12.252Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
   ✓ journal 未验证记录可被安全读取
 [diag] [2026-11-03T19:08:12.253Z] 启动失败（fatal）: Error: 后端进程提前退出（code=9）
-    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:229:25
+    at C:\Users\<user>\Desktop\DSH\scripts\test-h01-rollback.js:229:25
 [diag] [2026-11-03T19:08:12.254Z] 启动阶段打点: []
 [diag] [2026-11-03T19:08:12.255Z] 启动失败计数: {"consecutiveFailures":1,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
-[diag] [2026-11-03T19:08:12.258Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-12-256Z-host.log
+[diag] [2026-11-03T19:08:12.258Z] 崩溃报告已写入: C:\Users\<user>\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-12-256Z-host.log
 [diag] [2026-11-03T19:08:12.259Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
 [dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
 [diag] [2026-11-03T19:08:12.260Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
 
-[diag] [2026-11-03T19:08:12.261Z] 启动恢复决策: {"action":"advisory","reason":"journal-unverified","recommendRollback":true,"rollbackTarget":{"available":true,"source":"previous","dir":"C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}}
+[diag] [2026-11-03T19:08:12.261Z] 启动恢复决策: {"action":"advisory","reason":"journal-unverified","recommendRollback":true,"rollbackTarget":{"available":true,"source":"previous","dir":"C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}}
 [diag] [2026-11-03T19:08:12.261Z] 用户请求回滚到上一个版本: fatal-dialog
 [diag] [2026-11-03T19:08:12.263Z] 回滚（manual）：后端已停止 {"stopped":true,"forced":false,"ms":0,"how":"no-backend"}
-[diag] [2026-11-03T19:08:12.263Z] 回滚（manual）：目标来源 {"available":true,"source":"previous","dir":"C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}
+[diag] [2026-11-03T19:08:12.263Z] 回滚（manual）：目标来源 {"available":true,"source":"previous","dir":"C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}
 [diag] [2026-11-03T19:08:12.263Z] 回滚（manual）完成：1.0.0-test → 0.9.0-previous（来源 previous）
 [dsh-backend] 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（来源 dsh.previous；只替换 backend 里的 dsh 程序目录，插件与数据未改动）
 [diag] [2026-11-03T19:08:12.263Z] 后端输出 已回滚 DSH 后端：1.0.0-test → 0.9.0-previous（来源 dsh.previous；只替换 backend 里的 dsh 程序目录，插件与数据未改动）
@@ -678,10 +678,10 @@
 [diag] [2026-11-03T19:08:12.268Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
   ✓ dsh.previous 不存在时判定为不可回滚
 [diag] [2026-11-03T19:08:12.268Z] 启动失败（fatal）: Error: 启动失败（没有上一个版本）
-    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:245:25
+    at C:\Users\<user>\Desktop\DSH\scripts\test-h01-rollback.js:245:25
 [diag] [2026-11-03T19:08:12.269Z] 启动阶段打点: []
 [diag] [2026-11-03T19:08:12.270Z] 启动失败计数: {"consecutiveFailures":2,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
-[diag] [2026-11-03T19:08:12.274Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-12-272Z-host.log
+[diag] [2026-11-03T19:08:12.274Z] 崩溃报告已写入: C:\Users\<user>\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-12-272Z-host.log
 [diag] [2026-11-03T19:08:12.275Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
 [dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
 [diag] [2026-11-03T19:08:12.276Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
@@ -702,15 +702,15 @@
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:08:12.283Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
 [diag] [2026-11-03T19:08:12.283Z] 启动失败（fatal）: Error: listen EADDRINUSE: address already in use 127.0.0.1:1234
-    at C:\Users\lcl\Desktop\DSH\scripts\test-h01-rollback.js:264:25
+    at C:\Users\<user>\Desktop\DSH\scripts\test-h01-rollback.js:264:25
 [diag] [2026-11-03T19:08:12.285Z] 启动阶段打点: []
 [diag] [2026-11-03T19:08:12.286Z] 启动失败计数: {"consecutiveFailures":6,"rollbacksInChain":0,"threshold":2,"autoRollbackLimit":1}
-[diag] [2026-11-03T19:08:12.290Z] 崩溃报告已写入: C:\Users\lcl\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-12-289Z-host.log
+[diag] [2026-11-03T19:08:12.290Z] 崩溃报告已写入: C:\Users\<user>\AppData\Local\Temp\dsh-h01-ijG8hK\logs\crash-2026-11-03T19-08-12-289Z-host.log
 [diag] [2026-11-03T19:08:12.292Z] 托盘气泡已发出: {"title":"DSH Desktop 启动失败","content":"右键托盘图标可查看日志、修复配置或以安全模式重启。","aumid":"com.deepseek.dshdesktop","platform":"win32","silentDropRisk":"低（AUMID 已设置）"}
 [dsh-backend] 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
 [diag] [2026-11-03T19:08:12.294Z] 后端输出 启动失败：已保留托盘自救入口（查看日志 / 修复配置 / 安全模式 / 重试启动）。
 
-[diag] [2026-11-03T19:08:12.296Z] 启动恢复决策: {"action":"none","reason":"address-in-use","recommendRollback":false,"rollbackTarget":{"available":true,"source":"previous","dir":"C:\\Users\\lcl\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}}
+[diag] [2026-11-03T19:08:12.296Z] 启动恢复决策: {"action":"none","reason":"address-in-use","recommendRollback":false,"rollbackTarget":{"available":true,"source":"previous","dir":"C:\\Users\\<user>\\AppData\\Local\\Temp\\dsh-h01-ijG8hK\\backend\\dsh.previous","version":null}}
   ✓ 端口冲突即便连续失败 5 次也不自动回滚（回滚治不了端口冲突）
   ✓ 端口冲突仍走既有的两按钮专用路径
   ✓ 用户选"退出"即退出
@@ -718,7 +718,7 @@
 ────────────────────────────────────────
 断言 44 项，失败 0 项
 
-沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-h01-ijG8hK
+沙箱目录（可删除）：C:\Users\<user>\AppData\Local\Temp\dsh-h01-ijG8hK
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:08:12.367+08:00 exit=0 reason=exit elapsed=1.0s label=H-01 回归
 ==============================================================================
@@ -728,10 +728,10 @@
   label    : H-02 回归
   command  : node scripts/test-h02-spawn-sync.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 0.3.48 · H-02 回归：spawnBackend 的同步异常必须 reject 外层 Promise
-沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-h02-9PaL98
+沙箱：C:\Users\<user>\AppData\Local\Temp\dsh-h02-9PaL98
 预算：spawn=400ms health=400ms（环境变量覆盖，默认值见 startup-deadline.js）
 
 ⓪ 对照实验（证明本测试能抓住这个缺陷）
@@ -746,11 +746,11 @@
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:08:13.685Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
 [diag] [2026-11-03T19:08:13.689Z] 后端进程准备失败（同步阶段，已显式 reject 外层）: Error: 缺少 Node 运行时：未找到活跃 node.exe（seed 失败）。
-    at prepareBackendSpawn (C:\Users\lcl\Desktop\DSH\main.js:618:40)
-    at C:\Users\lcl\Desktop\DSH\main.js:656:18
+    at prepareBackendSpawn (C:\Users\<user>\Desktop\DSH\main.js:618:40)
+    at C:\Users\<user>\Desktop\DSH\main.js:656:18
     at new Promise (<anonymous>)
-    at Object.spawnBackend (C:\Users\lcl\Desktop\DSH\main.js:653:10)
-    at C:\Users\lcl\Desktop\DSH\scripts\test-h02-spawn-sync.js:136:44
+    at Object.spawnBackend (C:\Users\<user>\Desktop\DSH\main.js:653:10)
+    at C:\Users\<user>\Desktop\DSH\scripts\test-h02-spawn-sync.js:136:44
   ✓ Promise 在 3s 内落定（没有永久 pending）
   ✓ Promise 以 reject 落定（不是静默 resolve）
   ✓ 错误文案保留原有语义（缺少 Node 运行时…）
@@ -759,12 +759,12 @@
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:08:13.702Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
 [diag] [2026-11-03T19:08:13.703Z] 后端进程准备失败（同步阶段，已显式 reject 外层）: Error: buildDedicatedEnv 失败（测试注入：磁盘满/权限异常）
-    at Object.buildDedicatedEnv (C:\Users\lcl\Desktop\DSH\scripts\lib\stage1-main-harness.js:334:35)
-    at prepareBackendSpawn (C:\Users\lcl\Desktop\DSH\main.js:624:19)
-    at C:\Users\lcl\Desktop\DSH\main.js:656:18
+    at Object.buildDedicatedEnv (C:\Users\<user>\Desktop\DSH\scripts\lib\stage1-main-harness.js:334:35)
+    at prepareBackendSpawn (C:\Users\<user>\Desktop\DSH\main.js:624:19)
+    at C:\Users\<user>\Desktop\DSH\main.js:656:18
     at new Promise (<anonymous>)
-    at Object.spawnBackend (C:\Users\lcl\Desktop\DSH\main.js:653:10)
-    at C:\Users\lcl\Desktop\DSH\scripts\test-h02-spawn-sync.js:149:44
+    at Object.spawnBackend (C:\Users\<user>\Desktop\DSH\main.js:653:10)
+    at C:\Users\<user>\Desktop\DSH\scripts\test-h02-spawn-sync.js:149:44
   ✓ Promise 在 3s 内落定（旧实现里这里就是永久 pending 的现场）
   ✓ Promise 以 reject 落定
   ✓ 原始异常信息原样透出（不被改写成模糊文案）
@@ -774,13 +774,13 @@
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:08:13.715Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
 [diag] [2026-11-03T19:08:13.716Z] 后端进程准备失败（同步阶段，已显式 reject 外层）: Error: spawn EACCES
-    at Object.spawn [as onSpawn] (C:\Users\lcl\Desktop\DSH\scripts\test-h02-spawn-sync.js:164:32)
-    at spawn (C:\Users\lcl\Desktop\DSH\scripts\lib\stage1-main-harness.js:294:33)
-    at prepareBackendSpawn (C:\Users\lcl\Desktop\DSH\main.js:633:17)
-    at C:\Users\lcl\Desktop\DSH\main.js:656:18
+    at Object.spawn [as onSpawn] (C:\Users\<user>\Desktop\DSH\scripts\test-h02-spawn-sync.js:164:32)
+    at spawn (C:\Users\<user>\Desktop\DSH\scripts\lib\stage1-main-harness.js:294:33)
+    at prepareBackendSpawn (C:\Users\<user>\Desktop\DSH\main.js:633:17)
+    at C:\Users\<user>\Desktop\DSH\main.js:656:18
     at new Promise (<anonymous>)
-    at Object.spawnBackend (C:\Users\lcl\Desktop\DSH\main.js:653:10)
-    at C:\Users\lcl\Desktop\DSH\scripts\test-h02-spawn-sync.js:166:44
+    at Object.spawnBackend (C:\Users\<user>\Desktop\DSH\main.js:653:10)
+    at C:\Users\<user>\Desktop\DSH\scripts\test-h02-spawn-sync.js:166:44
   ✓ Promise 在 3s 内落定
   ✓ Promise 以 reject 落定
   ✓ 错误码 EACCES 完整保留（便于归因杀软/权限）
@@ -788,8 +788,8 @@
 ⑤ H-03 阶段一：后端不打印地址（spawn deadline）
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:08:13.724Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
-[dsh-backend] starting backend: node=C:\Users\lcl\AppData\Local\Temp\dsh-h02-9PaL98\case5\node.exe DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-h02-9PaL98\case5\dsh-home host=127.0.0.1 port=0
-[diag] [2026-11-03T19:08:13.725Z] 后端输出 starting backend: node=C:\Users\lcl\AppData\Local\Temp\dsh-h02-9PaL98\case5\node.exe DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-h02-9PaL98\case5\dsh-home host=127.0.0.1 port=0
+[dsh-backend] starting backend: node=C:\Users\<user>\AppData\Local\Temp\dsh-h02-9PaL98\case5\node.exe DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-h02-9PaL98\case5\dsh-home host=127.0.0.1 port=0
+[diag] [2026-11-03T19:08:13.725Z] 后端输出 starting backend: node=C:\Users\<user>\AppData\Local\Temp\dsh-h02-9PaL98\case5\node.exe DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-h02-9PaL98\case5\dsh-home host=127.0.0.1 port=0
 
 [diag] [2026-11-03T19:08:13.725Z] 启动超时预算: {"spawn":400,"health":400,"paint":400} | 来源: {"spawn":"env","health":"env","paint":"env"}
 [dsh-backend] booting dsh web, loading plugins...
@@ -800,7 +800,7 @@
   已经等过：0.40s；该阶段预算 0.40s
   最后一条后端日志：booting dsh web, loading plugins...
   启动阶段打点：spawn[pid=5150]@0.00s
-  完整日志（绝对路径）：C:\Users\lcl\AppData\Local\Temp\dsh-h02-9PaL98\logs\DSH-Desktop-日志.txt
+  完整日志（绝对路径）：C:\Users\<user>\AppData\Local\Temp\dsh-h02-9PaL98\logs\DSH-Desktop-日志.txt
   这意味着：这一步没有在预期时间内给出结果。超时本身不代表后端一定坏了，
   但它确实卡住了 —— 下面可以重试启动、回滚到上一个版本，或先查看日志。
   ✓ 超时后 Promise 在 4s 内落定（旧实现会永远停在这里）
@@ -816,8 +816,8 @@
 ⑥ H-03 阶段二：地址已打印但 HTTP 无响应（health deadline）
 [dsh-desktop] electron-updater unavailable: Cannot read properties of undefined (reading 'getVersion')
 [diag] [2026-11-03T19:08:14.141Z] AppUserModelID 已设置 aumidApplied:true appId=com.deepseek.dshdesktop 来源=app-identity.js
-[dsh-backend] starting backend: node=C:\Users\lcl\AppData\Local\Temp\dsh-h02-9PaL98\case6\node.exe DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-h02-9PaL98\case6\dsh-home host=127.0.0.1 port=0
-[diag] [2026-11-03T19:08:14.141Z] 后端输出 starting backend: node=C:\Users\lcl\AppData\Local\Temp\dsh-h02-9PaL98\case6\node.exe DSH_HOME=C:\Users\lcl\AppData\Local\Temp\dsh-h02-9PaL98\case6\dsh-home host=127.0.0.1 port=0
+[dsh-backend] starting backend: node=C:\Users\<user>\AppData\Local\Temp\dsh-h02-9PaL98\case6\node.exe DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-h02-9PaL98\case6\dsh-home host=127.0.0.1 port=0
+[diag] [2026-11-03T19:08:14.141Z] 后端输出 starting backend: node=C:\Users\<user>\AppData\Local\Temp\dsh-h02-9PaL98\case6\node.exe DSH_HOME=C:\Users\<user>\AppData\Local\Temp\dsh-h02-9PaL98\case6\dsh-home host=127.0.0.1 port=0
 
 [diag] [2026-11-03T19:08:14.141Z] 启动超时预算: {"spawn":400,"health":400,"paint":400} | 来源: {"spawn":"env","health":"env","paint":"env"}
 [dsh-backend] dsh web: http://127.0.0.1:1
@@ -828,7 +828,7 @@
   已经等过：0.40s；该阶段预算 0.40s
   最后一条后端日志：dsh web: http://127.0.0.1:1
   启动阶段打点：spawn[pid=5151]@0.00s → url-ready[http://127.0.0.1:1]@0.08s
-  完整日志（绝对路径）：C:\Users\lcl\AppData\Local\Temp\dsh-h02-9PaL98\logs\DSH-Desktop-日志.txt
+  完整日志（绝对路径）：C:\Users\<user>\AppData\Local\Temp\dsh-h02-9PaL98\logs\DSH-Desktop-日志.txt
   这意味着：这一步没有在预期时间内给出结果。超时本身不代表后端一定坏了，
   但它确实卡住了 —— 下面可以重试启动、回滚到上一个版本，或先查看日志。
   ✓ health 阶段超时后 Promise 落定
@@ -840,7 +840,7 @@
 ────────────────────────────────────────
 断言 28 项，失败 0 项
 
-沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-h02-9PaL98
+沙箱目录（可删除）：C:\Users\<user>\AppData\Local\Temp\dsh-h02-9PaL98
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:08:14.689+08:00 exit=0 reason=exit elapsed=2.2s label=H-02 回归
 ==============================================================================
@@ -850,7 +850,7 @@
   label    : H-03 回归
   command  : node scripts/test-h03-startup-deadline.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 0.3.48 · H-03 启动截止时间纯逻辑
 模块：startup-deadline.js（不 require electron，可直接在 Node 里跑）
@@ -925,10 +925,10 @@
   label    : H-08 回归
   command  : node scripts/test-h08-aumid.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 0.3.48 · H-08 回归：随包身份常量 + 打包后仍生效 + 通知通道取证
-沙箱：C:\Users\lcl\AppData\Local\Temp\dsh-h08-qy2C36
+沙箱：C:\Users\<user>\AppData\Local\Temp\dsh-h08-qy2C36
 
 ① 随包身份常量（单一运行期事实源）
   ✓ app-identity.js 导出非空字符串常量 DSH_APP_ID
@@ -1029,7 +1029,7 @@
 ────────────────────────────────────────
 断言 50 项，失败 0 项
 
-沙箱目录（可删除）：C:\Users\lcl\AppData\Local\Temp\dsh-h08-qy2C36
+沙箱目录（可删除）：C:\Users\<user>\AppData\Local\Temp\dsh-h08-qy2C36
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T03:08:23.223+08:00 exit=0 reason=exit elapsed=7.9s label=H-08 回归
 ==============================================================================

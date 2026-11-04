@@ -4,7 +4,7 @@
   "durationSec": 1175.9,
   "samples": 585,
   "intervalSec": 2,
-  "reason": "检测到停止文件 C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\_monitor_pilot-stop.flag",
+  "reason": "检测到停止文件 C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\_monitor_pilot-stop.flag",
   "filters": [
     "node.exe",
     "electron.exe",
@@ -23,5 +23,5 @@
     "gpuTemp": 71,
     "gpu": "NVIDIA GeForce RTX 5060 Ti"
   },
-  "csv": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\资源监控_试装版.csv"
+  "csv": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\资源监控_试装版.csv"
 }

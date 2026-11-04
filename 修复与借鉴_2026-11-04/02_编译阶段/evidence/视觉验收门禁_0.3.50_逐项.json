@@ -3,8 +3,8 @@
   "minBytes": 8192,
   "results": [
     {
-      "png": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_首帧.png",
-      "json": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_首帧.json",
+      "png": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_首帧.png",
+      "json": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_首帧.json",
       "checks": [
         {
           "name": "PNG 存在",
@@ -65,8 +65,8 @@
       "passed": true
     },
     {
-      "png": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗.png",
-      "json": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗.json",
+      "png": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗.png",
+      "json": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗.json",
       "checks": [
         {
           "name": "PNG 存在",
@@ -127,8 +127,8 @@
       "passed": true
     },
     {
-      "png": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗_900px.png",
-      "json": "C:\\Users\\lcl\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗_900px.json",
+      "png": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗_900px.png",
+      "json": "C:\\Users\\<user>\\Desktop\\DSH\\修复与借鉴_2026-11-04\\03_调试阶段\\视觉验收_0.3.50_设置窗_900px.json",
       "checks": [
         {
           "name": "PNG 存在",

@@ -473,10 +473,10 @@ timestamp,elapsed_s,cpu_total_pct,proc_count,proc_ws_mb,proc_pb_mb,sys_mem_used_
 2026-11-04 03:25:37,945.1,12.8,13,2742,2482,80.3,6428,32607,42,5177,16311,51,NVIDIA GeForce RTX 5060 Ti,
 ==== stage1 资源监控峰值摘要 ====
   采样区间   : 开始=2026-11-04 03:09:52  间隔=2s  过滤进程=DSH Desktop.exe|node.exe|electron.exe  pid=-  label=阶段二 门禁+出包
-  采样数     : 471（间隔 2s，持续 947.1s，结束原因：检测到停止文件 C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\_monitor2-stop.flag）
+  采样数     : 471（间隔 2s，持续 947.1s，结束原因：检测到停止文件 C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\_monitor2-stop.flag）
   CPU 峰值   : 99.2%（全核加权，区间均值）
   进程内存峰值: WS 3639 MB / Private 3279 MB
   系统内存   : 已用峰值 85.2%
   GPU        : NVIDIA GeForce RTX 5060 Ti
   GPU 峰值   : 使用率 98% / 显存 9881 MB / 温度 69°C
-  CSV        : C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\资源监控_阶段二.csv
+  CSV        : C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\资源监控_阶段二.csv

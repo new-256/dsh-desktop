@@ -7,14 +7,14 @@
   "exitCode": 1,
   "reason": "exit",
   "elapsedSec": 2.4,
-  "cwd": "C:\\Users\\lcl\\Desktop\\DSH",
+  "cwd": "C:\\Users\\<user>\\Desktop\\DSH",
   "tail": [
     "npm warn Unknown project config \"electron_mirror\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
     "npm warn Unknown project config \"electron_builder_binaries_mirror\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
     "  • ",
     "electron-builder  version=26.15.3 os=10.0.22631",
     "  • ",
-    "loaded configuration  file=C:\\Users\\lcl\\Desktop\\DSH\\electron-builder.pilot.json",
+    "loaded configuration  file=C:\\Users\\<user>\\Desktop\\DSH\\electron-builder.pilot.json",
     "  ⨯ ",
     "Invalid configuration object. electron-builder 26.15.3 has been initialized using a configuration object that does not match the API schema.",
     " - configuration has an unknown property '//'",
@@ -42,10 +42,10 @@
     "     2. Search the option name on the page (or type in into Search to find across the docs).",
     "       * Not found? The option was deprecated or not exists (check spelling).",
     "       * Found? Check that the option in the appropriate place. e.g. \"title\" only in the \"dmg\", not in the root.",
-    "                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         at validateSchema (C:\\Users\\lcl\\Desktop\\DSH\\node_modules\\app-builder-lib\\src\\util\\config\\schemaValidator.ts:45:9)",
-    "    at validateConfiguration (C:\\Users\\lcl\\Desktop\\DSH\\node_modules\\app-builder-lib\\src\\util\\config\\config.ts:238:17)",
-    "    at Packager.validateConfig (C:\\Users\\lcl\\Desktop\\DSH\\node_modules\\app-builder-lib\\src\\packager.ts:390:5)",
-    "    at Packager.build (C:\\Users\\lcl\\Desktop\\DSH\\node_modules\\app-builder-lib\\src\\packager.ts:398:5)",
-    "    at executeFinally (C:\\Users\\lcl\\Desktop\\DSH\\node_modules\\builder-util\\src\\promise.ts:12:14)"
+    "                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         at validateSchema (C:\\Users\\<user>\\Desktop\\DSH\\node_modules\\app-builder-lib\\src\\util\\config\\schemaValidator.ts:45:9)",
+    "    at validateConfiguration (C:\\Users\\<user>\\Desktop\\DSH\\node_modules\\app-builder-lib\\src\\util\\config\\config.ts:238:17)",
+    "    at Packager.validateConfig (C:\\Users\\<user>\\Desktop\\DSH\\node_modules\\app-builder-lib\\src\\packager.ts:390:5)",
+    "    at Packager.build (C:\\Users\\<user>\\Desktop\\DSH\\node_modules\\app-builder-lib\\src\\packager.ts:398:5)",
+    "    at executeFinally (C:\\Users\\<user>\\Desktop\\DSH\\node_modules\\builder-util\\src\\promise.ts:12:14)"
   ]
 }

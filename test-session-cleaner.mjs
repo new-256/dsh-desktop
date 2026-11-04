@@ -21,7 +21,7 @@ import { pathToFileURL } from 'node:url'
 // 导入待测组件：优先测试仓库内的源码副本（plugins/web/），
 // 不存在时回退到 DSH Desktop 实际部署位置（DSH_HOME/profiles/web/）。
 const repoLocal = resolve('plugins/web/session-cleaner.plugin.mjs')
-const appData = process.env.APPDATA || 'C:\\Users\\lcl\\AppData\\Roaming'
+const appData = process.env.APPDATA || 'C:\\Users\\<user>\\AppData\\Roaming'
 const deployed = resolve(appData, 'DSH Desktop/dsh-home/profiles/web/session-cleaner.plugin.mjs')
 const pluginPath = existsSync(repoLocal) ? repoLocal : deployed
 const pluginModule = await import(pathToFileURL(pluginPath).href)

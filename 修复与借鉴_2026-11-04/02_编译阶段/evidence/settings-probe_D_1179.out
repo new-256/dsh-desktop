@@ -2,7 +2,7 @@
 
 ══════════════════════════════════════════════════════════════════
   sandbox:true 下的设置窗探针（成品 asar + 真 Electron）
-  asar      : C:\Users\lcl\Desktop\DSH\release\win-unpacked\resources\app.asar
+  asar      : C:\Users\<user>\Desktop\DSH\release\win-unpacked\resources\app.asar
   electron  : 44.3.0
 ══════════════════════════════════════════════════════════════════
 [info] 已为 22 条白名单通道注册桩 handler
@@ -17,7 +17,7 @@
 [PASS] 写：settings:set-route 往返成功 — 实际 {"ok":true,"route":"mirror"}
 [PASS] 写后再读：值已变更（真持久化往返） — 实际 route=mirror
 [PASS] 无 preload/sandbox 相关报错 — 控制台干净
-[PASS] 设置窗截图已落盘（capturePage，target 级） — C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\视觉验收_0.3.50_设置窗.png（88206 字节，1749×1107）
+[PASS] 设置窗截图已落盘（capturePage，target 级） — C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\03_调试阶段\视觉验收_0.3.50_设置窗.png（88206 字节，1749×1107）
 [PASS] 设置窗截图断言：标题/节点/可交互/锚点/无报错 — {"titleOk":true,"domNodes":154,"nodesOk":true,"interactivePresent":true,"anchorsHit":["更新","设置"],"anchorsOk":true,"errorishEmpty":true}
 
 ══════════════════════════════════════════════════════════════════

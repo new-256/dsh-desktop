@@ -18,11 +18,11 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
-const BACKEND_DSH = 'C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\backend\\dsh';
+const BACKEND_DSH = 'C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\backend\\dsh';
 const LOADER_TREE = path.join(
   BACKEND_DSH, 'node_modules', '@deepseek-ai', 'cordis-plugin-loader', 'lib', 'config', 'tree.js'
 );
-const PROFILE_DIR = 'C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\dsh-home\\profiles\\web';
+const PROFILE_DIR = 'C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\dsh-home\\profiles\\web';
 const PKG = '@deepseek-ai/dsh-mcp-client';
 
 const require = createRequire(pathToFileURL(path.join(BACKEND_DSH, 'noop.js')));
@@ -66,7 +66,7 @@ for (const p of [
   path.join(BACKEND_DSH, 'node_modules', '@deepseek-ai', 'dsh-mcp-client'),
   path.join(PROFILE_DIR, 'node_modules', '@deepseek-ai', 'dsh-mcp-client'),
   path.join(PROFILE_DIR, 'node_modules', '@luchenglong', 'cli-bridge'),
-  'C:\\Users\\lcl\\AppData\\Roaming\\DSH Desktop\\dsh-home\\node_modules'
+  'C:\\Users\\<user>\\AppData\\Roaming\\DSH Desktop\\dsh-home\\node_modules'
 ]) {
   let isDir = false;
   try { isDir = (await import('node:fs')).statSync(p).isDirectory(); } catch {}

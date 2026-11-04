@@ -7,7 +7,7 @@
 根因：桌面报告的文件名带时间戳，而报告是**每次启动新建一个、从不清理**的。
 
 ```
-C:\Users\lcl\Desktop\
+C:\Users\<user>\Desktop\
   DSH-Desktop-错误报告-2026-10-19-063631.txt    59.4 KB
   DSH-Desktop-错误报告-2026-10-19-175100.txt    10.5 KB
   DSH-Desktop-错误报告-2026-10-19-183329.txt     8.3 KB

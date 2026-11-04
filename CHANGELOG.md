@@ -349,8 +349,8 @@ request:clipboard-read          ← 剪贴板只走 request
 而目标是什么？实测用户机器：
 
 - `dsh-home\profiles` 树内共 **896 个 junction**，其中 **383 个目标当前存在**
-- 其中 `dsh-plugin-manager-plus` → `C:\Users\lcl\Desktop\DSH\plugins\dsh-plugin-manager`（141 个条目，**含 .git**）
-- `@local\repo-push-access` → `C:\Users\lcl\Desktop\DSH插件开发\git推送管理\repo-push-access`（123 个文件，**含 .git、含未提交工作**）
+- 其中 `dsh-plugin-manager-plus` → `C:\Users\<user>\Desktop\DSH\plugins\dsh-plugin-manager`（141 个条目，**含 .git**）
+- `@local\repo-push-access` → `C:\Users\<user>\Desktop\DSH插件开发\git推送管理\repo-push-access`（123 个文件，**含 .git、含未提交工作**）
 
 也就是说：**一次删除失败就足以删掉真实的插件源码和未提交改动。**
 

@@ -29,7 +29,7 @@
 
 | 项 | 值 | 来源 |
 |---|---|---|
-| 运行时 wrapper | `dsh-active-backend@0.0.0`（private），依赖 `@deepseek-ai/dsh: 0.2.1-alpha.5` | `C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\dsh\package.json` |
+| 运行时 wrapper | `dsh-active-backend@0.0.0`（private），依赖 `@deepseek-ai/dsh: 0.2.1-alpha.5` | `C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\dsh\package.json` |
 | **`@deepseek-ai/dsh`** | **`0.2.1-alpha.5`** | `…\backend\dsh\node_modules\@deepseek-ai\dsh\package.json` |
 | **`@deepseek-ai/dsh-base`** | **`0.2.1-alpha.5`** | 同上目录 |
 | `dsh-client-store` / `dsh-client-ui-primitives` / `dsh-client-ui-slots` | `0.2.1-alpha.2` | 同上（版本较旧，未随 alpha.5 升） |
@@ -311,8 +311,8 @@ export function desktopUpdateChannel(manifest: unknown): DesktopUpdateChannel {
 
 ### 6.1 方法
 
-- **官方源码**：重新拉取了稀疏检出 `github.com/deepseek-ai/deepseek-harness`（`--filter=blob:none --sparse`，仅 `apps/desktop` + `.agents`），置于 `C:\Users\lcl\AppData\Local\Temp\dsh-official-1020`。上一轮用的 `...\Temp\dsh-official` **已被系统清理**，无法复用。
-  - 注：Temp 下的检出目录属**新建的临时副本**，未触碰 `C:\Users\lcl\Desktop\DSH` 下的任何业务文件。
+- **官方源码**：重新拉取了稀疏检出 `github.com/deepseek-ai/deepseek-harness`（`--filter=blob:none --sparse`，仅 `apps/desktop` + `.agents`），置于 `C:\Users\<user>\AppData\Local\Temp\dsh-official-1020`。上一轮用的 `...\Temp\dsh-official` **已被系统清理**，无法复用。
+  - 注：Temp 下的检出目录属**新建的临时副本**，未触碰 `C:\Users\<user>\Desktop\DSH` 下的任何业务文件。
 - **版本比对**：基线 = tag `dsh-v0.2.1-alpha.2`（commit `d7432673`），最新 = tag `dsh-v0.2.1-rc.2`（commit `687f282e`）。用 `git diff --stat` / `--diff-filter=ADR` / `git ls-tree` 取证，**不依赖 changelog 描述**。
 - **npm 数据**：`registry.npmjs.org` 直查 `dist-tags` + `time` 字段（2026-10-20 实查）。
 - **changelog**：GitHub Releases API 取 `dsh-v*` tag 的 body（注意 tag 带 `dsh-` 前缀）。

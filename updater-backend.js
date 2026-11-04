@@ -181,7 +181,7 @@ function execSync(cmd) {
  * 这对我们不是理论风险 —— 实测用户机器 `dsh-home\profiles\web\node_modules` 里
  * 有两个 junction 指向**真实插件开发目录**（含 .git、123 个文件）：
  *
- *     @local\repo-push-access        → C:\Users\lcl\Desktop\DSH插件开发\...\repo-push-access
+ *     @local\repo-push-access        → C:\Users\<user>\Desktop\DSH插件开发\...\repo-push-access
  *     dsh-repo-push-access           → （同上）
  *
  * 而我们旧的 rimraf 有三条会跟随链接的路径：

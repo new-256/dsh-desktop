@@ -1,10 +1,10 @@
 
 ##############################################################################
 # 阶段一 编译门禁  2026/11/4 02:19:10
-# 仓库根     : C:\Users\lcl\Desktop\DSH
+# 仓库根     : C:\Users\<user>\Desktop\DSH
 # node       : v24.21.0
 # 单项超时   : --check 120s / 测试 240s
-# 日志       : C:\Users\lcl\Desktop\DSH\修复与借鉴_2026-11-04\02_编译阶段\阶段二门禁基线_20261104-021910.txt
+# 日志       : C:\Users\<user>\Desktop\DSH\修复与借鉴_2026-11-04\02_编译阶段\阶段二门禁基线_20261104-021910.txt
 ##############################################################################
 
 
@@ -15,7 +15,7 @@
 
 ══════════════════════════════════════════════════════════════════════════════
   build.files 出包清单闭包门禁
-  仓库根 : C:\Users\lcl\Desktop\DSH
+  仓库根 : C:\Users\<user>\Desktop\DSH
   版本   : 0.3.48
   入口   : main.js + settings.html + splash.html
   白名单 : 4 条  黑名单 : 3 条
@@ -50,7 +50,7 @@
 
 ══════════════════════════════════════════════════════════════════════════════
   随包 appId 常量一致性门禁（H-08 / AUMID）
-  仓库根 : C:\Users\lcl\Desktop\DSH
+  仓库根 : C:\Users\<user>\Desktop\DSH
   版本   : 0.3.48
   期望 appId（package.json build.appId）: com.deepseek.dshdesktop
 ══════════════════════════════════════════════════════════════════════════════
@@ -93,9 +93,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:11.162+08:00
   label    : node --check app-identity.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\app-identity.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\app-identity.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:11.332+08:00 exit=0 reason=exit elapsed=0.2s label=node --check app-identity.js
@@ -104,9 +104,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:11.547+08:00
   label    : node --check crash-report.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\crash-report.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\crash-report.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:11.718+08:00 exit=0 reason=exit elapsed=0.2s label=node --check crash-report.js
@@ -115,9 +115,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:11.927+08:00
   label    : node --check diag-log.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\diag-log.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\diag-log.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:12.100+08:00 exit=0 reason=exit elapsed=0.2s label=node --check diag-log.js
@@ -126,9 +126,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:12.304+08:00
   label    : node --check ladder-policy.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\ladder-policy.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\ladder-policy.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:12.472+08:00 exit=0 reason=exit elapsed=0.2s label=node --check ladder-policy.js
@@ -137,9 +137,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:12.677+08:00
   label    : node --check lifecycle-log.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\lifecycle-log.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\lifecycle-log.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:12.846+08:00 exit=0 reason=exit elapsed=0.2s label=node --check lifecycle-log.js
@@ -148,9 +148,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:13.046+08:00
   label    : node --check main.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\main.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\main.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:13.218+08:00 exit=0 reason=exit elapsed=0.2s label=node --check main.js
@@ -159,9 +159,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:13.492+08:00
   label    : node --check patch-file.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\patch-file.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\patch-file.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:13.667+08:00 exit=0 reason=exit elapsed=0.2s label=node --check patch-file.js
@@ -170,9 +170,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:13.859+08:00
   label    : node --check plugin-resolution.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\plugin-resolution.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\plugin-resolution.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:14.031+08:00 exit=0 reason=exit elapsed=0.2s label=node --check plugin-resolution.js
@@ -181,9 +181,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:14.227+08:00
   label    : node --check preload.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\preload.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\preload.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:14.400+08:00 exit=0 reason=exit elapsed=0.2s label=node --check preload.js
@@ -192,9 +192,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:14.597+08:00
   label    : node --check quit-guard.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\quit-guard.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\quit-guard.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:14.772+08:00 exit=0 reason=exit elapsed=0.2s label=node --check quit-guard.js
@@ -203,9 +203,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:14.973+08:00
   label    : node --check settings-preload.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\settings-preload.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\settings-preload.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:15.141+08:00 exit=0 reason=exit elapsed=0.2s label=node --check settings-preload.js
@@ -214,9 +214,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:15.344+08:00
   label    : node --check settings-renderer.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\settings-renderer.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\settings-renderer.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:15.509+08:00 exit=0 reason=exit elapsed=0.2s label=node --check settings-renderer.js
@@ -225,9 +225,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:15.705+08:00
   label    : node --check startup-deadline.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\startup-deadline.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\startup-deadline.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:15.882+08:00 exit=0 reason=exit elapsed=0.2s label=node --check startup-deadline.js
@@ -236,9 +236,9 @@
 ==============================================================================
 [RUN BEGIN] 2026-11-04T02:19:16.082+08:00
   label    : node --check updater-backend.js
-  command  : C:\Users\lcl\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\lcl\Desktop\DSH\updater-backend.js
+  command  : C:\Users\<user>\AppData\Roaming\DSH Desktop\backend\node.exe --check C:\Users\<user>\Desktop\DSH\updater-backend.js
   timeout  : 120s
-  cwd      : C:\Users\lcl\Desktop\DSH
+  cwd      : C:\Users\<user>\Desktop\DSH
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 [RUN END] 2026-11-04T02:19:16.254+08:00 exit=0 reason=exit elapsed=0.2s label=node --check updater-backend.js

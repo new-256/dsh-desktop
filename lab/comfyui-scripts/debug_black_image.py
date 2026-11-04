@@ -59,7 +59,7 @@ with torch.no_grad():
     img = vae.decode(z)
 print(f"    解码输出: shape={tuple(img.shape)} NaN={torch.isnan(img.float()).sum().item()} "
       f"std={img.float().std().item():.3f}")
-save_img(img, r"C:\Users\lcl\Desktop\DSH\debug_vae_random.png")
+save_img(img, r"C:\Users\<user>\Desktop\DSH\debug_vae_random.png")
 print("    已存 debug_vae_random.png")
 del z, img
 
@@ -92,7 +92,7 @@ print(f"    C1 采样耗时: {time.time()-t0:.0f}s")
 with torch.no_grad():
     fin = vae.decode(lat)
 print(f"    C1 解码: std={fin.float().std().item():.3f} min={fin.float().min().item():.2f} max={fin.float().max().item():.2f}")
-save_img(fin, r"C:\Users\lcl\Desktop\DSH\debug_c1_default.png")
+save_img(fin, r"C:\Users\<user>\Desktop\DSH\debug_c1_default.png")
 
 print("=== C2. Phr00t 官方参数: sa_solver/beta/cfg1.0 ===")
 latent2 = torch.zeros((1, 16, 1, 166, 166), dtype=torch.bfloat16)
@@ -110,5 +110,5 @@ print(f"    C2 采样耗时: {time.time()-t0:.0f}s")
 with torch.no_grad():
     fin2 = vae.decode(lat2)
 print(f"    C2 解码: std={fin2.float().std().item():.3f} min={fin2.float().min().item():.2f} max={fin2.float().max().item():.2f}")
-save_img(fin2, r"C:\Users\lcl\Desktop\DSH\debug_c2_sa_solver.png")
+save_img(fin2, r"C:\Users\<user>\Desktop\DSH\debug_c2_sa_solver.png")
 print("=== 诊断完成 ===")
